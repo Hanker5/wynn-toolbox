@@ -64,6 +64,20 @@ entries may be stated as fact.
   NORMAL 2.05, FAST 2.5, VERY_FAST 3.1, SUPER_FAST 4.3.
 - WynnBuilder models Shaman puppet hits as **spell** scaling: the Puppet Master
   node has no `scaling` field, so it defaults to `"spell"`. (Compare Tested below.)
+  `wt damage` follows WynnBuilder here, so its puppet numbers carry the same doubt.
+- The damage path (`damage_calc.js`, ported in `wynntools/damage.py`): weapon
+  damage after powders → spell conversions (neutral % scales the weapon, element
+  % converts from the total) → attack-speed multiplier (spells only) → flat
+  "add" damage → % boosts (skill points, spell/melee %, element %, rainbow %) →
+  raw damage split by each element's share → strength multiplies everything,
+  crit adds `1 + critDamPct%` on top → damage multipliers (tomes' "damage vs
+  mobs", ability multipliers).
+- Crit chance is the Dexterity skill-point percentage. Strength multiplies all
+  damage except parts marked `use_str: false`.
+- Effective HP = HP / (agility dodge and defence reduction) / (2 − class defence);
+  class defence is 0.6 relik, 0.7 bow, 0.8 wand, 1.0 dagger and spear.
+- Ability sliders (stacks, orbs) and toggles change damage; WynnBuilder opens a
+  link with sliders at their defaults and toggles off, and so does `wt damage`.
 
 ### Ability trees
 - A node turns on only when a parent is on, its dependencies are on, no blocker
@@ -127,6 +141,7 @@ Each has a regression test.
 | Archetype requirement counted over the whole tree, not in order | Only 10 of 29 nodes could activate | `test_archetype_requirement_is_checked_in_order` |
 | Unrequested stat in the objective | A 154% Loot Bonus, 0-HP chest dominated a Stealing build | AGENTS.md rule 5 |
 | `averageDps` used to rank summon/spell weapons | Steered away from the best per-hit relik | mechanics note above |
+| Retired item/tome ids (`remapID` redirects) read as real entries | An old tome id loaded stale stats (Health Regen 6% instead of 3%); a stats-less "Melancholia" shadowed the real one | `test_retired_ids_redirect_to_current_items`, found by `-m live` |
 | Base values treated as perfect rolls | Wand comparison overstated by ~40% vs. real items | AGENTS.md rule 3 |
 | Tool totals compared to WynnBuilder's page | WynnBuilder shows 130% rolls, the tools 100% | `test_wynnbuilder_shows_perfect_rolls` |
 | Crafting math drifting from WynnBuilder | Wrong stats for crafted gear | `tests/test_differential.py` |

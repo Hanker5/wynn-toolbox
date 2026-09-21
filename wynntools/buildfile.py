@@ -66,6 +66,7 @@ def from_build(b, gd):
 def refresh(doc, gd, inventory=None):
     """Re-derive link and status from the editable fields. Returns the new doc.
     With an inventory, owned items use their real rolls in the totals."""
+    from .damage import summary as damage_summary
     link = to_link(to_build(doc, gd), gd)
     ok, rep = check_link(link, gd, inventory=inventory)
     s = rep["summary"]
@@ -76,6 +77,7 @@ def refresh(doc, gd, inventory=None):
               "mana_min_int": s["mana_min_int"], "mana_spare_into_int": s["mana_spare_into_int"],
               "poison_per_second": s["poison_per_second"],
               "ap": list(rep.get("ap", (0, 0))), "tree_failed": rep.get("tree_failed", []),
+              "damage": damage_summary(rep["build"], gd, inventory),
               "checked": datetime.datetime.now().isoformat(timespec="seconds")}
     return {**{k: v for k, v in doc.items() if k not in GENERATED},
             "link": link, "status": status}

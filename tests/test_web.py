@@ -149,3 +149,26 @@ def test_upgrades_job(client):
     ranked = [u["item"] for u in result["upgrades"]]
     # without a forced weapon, owning Sequoia beats any bracelet; Dying Lobelia fills the gap
     assert ranked[0] == "Sequoia" and "Dying Lobelia" in ranked
+
+
+def test_build_status_has_damage_and_spell_list(client, links):
+    client.post("/api/import", json={"link": links["mage_105_gaia_lightbender"]["hash"],
+                                     "file": "gaia.json", "name": "Gaia"})
+    dmg = client.get("/api/builds/gaia.json").json()["status"]["damage"]
+    ophanim = {s["name"]: s for s in dmg["perfect"]["spells"]}["Ophanim"]
+    assert ophanim["summary"] == 19482.73 and ophanim["cost"] == 65.0
+    assert dmg["typical"]["defense"]["ehp"] < dmg["perfect"]["defense"]["ehp"]
+    names = [s["name"] for s in client.get("/api/spells?cls=Mage&preset=mage-poison-lightbender").json()]
+    assert names[0] == "Wand Melee" and "Ophanim" in names
+    assert [s["name"] for s in client.get("/api/spells?cls=Mage").json()] == ["Wand Melee"]
+
+
+def test_damage_minimum_needs_a_preset(client):
+    spec = {"class": "Mage", "level": 105, "objective": {"poison": 1},
+            "floors": {"damage": {"Ophanim": 10000}}, "force": {"weapon": "Gaia"}}
+    r = client.post("/api/solve", json={"spec": spec, "file": "x.json"})
+    assert r.status_code == 422 and "preset" in r.json()["detail"]
+    r = client.post("/api/solve", json={"spec": spec, "file": "x.json",
+                                        "tree_preset": "mage-poison-lightbender"})
+    assert r.status_code == 200
+    client.post(f"/api/jobs/{r.json()['job']}/cancel")

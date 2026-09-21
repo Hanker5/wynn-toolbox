@@ -37,7 +37,11 @@ the web app (mark owned from the item card / slot), rolls respected in totals.
 **Done when.** A spec can be solved with `owned_only`; the upgrade ranking
 reproduces a hand-checked example; UI test covers marking an item owned.
 
-## 3. Damage calculations
+## 3. Damage calculations — DONE
+`wynntools/damage.py`; `wt damage`; build status and the editor's Damage panel;
+`floors.damage` in the gear solver. `-m live` compares every stat, spell part,
+cost and defence number with the real WynnBuilder page for the 11 session links
+and seeded random builds of all five classes (125 random builds matched too).
 **Work.** Port WynnBuilder's damage path: `damage_calc.js`
 (`calculateSpellDamage`), the ability-tree spell merging from `atree.js`, and
 the stats it needs (skill-point damage multipliers, powders, attack speed).

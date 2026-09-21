@@ -9,7 +9,7 @@ rules, and hand you a working WynnBuilder link.
 > The AI turns your goals into constraints and explains the results; the tools
 > do the math.
 >
-> **This is NOT** a damage calculator, a replacement for
+> **This is NOT** a replacement for
 > [WynnBuilder](https://wynnbuilder.github.io), or affiliated with Wynncraft or
 > WynnBuilder.
 
@@ -75,7 +75,8 @@ what is proven, what was tested in game, and what is still unknown.
 ## Limits
 
 - Item stats are 100% rolls; real items roll 30–130%.
-- Spell damage is not calculated yet.
+- Damage follows WynnBuilder's model with its page defaults (no potions, raid
+  buffs or powder specials; ability sliders at their defaults).
 - Custom items and old-format links are not supported yet.
 
 See `docs/ROADMAP.md`.

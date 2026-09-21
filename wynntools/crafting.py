@@ -164,6 +164,7 @@ def craft_item(craft, cd):
         base_lo = math.floor(math.floor(low * matmult) * ratio)
         base_hi = math.floor(math.floor(high * matmult) * ratio)
         item["atkSpd"] = craft.atk_spd
+        item["nDamBaseHigh"] = base_hi              # damage calc uses the high roll
         item["nDamLow"] = f"{math.floor(base_lo * 0.9)}-{math.floor(base_lo * 1.1)}"
         item["nDam"] = f"{math.floor(base_hi * 0.9)}-{math.floor(base_hi * 1.1)}"
     elif item["category"] == "armor":

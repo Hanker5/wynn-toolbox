@@ -73,8 +73,11 @@ present a short table: floor, goal stat, HP, mana regen, skill points. Point
 out cliffs where one step costs much more than the last.
 
 For weapon comparisons, force each candidate weapon with the same spec and
-compare. For DoT stats, convert to per second (`poison_per_second`) before
-comparing with weapon DPS, and label any spell-damage estimate as rough.
+compare with `uv run wt damage <link>` (spell and melee damage, effective HP).
+When a player wants to keep a spell's damage up while maximizing something else,
+add `"floors": {"damage": {"<spell name>": N}}` and pass `--tree PRESET`. Quote
+damage at typical rolls unless comparing with the WynnBuilder page (`--perfect`).
+Poison is per second (`floor(poison / 3)`), not per hit.
 
 ## 6. Present
 

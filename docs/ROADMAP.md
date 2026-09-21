@@ -10,8 +10,8 @@ Rough priority order.
 3. **Differential tests for decoding and the tree.** Encoding of powders, skill
    points, aspects, tomes and crafts is checked against WynnBuilder's own JS;
    extend the same harness to full-link decoding and ability-tree activation.
-4. **Spell damage.** Port WynnBuilder's spell damage calculation so weapon
-   comparisons stop relying on rough per-cast estimates.
+4. ~~**Spell damage.**~~ Done: `wynntools/damage.py`, checked against the live
+   WynnBuilder page (`-m live`).
 5. **More skills**: `compare` (weapons/items side by side), `explain` (walk a
    player through a decoded build), `decode` for quick lookups.
 6. **Aspects** in specs and output, with names.

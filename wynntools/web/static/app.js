@@ -397,6 +397,9 @@ async function renderEditor() {
       h("aside", { class: "ed-side" },
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, h("span", {}, "Summary"), rollToggle()),
           h("div", { id: "ed-tiles", class: "summary" })),
+        h("section", { class: "panel", id: "ed-damage-panel", hidden: true },
+          h("div", { class: "panel-h" }, h("span", { id: "ed-damage-h" }, "Damage")),
+          h("div", { id: "ed-damage", class: "summary" })),
         h("section", { class: "panel", id: "ed-sets-panel", hidden: true }, h("div", { class: "panel-h" }, "Set bonuses"),
           h("div", { id: "ed-sets", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Checks"), h("div", { id: "ed-checks", class: "summary" })),
@@ -784,6 +787,57 @@ function renderChecks(st) {
     h("p", { class: "hint" }, "Skill points are assigned automatically in the link. Aspects aren't set."));
 }
 
+const DAMAGE_CLASS = { Neutral: "neutral", Earth: "earth", Thunder: "thunder", Water: "water", Fire: "fire", Air: "air" };
+const f2 = (x) => (x ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function spellCard(sp) {
+  // One spell, as WynnBuilder's right column shows it: name (mana), the headline
+  // number, and on click every part with its non-crit / crit ranges per element.
+  const title = h("span", { class: "sp-name" }, sp.name,
+    sp.cost ? h("span", { class: "mana" }, ` (${f2(sp.cost)})`) : null);
+  const lines = [];
+  if (sp.dps != null) {
+    lines.push(statRow("Average DPS", f2(sp.dps), "dmg"), statRow("Attack speed", sp.attack_speed),
+      statRow("Per attack", f2(sp.summary), "dmg"));
+  } else if (sp.summary != null) {
+    lines.push(statRow(sp.display, f2(sp.summary), sp.summary_type === "heal" ? "heal" : "dmg"));
+  }
+  const parts = sp.parts.map((p) => h("div", { class: "part" },
+    h("div", { class: "part-h" }, p.name),
+    p.type === "heal" ? statRow("Healing", f2(p.heal), "heal") : [
+      statRow("Average", f2(p.average), "dmg"),
+      statRow("Non-crit", f2(p.non_crit)),
+      ...p.ranges.map((r) => statRow(h("span", { class: DAMAGE_CLASS[r[0]] }, r[0]),
+        h("span", { class: DAMAGE_CLASS[r[0]] }, `${f2(r[1])} – ${f2(r[2])}`))),
+      statRow("Crit", f2(p.crit)),
+      ...p.ranges.map((r) => statRow(h("span", { class: DAMAGE_CLASS[r[0]] }, r[0]),
+        h("span", { class: DAMAGE_CLASS[r[0]] }, `${f2(r[3])} – ${f2(r[4])}`))),
+    ]));
+  return h("details", { class: "spell" }, h("summary", {}, title, ...lines), ...parts);
+}
+
+function renderDamage(st) {
+  const all = st.damage, panel = $("#ed-damage-panel");
+  if (!panel) return;
+  panel.hidden = !all;
+  if (!all) return;
+  if (all.error) { $("#ed-damage").replaceChildren(h("p", { class: "hint neg" }, `Couldn't compute damage: ${all.error}`)); return; }
+  const dmg = S.roll === "perfect" ? all.perfect : all.typical, d = dmg.defense;
+  const open = new Set([...document.querySelectorAll("#ed-damage details.spell[open]")].map((x) => x.dataset.name));
+  const cards = dmg.spells.map((sp) => { const c = spellCard(sp); c.dataset.name = sp.name; c.open = open.has(sp.name); return c; });
+  const knobs = [...Object.entries(dmg.sliders).map(([k, v]) => `${k} ${v.default}/${v.max}`), ...dmg.toggles.map((t) => `${t} off`)];
+  $("#ed-damage").replaceChildren(
+    statRow(h("span", {}, h("span", { class: "hp" }, "♥ "), "Effective HP"), fmt(Math.round(d.ehp))),
+    statRow("Effective HP (no agi)", fmt(Math.round(d.ehp_no_agi))),
+    statRow("HP regen", fmt(Math.round(d.hpr))),
+    dmg.poison_tick ? statRow("Poison", `${fmt(dmg.poison_tick)}/s`, "pos") : null,
+    statRow("Crit chance", `${dmg.crit_chance}%`),
+    h("div", { class: "sep" }),
+    ...cards,
+    h("p", { class: "hint" }, `${S.roll === "perfect" ? "Perfect" : "Typical"} rolls. Click a spell for every part. ` +
+      "No potions, raid buffs or powder specials" + (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."));
+}
+
 function renderSets(st) {
   const sets = st.sets || [];
   $("#ed-sets-panel").hidden = !sets.length;
@@ -834,7 +888,7 @@ function renderDerived() {
   else if (st.problems?.length) banners.append(h("div", { class: "banner bad" },
     h("div", {}, h("strong", {}, "Problems"), h("ul", {}, st.problems.map((p) => h("li", {}, p))))));
 
-  renderSP(st); renderSummary(st); renderSets(st); renderChecks(st);
+  renderSP(st); renderSummary(st); renderDamage(st); renderSets(st); renderChecks(st);
   const filled = (d.tomes || []).filter(Boolean).length;
   const sum = $("#ed-tomes-sum"); if (sum) sum.textContent = `Tomes · ${filled}/14 filled`;
   const title = $("#ed-tree-title");
@@ -895,7 +949,7 @@ function renderSolver() {
   f.crafted = h("input", { type: "checkbox" });
   f.owned = h("input", { type: "checkbox" });
   f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
-  f.preset = h("select", {});
+  f.preset = h("select", { "aria-label": "Tree preset" });
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
   const majors = new Set();
   const majorChips = h("div", { class: "chips" });
@@ -908,7 +962,21 @@ function renderSolver() {
     f.preset.replaceChildren(h("option", { value: "" }, "none (gear only)"),
       ...m.presets.filter((p) => p.class === f.cls.value).map((p) => h("option", { value: p.name, title: p.about }, p.name)));
   };
-  f.cls.onchange = syncPresets; syncPresets();
+  f.dmgSpell = h("select", { "aria-label": "Spell for the damage minimum" });
+  const syncSpells = async () => {
+    const keep = f.dmgSpell.value;
+    if (!f.preset.value) {
+      f.dmgSpell.replaceChildren(h("option", { value: "" }, "pick a tree preset first"));
+      f.dmgSpell.disabled = true; return;
+    }
+    const spells = await api("GET", `/api/spells?cls=${f.cls.value}&preset=${encodeURIComponent(f.preset.value)}&level=${+f.level.value || 105}`);
+    f.dmgSpell.replaceChildren(h("option", { value: "" }, "none"),
+      ...spells.map((sp) => h("option", { value: sp.name }, sp.melee ? `${sp.name} (DPS)` : sp.name)));
+    f.dmgSpell.disabled = false;
+    if (spells.some((sp) => sp.name === keep)) f.dmgSpell.value = keep;
+  };
+  f.cls.onchange = () => { syncPresets(); syncSpells(); }; syncPresets();
+  f.preset.onchange = syncSpells; f.level.addEventListener("change", syncSpells); syncSpells();
   const weaponAc = autocomplete(f.weapon, (q) => api("GET", `/api/items?slot=weapon&cls=${f.cls.value}&level=${f.level.value}&q=${encodeURIComponent(q)}`), () => {});
 
   const bar = h("i"), status = h("div", { class: "hint" }), cancelBtn = h("button", { class: "danger", hidden: true }, "Cancel");
@@ -916,6 +984,7 @@ function renderSolver() {
   async function readForm() {
     const floors = {};
     for (const k of ["hp", "mr", "spd", "mana", "weapon_dps"]) if (f[k].value !== "") floors[k] = +f[k].value;
+    if (f.dmgSpell.value && f.dmg_min.value !== "") floors.damage = { [f.dmgSpell.value]: +f.dmg_min.value };
     const objective = { [f.goal.value]: 1 };
     if (f.tie.value && f.tie.value !== f.goal.value) objective[f.tie.value] = 0.01;
     let tomes = [];
@@ -962,7 +1031,7 @@ function renderSolver() {
   upBtn.onclick = async () => {
     const spec = await readForm();
     try {
-      const { job } = await api("POST", "/api/upgrades", { spec, top: 10 });
+      const { job } = await api("POST", "/api/upgrades", { spec, top: 10, tree_preset: f.preset.value || null });
       upgradesBox.replaceChildren(h("div", { class: "hint" }, "Trying each item you don't own, one at a time…"));
       follow(job, async (j) => {
         status.textContent = "";
@@ -997,8 +1066,10 @@ function renderSolver() {
     h("div", { class: "card" }, h("h3", {}, "Minimums (leave blank for none)"),
       h("div", { class: "form" }, field("Health", num("hp", "e.g. 17000")), field("Mana regen", num("mr", "e.g. 20")),
         field("Walk speed %", num("spd", "e.g. 0")), field("Max mana", num("mana", "e.g. 113")),
-        field("Weapon DPS", num("weapon_dps", "e.g. 700"))),
-      h("p", { class: "hint" }, "Health and mana include base stats and the tomes below. Max mana assumes spare skill points go into Intelligence.")),
+        field("Weapon DPS", num("weapon_dps", "e.g. 700")),
+        field("Spell", f.dmgSpell), field("Spell damage at least", num("dmg_min", "e.g. 15000"))),
+      h("p", { class: "hint" }, "Health and mana include base stats and the tomes below. Max mana assumes spare skill points go into Intelligence. " +
+        "Spell damage is the spell's headline number as WynnBuilder shows it (melee: average DPS), with the preset's tree and no powders.")),
     h("div", { class: "card" }, h("h3", {}, "Requirements"),
       h("div", { class: "form" }, field("Required major IDs", majorIn), field("Weapon (optional)", weaponAc),
         field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),

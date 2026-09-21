@@ -58,6 +58,44 @@ def _print_report(ok, rep, gd):
     print("VERIFIED OK" if ok else "PROBLEMS:\n  - " + "\n  - ".join(rep["problems"]))
 
 
+def _print_damage(dmg, parts=False, label="typical rolls"):
+    """One line per spell, like WynnBuilder's right column; `parts` adds detail."""
+    if not dmg:
+        return
+    if "error" in dmg:
+        print(f"Damage: could not compute ({dmg['error']})")
+        return
+    d = dmg["defense"]
+    print(f"Damage ({label}; crit chance {dmg['crit_chance']}%):")
+    for sp in dmg["spells"]:
+        cost = f" ({sp['cost']:.2f} mana)" if sp["cost"] else ""
+        if sp["dps"] is not None:
+            line = f"{sp['dps']:,.0f} DPS · {sp['summary']:,.0f} per hit · {sp['attack_speed']}"
+        elif sp["summary"] is None:
+            line = "no damage"
+        elif sp["summary_type"] == "heal":
+            line = f"{sp['display']}: {sp['summary']:,.0f} healed"
+        else:
+            line = f"{sp['display']}: {sp['summary']:,.0f}"
+        print(f"  {sp['name']}{cost}: {line}")
+        if parts:
+            for p in sp["parts"]:
+                if p["type"] == "heal":
+                    print(f"      {p['name']}: {p['heal']:,.0f} healed")
+                else:
+                    elems = ", ".join(f"{r[0]} {r[1]:,.0f}-{r[2]:,.0f}" for r in p["ranges"])
+                    print(f"      {p['name']}: avg {p['average']:,.0f} "
+                          f"(non-crit {p['non_crit']:,.0f}, crit {p['crit']:,.0f}) [{elems}]")
+    print(f"  Effective HP {d['ehp']:,.0f} ({d['ehp_no_agi']:,.0f} without agility dodge) · "
+          f"HP regen {d['hpr']:,.0f}")
+    if dmg["poison_tick"]:
+        print(f"  Poison {dmg['poison_tick']:,}/s")
+    if dmg["sliders"] or dmg["toggles"]:
+        extra = [f"{k} at {v['default']}" for k, v in dmg["sliders"].items()] + \
+                [f"{t} off" for t in dmg["toggles"]]
+        print("  Ability sliders/toggles at WynnBuilder's defaults: " + ", ".join(extra))
+
+
 def _tree_for(build_level, weapon, preset, gd):
     cls = gd.weapon_class(weapon)
     P = PRESETS[preset]
@@ -86,10 +124,34 @@ def _link_arg(arg, gd):
 
 
 def cmd_decode(a):
+    from .damage import summary
     gd = GameData()
     ok, rep = check_link(_link_arg(a.link, gd), gd)
     _print_report(ok, rep, gd)
+    dmg = summary(rep["build"], gd)
+    if dmg:
+        _print_damage(dmg.get("typical", dmg))
     return 0 if ok else 1
+
+
+def cmd_damage(a):
+    """WynnBuilder's spell/melee damage and effective HP for a link or build file."""
+    from .codec import decode, link_hash
+    from .damage import summary
+    gd = GameData()
+    inventory = inv_mod.load(a.inventory) if a.inventory else None
+    build = decode(link_hash(_link_arg(a.link, gd)), gd)
+    dmg = summary(build, gd, inventory)
+    if not dmg:
+        raise SystemExit("this build has no weapon")
+    if "error" in dmg:
+        raise SystemExit(f"could not compute damage: {dmg['error']}")
+    if a.json:
+        print(json.dumps(dmg["perfect" if a.perfect else "typical"], indent=2))
+        return 0
+    _print_damage(dmg["perfect" if a.perfect else "typical"], parts=a.parts,
+                  label="perfect rolls, as WynnBuilder shows" if a.perfect else "typical rolls")
+    return 0
 
 
 def cmd_tree(a):
@@ -113,6 +175,18 @@ def _build_from(spec, equipment, tree_preset, gd):
     return b
 
 
+def _damage_tree(spec, preset, gd):
+    """Damage floors are checked on a fixed tree: the preset's, solved up front."""
+    if not spec.floors.get("damage"):
+        return
+    if not preset:
+        raise SystemExit("damage floors need a tree: add --tree PRESET")
+    if PRESETS[preset]["class"] != spec.cls:
+        raise SystemExit(f"preset {preset} is for {PRESETS[preset]['class']}")
+    spec.atree = set(solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
+                                ability_points(spec.level)))
+
+
 def _spec_from(raw, gd):
     return Spec(cls=raw["class"], level=raw["level"], objective=raw["objective"],
                 floors=raw.get("floors", {}), require_major=raw.get("require_major", []),
@@ -127,6 +201,7 @@ def cmd_gear(a):
     gd = GameData()
     raw = json.load(open(a.spec))
     spec = _spec_from(raw, gd)
+    _damage_tree(spec, a.tree, gd)
     if a.owned:
         inv = inv_mod.load(a.inventory)
         spec.only, spec.inventory, spec.crafted = inv.names(), inv, False
@@ -148,6 +223,10 @@ def cmd_gear(a):
     link = to_link(b, gd)
     ok, rep = check_link(link, gd)
     _print_report(ok, rep, gd)
+    from .damage import summary
+    dmg = summary(b, gd, spec.inventory)
+    if dmg:
+        _print_damage(dmg.get("typical", dmg))
     print(link)
     if a.save:
         doc = {"name": a.name or Path(a.save).stem,
@@ -189,6 +268,7 @@ def cmd_link(a):
 def cmd_upgrades(a):
     gd = GameData()
     spec = _spec_from(json.load(open(a.spec)), gd)
+    _damage_tree(spec, a.tree, gd)
     inv = inv_mod.load(a.inventory)
     if not inv.names():
         print(f"{a.inventory} is empty. Add items with: uv run wt own add \"Item Name\"")
@@ -312,6 +392,13 @@ def main(argv=None):
     s = sub.add_parser("verify", help="alias for decode; exits 1 on any problem")
     s.add_argument("link")
     s.set_defaults(fn=cmd_decode)
+    s = sub.add_parser("damage", help="spell and melee damage, effective HP (WynnBuilder's numbers)")
+    s.add_argument("link", help="link, hash or build file")
+    s.add_argument("--perfect", action="store_true", help="130%% rolls, as WynnBuilder's page shows")
+    s.add_argument("--parts", action="store_true", help="show every spell part and element")
+    s.add_argument("--json", action="store_true")
+    s.add_argument("--inventory", help="use real rolls from this inventory file")
+    s.set_defaults(fn=cmd_damage)
     s = sub.add_parser("tree", help="solve an ability tree from a preset")
     s.add_argument("preset", choices=sorted(PRESETS))
     s.add_argument("--level", type=int, default=105)
@@ -332,6 +419,7 @@ def main(argv=None):
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.add_argument("--top", type=int, default=10)
     s.add_argument("--per-slot", type=int, default=6, help="candidates tried per slot")
+    s.add_argument("--tree", choices=sorted(PRESETS), help="tree preset (needed for damage floors)")
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(fn=cmd_upgrades)
     s = sub.add_parser("own", help="manage your inventory (items, tomes, crafts you own)")

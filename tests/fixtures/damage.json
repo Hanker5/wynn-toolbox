@@ -1,0 +1,184 @@
+{
+ "_note": "WynnBuilder builder-page numbers (perfect rolls, default toggles) for tests/fixtures/links.json. Snapshotted 2026-09-21 after tests/test_wynnbuilder_live.py showed wynntools.damage equals the live page for every link. Re-snapshot only after re-running the live test.",
+ "original_user_build": {
+  "spells": {
+   "Relik Melee": 1954.4,
+   "Totem": 1195.01,
+   "Greed Heal": 1536.64
+  },
+  "ehp": 46743.16,
+  "ehp_no_agi": 26154.89,
+  "hpr": 746.2,
+  "poison_tick": 0
+ },
+ "shaman_105_stormdrain": {
+  "spells": {
+   "Relik Melee": 2034.28,
+   "Totem": 730.08,
+   "Haul": 4292.91,
+   "Aura": 6781.1,
+   "Uproot": 3386.54,
+   "Puppet Damage": 11067.56,
+   "Crimson Effigy": 10119.38,
+   "Hummingbird's Song": 5645.44,
+   "Patchwork Abomination": 50793.38,
+   "Greed Heal": 769.44
+  },
+  "ehp": 21702.06,
+  "ehp_no_agi": 21702.06,
+  "hpr": 638.0,
+  "poison_tick": 0
+ },
+ "shaman_105_cryoseism": {
+  "spells": {
+   "Relik Melee": 3817.41,
+   "Totem": 877.96,
+   "Haul": 5064.23,
+   "Aura": 8132.02,
+   "Uproot": 4119.29,
+   "Puppet Damage": 13128.61,
+   "Crimson Effigy": 11845.16,
+   "Hummingbird's Song": 7012.04,
+   "Patchwork Abomination": 61593.59,
+   "Greed Heal": 902.46
+  },
+  "ehp": 14261.43,
+  "ehp_no_agi": 14261.43,
+  "hpr": 638.0,
+  "poison_tick": 0
+ },
+ "shaman_105_infused_hive": {
+  "spells": {
+   "Relik Melee": 5436.04,
+   "Totem": 748.66,
+   "Haul": 3159.53,
+   "Aura": 3883.76,
+   "Uproot": 2832.53,
+   "Puppet Damage": 8083.92,
+   "Crimson Effigy": 5870.42,
+   "Hummingbird's Song": 3993.75,
+   "Patchwork Abomination": 40261.61,
+   "Greed Heal": 780.64
+  },
+  "ehp": 26874.85,
+  "ehp_no_agi": 15323.12,
+  "hpr": 733.7,
+  "poison_tick": 0
+ },
+ "shaman_105_resonance": {
+  "spells": {
+   "Relik Melee": 2353.56,
+   "Totem": 1169.31,
+   "Aura": 8676.61,
+   "Uproot": 4032.58,
+   "Puppet Damage": 12827.62,
+   "Crimson Effigy": 13476.15,
+   "Hummingbird's Song": 7952.94,
+   "Greed Heal": 768.64
+  },
+  "ehp": 17000.69,
+  "ehp_no_agi": 17000.69,
+  "hpr": 1173.2,
+  "poison_tick": 716
+ },
+ "shaman_121_absolution": {
+  "spells": {
+   "Relik Melee": 2793.04,
+   "Totem": 904.82,
+   "Haul": 3748.88,
+   "Aura": 6591.93,
+   "Uproot": 3127.62,
+   "Puppet Damage": 9931.65,
+   "Crimson Effigy": 11633.3,
+   "Hummingbird's Song": 6583.1,
+   "Patchwork Abomination": 46712.84,
+   "Greed Heal": 1659.77
+  },
+  "ehp": 43556.73,
+  "ehp_no_agi": 43556.73,
+  "hpr": 670.0,
+  "poison_tick": 0
+ },
+ "mage_105_gaia_lightbender": {
+  "spells": {
+   "Wand Melee": 4548.33,
+   "Heal": 8836.5,
+   "Ophanim": 19482.73,
+   "Ice Snake": 5046.36,
+   "Lightweaver": 5111.97,
+   "Burning Sigil": 2204.37,
+   "Freezing Sigil": 1342.28,
+   "Earthen Splinter": 101923.44
+  },
+  "ehp": 21980.71,
+  "ehp_no_agi": 21805.24,
+  "hpr": 373.16,
+  "poison_tick": 36100
+ },
+ "mage_105_gaia_riftwalker": {
+  "spells": {
+   "Wand Melee": 4728.87,
+   "Heal": 2209.12,
+   "Teleport": 4560.06,
+   "Meteor": 43559.52,
+   "Frozen Tornado": 5672.85,
+   "Burning Sigil": 2252.25,
+   "Freezing Sigil": 1415.98,
+   "Dimensional Tear": 6072.93,
+   "Earthen Splinter": 105758.78
+  },
+  "ehp": 21980.71,
+  "ehp_no_agi": 21805.24,
+  "hpr": 373.16,
+  "poison_tick": 36100
+ },
+ "mage_105_gaia_mana": {
+  "spells": {
+   "Wand Melee": 4063.12,
+   "Heal": 9017.1,
+   "Ophanim": 21269.07,
+   "Ice Snake": 5602.43,
+   "Lightweaver": 5606.8,
+   "Burning Sigil": 2382.91,
+   "Freezing Sigil": 1491.7,
+   "Earthen Splinter": 91050.25
+  },
+  "ehp": 23377.41,
+  "ehp_no_agi": 23192.22,
+  "hpr": -2.67,
+  "poison_tick": 33433
+ },
+ "mage_105_sequoia": {
+  "spells": {
+   "Wand Melee": 1180.6,
+   "Heal": 11034.36,
+   "Ophanim": 459.25,
+   "Ice Snake": 119.5,
+   "Lightweaver": 114.96,
+   "Burning Sigil": 71.59,
+   "Freezing Sigil": 40.45
+  },
+  "ehp": 22957.58,
+  "ehp_no_agi": 22957.58,
+  "hpr": 567.0,
+  "poison_tick": 39391
+ },
+ "shaman_105_crafted": {
+  "spells": {
+   "Relik Melee": 968.46,
+   "Totem": 586.35,
+   "Haul": 1613.38,
+   "Aura": 2950.51,
+   "Uproot": 1497.83,
+   "Puppet Damage": 4457.78,
+   "Crimson Effigy": 4507.02,
+   "Hummingbird's Song": 3285.87,
+   "Patchwork Abomination": 21653.37,
+   "Greed Heal": 718.48
+  },
+  "ehp": 24745.38,
+  "ehp_no_agi": 13280.06,
+  "hpr": 201.0,
+  "poison_tick": 0
+ }
+}

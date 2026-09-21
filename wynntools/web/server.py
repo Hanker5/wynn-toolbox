@@ -389,6 +389,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         preset = body.get("tree_preset") or None
         if preset and PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
+        damage_tree(spec, preset)
         job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None,
                "file": p.name, "error": None, "cancel": False, "started": time.time()}
         jobs[job["id"]] = job
@@ -468,6 +469,29 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         inv_mod.save(i, inv_path)
         return i.to_json()
 
+    def damage_tree(spec, preset):
+        """Damage minimums are checked on a fixed tree: the preset's."""
+        if not spec.floors.get("damage"):
+            return
+        if not preset or preset not in PRESETS:
+            raise HTTPException(422, "damage minimums need a tree preset")
+        if PRESETS[preset]["class"] != spec.cls:
+            raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
+        spec.atree = set(solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
+                                    ability_points(spec.level)))
+
+    @app.get("/api/spells")
+    def spells_api(cls: str, preset: str = "", level: int = 105):
+        """Spell names a preset's tree gives (for damage minimums)."""
+        from ..damage import collect_spells, merge_tree
+        if cls not in gd.atrees:
+            raise HTTPException(404, "unknown class")
+        active = set()
+        if preset in PRESETS and PRESETS[preset]["class"] == cls:
+            active = set(solve_tree(gd.tree(cls), PRESETS[preset]["weights"], ability_points(level)))
+        spells = collect_spells(merge_tree(cls, active, gd))
+        return [{"name": sp["name"], "base_spell": b, "melee": b == 0} for b, sp in sorted(spells.items())]
+
     @app.post("/api/upgrades")
     async def upgrades_api(request: Request):
         body = await request.json()
@@ -481,6 +505,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                         topn=int(raw.get("topn") or 8))
         except (KeyError, ValueError, TypeError) as e:
             raise HTTPException(422, f"bad spec: {e}")
+        damage_tree(spec, body.get("tree_preset") or None)
         owned = inv()
         if not owned.names():
             raise HTTPException(422, "your inventory is empty; mark some items as owned first")

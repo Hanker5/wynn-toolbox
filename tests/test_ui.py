@@ -217,3 +217,35 @@ def test_own_button_rolls_and_upgrades(page, app):
     open_build(page, "shaman_105_stormdrain")
     page.wait_for_function(f"!document.querySelector('#ed-tiles').innerText.includes({before.split('Stealing')[1].split(chr(10))[1]!r})")
     assert not page.errors
+
+
+def test_damage_panel_shows_wynnbuilder_numbers(page, gd, links):
+    """The right column's spells and effective HP; Perfect matches WynnBuilder's
+    page (numbers below were read off wynnbuilder.github.io for this link)."""
+    open_build(page, "mage_105_gaia_lightbender")
+    page.click("#roll-toggle button:has-text('Perfect')")
+    text = page.inner_text("#ed-damage")
+    for want in ("4,548.33", "8,918.30", "Ophanim", "(65.00)", "19,482.73", "21,981", "36,100/s"):
+        assert want in text, want
+    page.click("#ed-damage details.spell:has-text('Ophanim') summary")
+    assert "Per Orb" in page.inner_text("#ed-damage details.spell[open]")
+    page.click("#roll-toggle button:has-text('Typical')")
+    assert "18,315" in page.inner_text("#ed-damage")               # typical Ophanim
+    assert page.locator("#ed-damage details.spell[open]").count() == 1   # stays open
+    import os
+    if os.environ.get("WT_SHOTS"):
+        page.set_viewport_size({"width": 1440, "height": 2600})
+        page.locator("#ed-damage-panel").screenshot(path=f"{os.environ['WT_SHOTS']}/70-damage.png")
+    assert not page.errors
+
+
+def test_solver_offers_spell_damage_minimum(page):
+    page.click("text=New build from goals")
+    page.select_option("#solver select >> nth=0", "Mage")
+    spell = page.locator("select[aria-label='Spell for the damage minimum']")
+    assert spell.is_disabled()                              # no preset yet
+    page.select_option("select[aria-label='Tree preset']", "mage-poison-lightbender")
+    page.wait_for_function("!document.querySelector(\"select[aria-label='Spell for the damage minimum']\").disabled")
+    options = spell.locator("option").all_inner_texts()
+    assert "Wand Melee (DPS)" in options and "Ophanim" in options
+    assert not page.errors

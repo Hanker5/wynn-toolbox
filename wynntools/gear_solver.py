@@ -22,12 +22,19 @@ CLASS_WEAPON = {"Mage": "wand", "Archer": "bow", "Assassin": "dagger",
                 "Warrior": "spear", "Shaman": "relik"}
 
 
+# Rough "helps damage" shortlist key for damage floors (the floor itself is exact).
+DAMAGE_PCT = ["sdPct", "mdPct", "damPct", "rDamPct", "rSdPct", "rMdPct",
+              "eDamPct", "tDamPct", "wDamPct", "fDamPct", "aDamPct", "critDamPct"]
+
+
 @dataclass
 class Spec:
     cls: str                                     # "Shaman", "Mage", ...
     level: int
     objective: dict                              # stat -> weight, e.g. {"eSteal": 1}
-    floors: dict = field(default_factory=dict)   # hp, mr, spd, mana, weapon_dps
+    floors: dict = field(default_factory=dict)   # hp, mr, spd, mana, weapon_dps, damage
+    # floors["damage"] = {spell name: minimum}: the spell's headline number as
+    # WynnBuilder shows it (melee: average DPS). Checked exactly per build; needs atree.
     require_major: list = field(default_factory=list)   # e.g. ["GREED", "MAGNET"]
     force: dict = field(default_factory=dict)    # slot -> item name
     exclude: set = field(default_factory=set)    # item names never to use
@@ -38,6 +45,7 @@ class Spec:
     only: set | None = None                      # restrict to these names (e.g. what you own)
     inventory: object = None                     # Inventory: use real rolls of owned items
     topn: int = 8                                # shortlist size per ranking (8 reproduces all session results)
+    atree: set | None = None                     # ability node ids (needed for damage floors)
 
 
 @dataclass
@@ -207,6 +215,17 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
             sp_cache[key] = build_skillpoints(list(names), tome_ids, gd)
         return sp_cache[key]
     fl = spec.floors
+    dmg_floors = fl.get("damage") or {}
+    if dmg_floors and not spec.atree:
+        raise ValueError("damage floors need an ability tree: give a tree preset")
+
+    def damage_ok(names_now):
+        from .codec import Build
+        from .damage import spell_values
+        b = Build(equipment=list(names_now), level=spec.level, tomes=tome_ids,
+                  atree=set(spec.atree))
+        got = spell_values(b, gd, spec.roll, spec.inventory)
+        return all(got.get(name, -1) >= v for name, v in dmg_floors.items())
     tconst = {k: sum(stat(t, k) for t in tomes) for k in ("hp", "mr", "spd")}
     hp_floor = fl.get("hp", -1e18) - base_hp(spec.level) - tconst["hp"]
     mr_floor = fl.get("mr", -1e18) - tconst["mr"]
@@ -229,6 +248,11 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 lambda i: stat(i, "hp") + 60 * stat(i, "spd")]
         if "mr" in fl:
             keys.append(lambda i: 2000 * stat(i, "mr") + obj(i) / omax)
+        if dmg_floors:
+            if slot == "weapon":      # base damage dominates every spell
+                keys.append(lambda i: i.get("averageDps") or 0)
+            keys.append(lambda i: sum(stat(i, k) for k in DAMAGE_PCT) + sum(stat(i, k) for k in SKILLS)
+                        + (stat(i, "sdRaw") + stat(i, "mdRaw")) / 20)
         if "mana" in fl:
             keys.append(lambda i: 50 * stat(i, "maxMana") + stat(i, "hp"))
         out, seen = [], set()
@@ -330,6 +354,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                                     min(100, sp.assigned[2] + spare) + int_items)
                     if mana < fl["mana"]:
                         return
+                if dmg_floors and not damage_ok(names_now):
+                    return
                 best = Result(total, names_now, sp.assigned, 0)
                 return
             for ci, (nm, c, o, h, m, sp_, rq, crafted, si) in enumerate(pre[k]):
