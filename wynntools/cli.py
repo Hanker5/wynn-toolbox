@@ -209,11 +209,30 @@ def cmd_gear(a):
         inv = inv_mod.load(a.inventory)
         spec.only, spec.inventory, spec.crafted = inv.names(), inv, False
         print(f"Searching only the {len(inv.names())} items in {a.inventory} (real rolls where given).")
-    r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
+    exact = not a.shortlists and not spec.floors.get("damage")
+    if not a.shortlists and not exact:
+        print("(damage floors use the shortlist search; the exact search can't check them)")
+    if exact:
+        from .gear_milp import solve_gear_exact
+
+        def rounds(p):
+            if not a.quiet:
+                print(f"\r  exact search: round {p['round']}, best bound {p['best']:g}, "
+                      f"{p['elapsed']:.0f}s", end="", file=sys.stderr, flush=True)
+        try:
+            r = solve_gear_exact(spec, gd, progress=rounds)
+        except (ValueError, TimeoutError) as e:
+            raise SystemExit(str(e))
+        if not a.quiet:
+            print(file=sys.stderr)
+    else:
+        r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
     if r is None:
         print("No build satisfies these constraints.")
         return 1
-    if a.confirm:
+    if exact:
+        print("(exact search: the best build over every usable item)")
+    elif a.confirm:
         spec.topn += 3
         r2 = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("confirm search"))
         if r2 and r2.score > r.score + 1e-9:
@@ -479,7 +498,9 @@ def main(argv=None):
     s = sub.add_parser("gear", help="search gear from a JSON spec, then build and verify a link")
     s.add_argument("spec")
     s.add_argument("--tree", choices=sorted(PRESETS), help="also solve the tree with this preset")
-    s.add_argument("--confirm", action="store_true", help="re-run with larger shortlists")
+    s.add_argument("--shortlists", action="store_true",
+                   help="use the older shortlist search instead of the exact one (automatic with damage floors)")
+    s.add_argument("--confirm", action="store_true", help="with shortlists: re-run with larger ones")
     s.add_argument("--save", metavar="PATH", help="write the result as a build file")
     s.add_argument("--name", help="display name for the saved build")
     s.add_argument("--quiet", action="store_true", help="no progress output")

@@ -417,9 +417,11 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         preset = body.get("tree_preset") or None
         if preset and PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
+        # Exact search by default; damage minimums need the shortlist search.
+        exact = body.get("exact", True) and not spec.floors.get("damage")
         damage_tree(spec, preset)
         job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None,
-               "file": p.name, "error": None, "cancel": False, "started": time.time()}
+               "file": p.name, "error": None, "search": "exact" if exact else "shortlists", "cancel": False, "started": time.time()}
         jobs[job["id"]] = job
 
         def on_progress(pr):
@@ -429,7 +431,13 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
 
         def run():
             try:
-                r = solve_gear(spec, gd, progress=on_progress)
+                if exact:
+                    from ..gear_milp import solve_gear_exact
+                    r = solve_gear_exact(spec, gd, progress=lambda p: on_progress(
+                        {"fraction": None, "nodes": p["round"], "best": round(p["best"], 2),
+                         "elapsed": p["elapsed"], "exact": True}))
+                else:
+                    r = solve_gear(spec, gd, progress=on_progress)
                 if r is None:
                     job["state"], job["error"] = "failed", "no build satisfies these constraints"
                     return

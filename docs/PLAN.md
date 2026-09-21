@@ -70,6 +70,11 @@ them" list in the editor's craft helper, from WynnBuilder's `droppedBy` data.
 helper and `wt craft`; flag ingredients with no known source.
 
 ## 6. Smaller items
-- Compare two builds side by side with differences highlighted.
-- Exact gear search as a MILP (replaces shortlists).
+- DONE: Compare two builds side by side with differences highlighted
+  (`wt compare`, "Compare builds" page).
+- DONE: Exact gear search as a MILP (`wynntools/gear_milp.py`), now the default.
+  Skill points are a relaxation that can't cut a valid build, then checked with
+  WynnBuilder's exact rules and cut until one passes. On 12 random specs it beat
+  the shortlists 9 times (up to 6%) and tied 3; it ties every session spec.
+  Damage floors stay on the shortlist search (too many near-ties to cut one by one).
 - Publish to GitHub (waiting on the personal-account login).

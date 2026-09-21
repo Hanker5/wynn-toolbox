@@ -32,7 +32,7 @@ bin/wt-init            # installs uv + dependencies, fetches data, runs tests
 
 ```bash
 uv run wt decode "<wynnbuilder link>"      # read and check any build
-uv run wt gear examples/shaman-105-stealing.json --tree summoner-stealing --confirm
+uv run wt gear examples/shaman-105-stealing.json --tree summoner-stealing
 uv run wt tree mage-poison-riftwalker --level 105
 uv run wt craft --type ring --level 105 --maximize eSteal
 ```

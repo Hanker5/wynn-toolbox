@@ -149,6 +149,7 @@ Each has a regression test.
 | Unrequested stat in the objective | A 154% Loot Bonus, 0-HP chest dominated a Stealing build | AGENTS.md rule 5 |
 | `averageDps` used to rank summon/spell weapons | Steered away from the best per-hit relik | mechanics note above |
 | Retired item/tome ids (`remapID` redirects) read as real entries | An old tome id loaded stale stats (Health Regen 6% instead of 3%); a stats-less "Melancholia" shadowed the real one | `test_retired_ids_redirect_to_current_items`, found by `-m live` |
+| Per-slot shortlists treated as a full search | Missed better builds on 9 of 12 random specs (up to 6% worse) | `test_never_worse_than_shortlists_on_random_specs` (the exact search is now the default) |
 | Base values treated as perfect rolls | Wand comparison overstated by ~40% vs. real items | AGENTS.md rule 3 |
 | Tool totals compared to WynnBuilder's page | WynnBuilder shows 130% rolls, the tools 100% | `test_wynnbuilder_shows_perfect_rolls` |
 | Crafting math drifting from WynnBuilder | Wrong stats for crafted gear | `tests/test_differential.py` |

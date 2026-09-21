@@ -1044,6 +1044,7 @@ function renderSolver() {
   f.mythic = h("input", { type: "checkbox" });
   f.crafted = h("input", { type: "checkbox" });
   f.owned = h("input", { type: "checkbox" });
+  f.exact = h("input", { type: "checkbox", checked: true });
   f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
   f.preset = h("select", { "aria-label": "Tree preset" });
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
@@ -1097,13 +1098,19 @@ function renderSolver() {
     es.onmessage = async (ev) => {
       const j = JSON.parse(ev.data), p = j.progress;
       if (p) {
-        bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
         const mm = Math.floor(p.elapsed / 60), ss = String(Math.floor(p.elapsed % 60)).padStart(2, "0");
-        status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}` +
-          (p.elapsed ? ` · ${mm}:${ss}` : "");
+        if (p.exact) {       // the exact search has rounds, not a known fraction
+          bar.parentElement.classList.add("busy");
+          status.textContent = `Exact search · round ${p.nodes} · best possible ${p.best}` + (p.elapsed ? ` · ${mm}:${ss}` : "");
+        } else {
+          bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
+          status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}` +
+            (p.elapsed ? ` · ${mm}:${ss}` : "");
+        }
       }
       if (j.state !== "running") {
         es.close(); runBtn.disabled = upBtn.disabled = false; cancelBtn.hidden = true;
+        bar.parentElement.classList.remove("busy");
         if (j.state === "done") { bar.style.width = "100%"; await onDone(j); }
         else status.textContent = j.state === "cancelled" ? "Cancelled." : `Failed: ${j.error}`;
       }
@@ -1116,7 +1123,7 @@ function renderSolver() {
     while (S.builds.some((b) => b.file === file)) file = `${slug(name)}-${n++}.json`;
     try {
       const { job } = await api("POST", "/api/solve", { spec, file, name, tree_preset: f.preset.value || null,
-        owned_only: f.owned.checked });
+        owned_only: f.owned.checked, exact: f.exact.checked });
       upgradesBox.replaceChildren();
       follow(job, async (j) => { toast("Build found"); await loadList(); openBuild(j.file); });
     } catch (e) { status.textContent = e.message; }
@@ -1171,11 +1178,14 @@ function renderSolver() {
         field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),
         h("label", { class: "check" }, f.mythic, "No mythics"),
         h("label", { class: "check" }, f.crafted, "Include crafted items"),
-        h("label", { class: "check" }, f.owned, "Only items I own")),
+        h("label", { class: "check" }, f.owned, "Only items I own"),
+        h("label", { class: "check", title: "Finds the best build over every usable item. With a spell damage minimum the shortlist search is used instead." },
+          f.exact, "Exact search (every item)")),
       majorChips),
     h("div", { class: "card" }, h("h3", {}, "Run"), h("div", { class: "progress" }, bar), status,
       h("div", { class: "row", style: "margin-top:10px" }, runBtn, upBtn, cancelBtn),
-      h("p", { class: "hint" }, "Stats are 100% rolls (or your real rolls for items you own). The search is exact within each slot's shortlist; raise the shortlist size to double-check a result."),
+      h("p", { class: "hint" }, "Stats are 100% rolls (or your real rolls for items you own). The exact search finds the best build over every usable item. " +
+        "With a spell damage minimum (or Exact search unticked) it searches per-slot shortlists instead; raise the shortlist size to double-check those."),
       upgradesBox));
 }
 

@@ -67,8 +67,11 @@ questions; you run the commands.
    Stealing, poison vs. mana), run a few floors and present a small table rather
    than one answer.
 
-8. **Solver results are best-within-shortlists, not proofs.** For a final answer
-   run with `--confirm`; if a bigger search finds something better, report it.
+8. **Know which search ran.** `wt gear` is exact by default: the best build over
+   every usable item, under the spec and the stated assumptions (100% rolls,
+   automatic skill points). With damage floors, or `--shortlists`, it searches
+   per-slot shortlists instead, which can miss the best build; then run
+   `--confirm` and say the result is best-within-shortlists.
 
 ---
 
@@ -80,7 +83,7 @@ All commands run through `uv run wt ...` from the repo root.
 |---|---|
 | `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
 | `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
-| `wt gear <spec.json> [--tree PRESET] [--confirm] [--save builds/x.json]` | Search gear (with a progress bar), optionally solve the tree, print a verified link, optionally save a build file. |
+| `wt gear <spec.json> [--tree PRESET] [--save builds/x.json]` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, optionally save a build file. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
 | `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt damage <link or build file> [--perfect] [--parts]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP. Typical rolls by default; `--perfect` matches the WynnBuilder page. |

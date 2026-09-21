@@ -185,3 +185,23 @@ def test_compare_two_builds(client, links):
     assert poison["a"] == 108300 and poison["diff"] == poison["b"] - poison["a"]
     assert r["same_class"] and any(d["key"] == "Ophanim" for d in r["damage"])
     assert client.get("/api/compare", params={"a": "a.json", "b": "nope.json"}).status_code == 404
+
+
+def test_exact_solve_job(client):
+    spec = {"class": "Mage", "level": 105, "objective": {"poison": 1},
+            "floors": {"hp": 15000, "mr": 20, "mana": 113}, "require_major": ["PLAGUE"],
+            "force": {"weapon": "Gaia"}}
+    job = client.post("/api/solve", json={"spec": spec, "file": "exact.json", "exact": True}).json()["job"]
+    for _ in range(600):
+        with client.stream("GET", f"/api/jobs/{job}/events") as s:
+            last = [line for line in s.iter_lines() if line.startswith("data:")][-1]
+        if '"state": "done"' in last or '"state": "failed"' in last:
+            break
+        time.sleep(0.1)
+    assert '"state": "done"' in last
+    assert client.get("/api/builds/exact.json").json()["status"]["totals"]["poison"] == 84300
+    # a damage minimum falls back to the shortlist search
+    r = client.post("/api/solve", json={"spec": {**spec, "floors": {"damage": {"Ophanim": 1}}},
+                                        "file": "x.json", "tree_preset": "mage-poison-lightbender"})
+    assert r.status_code == 200
+    client.post(f"/api/jobs/{r.json()['job']}/cancel")

@@ -58,10 +58,11 @@ what it rewards and why, and tell the player it is a judgment call.
 
 ## 4. Run and verify
 
-    uv run wt gear builds/specs/<name>.json --tree <preset> --confirm \
+    uv run wt gear builds/specs/<name>.json --tree <preset> \
         --save builds/<name>.json --name "<readable name>"
 
-This shows a progress bar, prints the build, totals and a link, says
+The search is exact over every usable item (it says so). With a damage floor it
+falls back to per-slot shortlists; add `--confirm` then. It prints the build, totals and a link, says
 `VERIFIED OK` or lists problems, and saves a build file the player can open in
 the web app. Never pass on a link without `VERIFIED OK`.
 

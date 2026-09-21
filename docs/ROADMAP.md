@@ -2,9 +2,8 @@
 
 Rough priority order.
 
-1. **Exact gear solver (MILP).** The gear search uses per-slot shortlists, so it
-   can miss the true best build (it did once, until the shortlist grew from 7 to
-   8). A MILP like the tree solver would be exact and likely faster.
+1. ~~**Exact gear solver (MILP).**~~ Done: `wynntools/gear_milp.py`, the default.
+   Damage floors still use the shortlist search.
 2. **Real item rolls.** Let a player enter the items they own with actual roll
    values instead of 100% base values.
 3. **Differential tests for decoding and the tree.** Encoding of powders, skill

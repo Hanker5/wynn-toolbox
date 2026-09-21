@@ -305,3 +305,20 @@ def test_compare_view(page):
         page.set_viewport_size({"width": 1440, "height": 2200})
         page.locator("#compare").screenshot(path=f"{os.environ['WT_SHOTS']}/73-compare.png")
     assert not page.errors
+
+
+def test_exact_search_from_the_form(page):
+    page.click("#new-build")
+    page.get_by_role("combobox", name="Class").select_option("Mage")
+    page.get_by_role("combobox", name="Maximize").select_option("poison")
+    page.get_by_role("spinbutton", name="Health").fill("15000")
+    page.get_by_role("spinbutton", name="Mana regen").fill("20")
+    page.get_by_role("combobox", name="Required major IDs").select_option("PLAGUE")
+    page.get_by_role("textbox", name="Weapon (optional)").fill("Gaia")
+    page.get_by_role("textbox", name="Name").fill("ui exact test")
+    page.get_by_label("Exact search (every item)").check()
+    page.click("text=Find the best build")
+    page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=120000)
+    assert page.input_value("#editor .name") == "ui exact test"
+    assert "84,300" in page.inner_text("#ed-tiles")
+    assert not page.errors
