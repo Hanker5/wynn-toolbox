@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# One-command setup for Wynn Toolbox. Safe to re-run.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "Installing uv (Python package manager)..."
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
+echo "Syncing dependencies..."
+uv sync -q
+
+echo "Fetching WynnBuilder data..."
+uv run wt fetch ${1:-}
+
+echo "Running tests..."
+uv run pytest -q
+
+mkdir -p builds
+echo
+echo "Ready. Try:  uv run wt decode 'https://wynnbuilder.github.io/builder/#CY0p11q40+1BG0Y9G0XW3QkGT86D'"
+echo "After a Wynncraft patch, re-run:  bin/wt-init --refresh"

@@ -1,0 +1,9 @@
+{
+  "_about": "Poison wizard from the design session: PLAGUE required, Gaia wand, her HP and mana minimums.",
+  "class": "Mage",
+  "level": 105,
+  "objective": {"poison": 1},
+  "floors": {"hp": 15000, "mr": 20, "mana": 113},
+  "require_major": ["PLAGUE"],
+  "force": {"weapon": "Gaia"}
+}

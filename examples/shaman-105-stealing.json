@@ -1,0 +1,16 @@
+{
+  "_about": "Greed/Stealing Summoner from the design session, with Stormdrain in place of Resonance.",
+  "class": "Shaman",
+  "level": 105,
+  "objective": {"eSteal": 1, "lb": 0.01},
+  "floors": {"hp": 17000, "mr": 20, "spd": 0},
+  "require_major": ["GREED", "MAGNET"],
+  "force": {"weapon": "Stormdrain"},
+  "tomes": ["Fighter's Tome of Combat Mastery III", "Fighter's Tome of Combat Mastery III",
+            "Everlasting Tome of Defensive Mastery II", "Everlasting Tome of Defensive Mastery II",
+            "Everlasting Tome of Defensive Mastery II", "Everlasting Tome of Defensive Mastery II",
+            "Arsonist's Tome of Allegiance", "Syndicate's Tome of Dividends I",
+            "Fleetfooted Tome of the Marathon II", "Fleetfooted Tome of the Marathon II",
+            "Ephemeral Tome of Mysticism II", "Ephemeral Tome of Mysticism II",
+            "Tome of Scavenging Expertise III", "Tome of Scavenging Expertise III"]
+}
