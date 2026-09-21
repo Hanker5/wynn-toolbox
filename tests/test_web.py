@@ -173,3 +173,15 @@ def test_damage_minimum_needs_a_preset(client):
                                         "tree_preset": "mage-poison-lightbender"})
     assert r.status_code == 200
     client.post(f"/api/jobs/{r.json()['job']}/cancel")
+
+
+def test_compare_two_builds(client, links):
+    for f, k in (("a.json", "mage_105_gaia_lightbender"), ("b.json", "mage_105_sequoia")):
+        client.post("/api/import", json={"link": links[k]["hash"], "file": f, "name": k})
+    r = client.get("/api/compare", params={"a": "a.json", "b": "b.json", "roll": "perfect"}).json()
+    weapon = next(g for g in r["gear"] if g["key"] == "weapon")
+    assert (weapon["a"], weapon["b"], weapon["same"]) == ("Gaia", "Sequoia", False)
+    poison = next(s for s in r["stats"] if s["key"] == "poison")
+    assert poison["a"] == 108300 and poison["diff"] == poison["b"] - poison["a"]
+    assert r["same_class"] and any(d["key"] == "Ophanim" for d in r["damage"])
+    assert client.get("/api/compare", params={"a": "a.json", "b": "nope.json"}).status_code == 404

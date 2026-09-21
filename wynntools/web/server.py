@@ -272,6 +272,20 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             v.sort(key=lambda t: (-(t["lvl"] or 0), t["name"]))
         return out
 
+    @app.get("/api/compare")
+    def compare_api(a: str, b: str, roll: str = "base"):
+        from ..compare import compare
+        builds = []
+        for name in (a, b):
+            p = path_for(name)
+            if not p.exists():
+                raise HTTPException(404, f"no build {name}")
+            try:
+                builds.append(buildfile.to_build(buildfile.read(p), gd))
+            except KeyError as e:
+                raise HTTPException(422, f"{name}: {e}")
+        return compare(*builds, gd, "max" if roll == "perfect" else "base", inv())
+
     @app.get("/api/aspects/{cls}")
     def aspects_api(cls: str):
         if cls not in gd.atrees:

@@ -289,3 +289,19 @@ def test_craft_helper_shows_where_ingredients_drop(page):
     text = page.locator(".craft-opt details.sources").first.inner_text()
     assert "Stolen Pearls" in text and "Tribal Exile (1488, -1513)" in text
     assert not page.errors
+
+
+def test_compare_view(page):
+    page.click("#open-compare")
+    page.select_option("select[aria-label='First build']", label="mage_105_gaia_lightbender")
+    page.select_option("select[aria-label='Second build']", label="shaman_105_stormdrain")
+    page.wait_for_selector("table.cmp")
+    text = page.inner_text("#compare")
+    assert "Gaia" in text and "Stormdrain" in text and "different classes" in text
+    import os
+    if os.environ.get("WT_SHOTS"):
+        page.select_option("select[aria-label='First build']", label="shaman_105_crafted")
+        page.wait_for_timeout(800)
+        page.set_viewport_size({"width": 1440, "height": 2200})
+        page.locator("#compare").screenshot(path=f"{os.environ['WT_SHOTS']}/73-compare.png")
+    assert not page.errors

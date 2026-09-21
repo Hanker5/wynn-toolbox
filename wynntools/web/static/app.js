@@ -45,7 +45,7 @@ const slug = (s) => (s || "build").toLowerCase().replace(/[^a-z0-9]+/g, "-").rep
 const weaponClass = (name) => S.items[name]?.cls;
 
 function show(which) {
-  for (const id of ["empty", "editor", "solver", "inventory"]) $("#" + id).hidden = id !== which;
+  for (const id of ["empty", "editor", "solver", "inventory", "compare"]) $("#" + id).hidden = id !== which;
 }
 
 // ------------------------------------------------------------------ game display constants
@@ -1179,6 +1179,59 @@ function renderSolver() {
       upgradesBox));
 }
 
+// ------------------------------------------------------------------ compare
+const COMPARE_LABEL = { hp: "Health", ehp: "Effective HP", ehp_no_agi: "Effective HP (no agi)", hpr: "HP regen",
+  sp_total: "Skill points assigned" };
+function compareLabel(key) {
+  if (COMPARE_LABEL[key]) return COMPARE_LABEL[key];
+  if (key.startsWith("sp_")) return `${ELEMENTS[key.slice(3)].name} (total)`;
+  return null;
+}
+async function renderCompare() {
+  const box = $("#compare");
+  const pick = (id, idx) => {
+    const sel = h("select", { id, "aria-label": id === "cmp-a" ? "First build" : "Second build" },
+      S.builds.map((b) => h("option", { value: b.file }, b.name)));
+    sel.value = S.compare?.[idx] || S.builds[idx]?.file || "";
+    return sel;
+  };
+  const a = pick("cmp-a", 0), b = pick("cmp-b", 1), out = h("div");
+  const roll = h("span", { class: "segs" });
+  const draw = async () => {
+    S.compare = [a.value, b.value];
+    roll.replaceChildren(...[["typical", "Typical"], ["perfect", "Perfect"]].map(([v, l]) =>
+      h("button", { class: "seg" + (S.roll === v ? " on" : ""), onclick: () => { S.roll = v; store.set("wt-roll", v); draw(); } }, l)));
+    if (!a.value || !b.value) { out.replaceChildren(h("p", { class: "muted" }, "You need two builds to compare.")); return; }
+    out.replaceChildren(h("p", { class: "hint" }, "Comparing…"));
+    try {
+      const r = await api("GET", `/api/compare?a=${encodeURIComponent(a.value)}&b=${encodeURIComponent(b.value)}&roll=${S.roll}`);
+      const nameA = S.builds.find((x) => x.file === a.value)?.name, nameB = S.builds.find((x) => x.file === b.value)?.name;
+      const itemCell = (it) => (it ? h("span", { class: `tier-${it.tier || "none"}` }, it.text) : h("span", { class: "muted" }, "—"));
+      const num = (v) => (v == null ? "—" : fmt(Math.round(v)));
+      const diffCell = (d) => (d == null || d === 0 ? h("td", { class: "muted" }, d === 0 ? "=" : "") :
+        h("td", { class: d > 0 ? "pos" : "neg" }, `${d > 0 ? "+" : ""}${fmt(Math.round(d))}`));
+      const statName = (k) => { const l = compareLabel(k); if (l) return l; const [label, , el] = idLabel(k); return h("span", {}, elemTag(el), label); };
+      const table = (title, rows, cell) => h("table", { class: "cmp" },
+        h("thead", {}, h("tr", {}, h("th", {}, title), h("th", {}, nameA), h("th", {}, nameB), h("th", {}, "Change"))),
+        h("tbody", {}, rows.map(cell)));
+      out.replaceChildren(
+        table("Gear", r.gear, (row) => h("tr", { class: row.same ? "" : "changed" },
+          h("td", {}, slotLabel(row.key)), h("td", {}, itemCell(row.a_item)), h("td", {}, itemCell(row.b_item)),
+          h("td", { class: "muted" }, row.same ? "same" : "different"))),
+        table("Stats", r.stats, (row) => h("tr", {}, h("td", {}, statName(row.key)), h("td", {}, num(row.a)), h("td", {}, num(row.b)), diffCell(row.diff))),
+        r.damage.length ? table("Damage", r.damage, (row) => h("tr", {}, h("td", {}, compareLabel(row.key) || row.key),
+          h("td", {}, num(row.a)), h("td", {}, num(row.b)), diffCell(row.diff))) : null,
+        h("p", { class: "hint" }, `${S.roll === "perfect" ? "Perfect" : "Typical"} rolls. Damage is each spell's headline number (melee: average DPS).` +
+          (r.same_class ? "" : " The builds are different classes, so their spells don't line up.")));
+    } catch (e) { out.replaceChildren(h("p", { class: "neg" }, e.message)); }
+  };
+  a.onchange = b.onchange = draw;
+  box.replaceChildren(h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Compare builds"), roll),
+    h("div", { class: "card" }, h("div", { class: "form" }, h("label", {}, "First build", a), h("label", {}, "Second build", b))),
+    h("div", { class: "card" }, out));
+  await draw();
+}
+
 // ------------------------------------------------------------------ live updates
 function watch() {
   const es = new EventSource("/api/events");
@@ -1207,6 +1260,7 @@ async function boot() {
   $("#version").textContent = `data ${S.meta.version}`;
   $("#new-build").onclick = () => { renderSolver(); show("solver"); };
   $("#open-inventory").onclick = async () => { await renderInventory(); show("inventory"); };
+  $("#open-compare").onclick = () => { renderCompare(); show("compare"); };
   $("#import-go").onclick = async () => {
     const link = $("#import-link").value.trim(), name = $("#import-name").value.trim();
     if (!link) return;

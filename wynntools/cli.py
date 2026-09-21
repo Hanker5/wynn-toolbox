@@ -385,6 +385,40 @@ def cmd_craft(a):
     return 0
 
 
+def cmd_compare(a):
+    """Two builds (links or build files) side by side."""
+    from .codec import decode, link_hash
+    from .compare import compare
+    gd = GameData()
+    ba, bb = (decode(link_hash(_link_arg(x, gd)), gd) for x in (a.a, a.b))
+    roll = "max" if a.perfect else "base"
+    r = compare(ba, bb, gd, roll)
+    na, nb = (Path(x).stem if x.endswith(".json") else "A" if i == 0 else "B"
+              for i, x in enumerate((a.a, a.b)))
+    w, k = 24, 24
+
+    def num(v):
+        return "—" if v is None else f"{v:,.0f}" if isinstance(v, float) else f"{v:,}"
+
+    def diff(v):
+        return "" if not v else f"{v:+,.0f}" if isinstance(v, float) else f"{v:+,}"
+
+    def item(n):
+        if n and n.startswith("CR-"):
+            return f"crafted {gd.item(n)['type']}"
+        return (n or "—")[:w - 2]
+    print(f"{'':<{k}}{na[:w - 2]:<{w}}{nb[:w - 2]:<{w}}({'perfect' if a.perfect else 'typical'} rolls)")
+    for row in r["gear"]:
+        mark = "" if row["same"] else "*"
+        print(f"{row['key']:<{k}}{item(row['a']):<{w}}{item(row['b']):<{w}}{mark}")
+    print()
+    for row in r["stats"] + r["damage"]:
+        print(f"{row['key'][:k - 2]:<{k}}{num(row['a']):<{w}}{num(row['b']):<{w}}{diff(row['diff'])}")
+    if not r["same_class"]:
+        print("\n(Different classes: spells are listed by name and don't line up.)")
+    return 0
+
+
 def cmd_ingredient(a):
     """Where an ingredient drops, with every known spot."""
     from .crafting import ingredient_sources
@@ -486,6 +520,11 @@ def main(argv=None):
     s.add_argument("--max-reqs", type=int, help="cap on total skill requirements")
     s.add_argument("--top", type=int, default=3)
     s.set_defaults(fn=cmd_craft)
+    s = sub.add_parser("compare", help="two builds side by side (links or build files)")
+    s.add_argument("a")
+    s.add_argument("b")
+    s.add_argument("--perfect", action="store_true", help="130%% rolls, as WynnBuilder shows")
+    s.set_defaults(fn=cmd_compare)
     s = sub.add_parser("ingredient", help="where a crafting ingredient drops")
     s.add_argument("name")
     s.set_defaults(fn=cmd_ingredient)

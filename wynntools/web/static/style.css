@@ -266,3 +266,11 @@ input.powders.invalid { border-color: var(--bad, #ff5555); }
 
 details.sources > summary { cursor: pointer; }
 details.sources ul { margin: 4px 0; padding-left: 18px; font-size: 12px; }
+
+/* Compare */
+table.cmp { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; table-layout: fixed; }
+table.cmp th:first-child { width: 28%; } table.cmp th:last-child { width: 14%; }
+table.cmp th { text-align: left; color: var(--muted); font-weight: 600; border-bottom: 1px solid #333; padding: 4px 6px; }
+table.cmp td { padding: 3px 6px; border-bottom: 1px solid #232323; }
+table.cmp td:not(:first-child), table.cmp th:not(:first-child) { text-align: right; }
+table.cmp tr.changed td:first-child { border-left: 2px solid var(--fabled, #ff5555); }
