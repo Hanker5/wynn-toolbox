@@ -71,13 +71,19 @@ All commands run through `uv run wt ...` from the repo root.
 | Command | What it does |
 |---|---|
 | `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
-| `wt decode <link>` / `wt verify <link>` | Decode, total up and check a link. Exit 1 on any problem. |
-| `wt gear <spec.json> [--tree PRESET] [--confirm]` | Search gear, optionally solve the tree, then print a verified link. |
+| `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
+| `wt gear <spec.json> [--tree PRESET] [--confirm] [--save builds/x.json]` | Search gear (with a progress bar), optionally solve the tree, print a verified link, optionally save a build file. |
+| `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
+| `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
-| `wt link <build.json>` | Encode a hand-written build into a verified link. |
 
-Spec and build formats: see `examples/` and `.claude/skills/build/SKILL.md`.
-Put player builds in `builds/` (ignored by git).
+## Build files are the shared record
+
+Player builds live in `builds/*.json` (ignored by git). The player edits them in
+the web app, you edit them with `wt` or by hand; both see the same file. Format:
+`wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
+`level`, `equipment`, `tomes`, `tree`, `powders`, `skillpoints`); `link` and
+`status` are generated, so run `wt link <file> --write` after any edit.
 
 ## Skills
 

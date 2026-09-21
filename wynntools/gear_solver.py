@@ -93,8 +93,15 @@ def _force_sets(spec, pools, gd):
             yield force
 
 
-def solve_gear(spec, gd):
-    """Return the best Result under `spec`, or None if nothing satisfies it."""
+def solve_gear(spec, gd, progress=None):
+    """Return the best Result under `spec`, or None if nothing satisfies it.
+
+    `progress`, if given, is called about ten times a second with a dict:
+    fraction (0-1, share of top-level branches finished), nodes (search nodes
+    visited), best (best objective so far or None), elapsed (seconds).
+    The fraction advances steadily but is not a time estimate: pruning makes
+    branches uneven.
+    """
     t0 = time.time()
     pools = _usable(gd, spec)
     tomes = [gd.tome(t) for t in spec.tomes]
@@ -133,7 +140,22 @@ def solve_gear(spec, gd):
         return out
 
     best = None
-    for force in _force_sets(spec, pools, gd):
+    forces = list(_force_sets(spec, pools, gd))
+    track = {"nodes": 0, "last": 0.0, "force": 0, "pos": [0, 1, 0, 1]}
+
+    def report(final=False):
+        now = time.time()
+        if progress is None or (not final and now - track["last"] < 0.1):
+            return
+        track["last"] = now
+        i0, n0, i1, n1 = track["pos"]
+        within = 1.0 if final else min(1.0, (i0 + i1 / n1) / n0)
+        frac = 1.0 if final else (track["force"] + within) / max(1, len(forces))
+        progress({"fraction": frac, "nodes": track["nodes"],
+                  "best": best.score if best else None, "elapsed": now - t0})
+
+    for fi, force in enumerate(forces):
+        track["force"], track["pos"] = fi, [0, 1, 0, 1]
         cl = [candidates(s, force) for s in SLOTS]
         if any(not c for c in cl):
             continue
@@ -152,6 +174,9 @@ def solve_gear(spec, gd):
 
         def dfs(k, val, hp, mr, spd, mreq, ring1_idx):
             nonlocal best
+            track["nodes"] += 1
+            if track["nodes"] % 2000 == 0:
+                report()
             if best and val + suf["obj"][k] <= best.score:
                 return
             if hp + suf["hp"][k] < hp_floor or mr + suf["mr"][k] < mr_floor \
@@ -173,6 +198,10 @@ def solve_gear(spec, gd):
                 best = Result(val, [gd.name(c) for c in chosen], need, 0)
                 return
             for ci, c in enumerate(cl[k]):
+                if k < 2:
+                    track["pos"][2 * k:2 * k + 2] = [ci, len(cl[k])]
+                    if k == 0:
+                        track["pos"][2:] = [0, 1]
                 nm = gd.name(c)
                 if nm in names:
                     continue
@@ -188,6 +217,7 @@ def solve_gear(spec, gd):
                 names.discard(nm)
 
         dfs(0, 0.0, 0, 0, 0, [0] * 5, -1)
+    report(final=True)
     if best:
         best.seconds = time.time() - t0
     return best

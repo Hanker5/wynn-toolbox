@@ -28,7 +28,7 @@ Then collect only what is still missing:
 
 ## 2. Write the spec
 
-Create `builds/<name>.json`. Start from `examples/`. Fields:
+Create `builds/specs/<name>.json`. Start from `examples/`. Fields:
 
     class, level, objective {stat: weight}, floors {hp, mr, spd, mana, weapon_dps},
     require_major [...], force {slot: item}, exclude [...], exclude_tiers [...],
@@ -50,10 +50,15 @@ what it rewards and why, and tell the player it is a judgment call.
 
 ## 4. Run and verify
 
-    uv run wt gear builds/<name>.json --tree <preset> --confirm
+    uv run wt gear builds/specs/<name>.json --tree <preset> --confirm \
+        --save builds/<name>.json --name "<readable name>"
 
-This prints the build, totals and a link, and says `VERIFIED OK` or lists
-problems. Never pass on a link without `VERIFIED OK`.
+This shows a progress bar, prints the build, totals and a link, says
+`VERIFIED OK` or lists problems, and saves a build file the player can open in
+the web app. Never pass on a link without `VERIFIED OK`.
+
+To change a saved build (swap an item, add a tome), edit the file's editable
+fields, then `uv run wt link builds/<name>.json --write` to re-check it.
 
 ## 5. When goals compete, show the trade-off
 

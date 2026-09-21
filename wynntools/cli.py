@@ -2,10 +2,13 @@
 import argparse
 import json
 import sys
+from pathlib import Path
 
 from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link
 from .data import LATEST, VERSIONS, GameData, fetch
+from . import buildfile
 from .gear_solver import Spec, solve_gear
+from .progress import ProgressBar
 from .presets import PRESETS, summoner_hits_per_sec
 from .rules import ability_points
 from .tree_solver import solve_tree
@@ -64,9 +67,16 @@ def cmd_fetch(a):
     print("cached in", fetch(refresh=a.refresh))
 
 
+def _link_arg(arg, gd):
+    """A link, a bare hash, or a path to a build file."""
+    if arg.endswith(".json") and Path(arg).exists():
+        return to_link(buildfile.to_build(buildfile.read(arg), gd), gd)
+    return arg
+
+
 def cmd_decode(a):
     gd = GameData()
-    ok, rep = check_link(a.link, gd)
+    ok, rep = check_link(_link_arg(a.link, gd), gd)
     _print_report(ok, rep, gd)
     return 0 if ok else 1
 
@@ -101,13 +111,13 @@ def cmd_gear(a):
                 exclude_tiers=set(raw.get("exclude_tiers", [])),
                 tomes=[gd.tome(t)["id"] for t in raw.get("tomes", []) if t is not None],
                 topn=raw.get("topn", 8))
-    r = solve_gear(spec, gd)
+    r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
     if r is None:
         print("No build satisfies these constraints.")
         return 1
     if a.confirm:
         spec.topn += 3
-        r2 = solve_gear(spec, gd)
+        r2 = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("confirm search"))
         if r2 and r2.score > r.score + 1e-9:
             print(f"(confirm: larger shortlists found a better build, {r2.score:g} > {r.score:g})")
             r = r2
@@ -119,22 +129,40 @@ def cmd_gear(a):
     ok, rep = check_link(link, gd)
     _print_report(ok, rep, gd)
     print(link)
+    if a.save:
+        doc = {"name": a.name or Path(a.save).stem,
+               "notes": raw.get("_about", ""), **buildfile.from_build(b, gd),
+               "spec": {k: v for k, v in raw.items() if not k.startswith("_")},
+               "tree_preset": a.tree}
+        buildfile.write(a.save, buildfile.refresh(doc, gd))
+        print(f"saved {a.save}")
     return 0 if ok else 1
+
+
+def cmd_import(a):
+    gd = GameData()
+    from .codec import decode
+    b = decode(a.link, gd)
+    doc = buildfile.refresh({"name": a.name or Path(a.path).stem, "notes": "",
+                             **buildfile.from_build(b, gd)}, gd)
+    buildfile.write(a.path, doc)
+    print(f"saved {a.path} ({'verified' if doc['status']['verified'] else 'HAS PROBLEMS'})")
+    return 0 if doc["status"]["verified"] else 1
 
 
 def cmd_link(a):
     gd = GameData()
-    raw = json.load(open(a.build))
-    b = _build_from(raw, raw["equipment"], raw.get("tree_preset"), gd)
-    if raw.get("tree"):
-        tree = gd.tree(gd.weapon_class(b.weapon))
-        ids = {n["display_name"]: n["id"] for n in tree}
-        root = next(n["id"] for n in tree if not n["parents"])
-        b.atree = {root} | {ids[x] for x in raw["tree"]}
-    link = to_link(b, gd)
+    doc = buildfile.read(a.build)
+    if not doc.get("tree") and doc.get("tree_preset"):
+        b = _build_from(doc, doc["equipment"], doc["tree_preset"], gd)
+        doc = {**doc, **buildfile.from_build(b, gd)}
+    link = to_link(buildfile.to_build(doc, gd), gd)
     ok, rep = check_link(link, gd)
     _print_report(ok, rep, gd)
     print(link)
+    if a.write:
+        buildfile.write(a.build, buildfile.refresh(doc, gd))
+        print(f"updated {a.build}")
     return 0 if ok else 1
 
 
@@ -144,7 +172,7 @@ def main(argv=None):
     s = sub.add_parser("fetch", help="download WynnBuilder data into the cache")
     s.add_argument("--refresh", action="store_true")
     s.set_defaults(fn=cmd_fetch)
-    s = sub.add_parser("decode", help="decode and verify a WynnBuilder link")
+    s = sub.add_parser("decode", help="decode and verify a link or build file")
     s.add_argument("link")
     s.set_defaults(fn=cmd_decode)
     s = sub.add_parser("verify", help="alias for decode; exits 1 on any problem")
@@ -159,9 +187,18 @@ def main(argv=None):
     s.add_argument("spec")
     s.add_argument("--tree", choices=sorted(PRESETS), help="also solve the tree with this preset")
     s.add_argument("--confirm", action="store_true", help="re-run with larger shortlists")
+    s.add_argument("--save", metavar="PATH", help="write the result as a build file")
+    s.add_argument("--name", help="display name for the saved build")
+    s.add_argument("--quiet", action="store_true", help="no progress output")
     s.set_defaults(fn=cmd_gear)
-    s = sub.add_parser("link", help="encode a build JSON into a verified link")
+    s = sub.add_parser("import", help="save a WynnBuilder link as a build file")
+    s.add_argument("link")
+    s.add_argument("path")
+    s.add_argument("--name")
+    s.set_defaults(fn=cmd_import)
+    s = sub.add_parser("link", help="verify a build file and print its link")
     s.add_argument("build")
+    s.add_argument("--write", action="store_true", help="update the file's link and status")
     s.set_defaults(fn=cmd_link)
     a = p.parse_args(argv)
     sys.exit(a.fn(a) or 0)

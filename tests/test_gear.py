@@ -36,3 +36,13 @@ def test_level_121_matches_session(gd):
                         floors={"hp": 20000, "mr": 20, "spd": 0, "weapon_dps": 700},
                         require_major=["GREED", "MAGNET"]), gd)
     assert total(gd, r.equipment, "eSteal") >= 40
+
+
+def test_progress_reports_to_completion(gd):
+    seen = []
+    solve_gear(Spec(cls="Mage", level=105, objective={"poison": 1},
+                    floors={"hp": 15000, "mr": 20, "mana": 113},
+                    require_major=["PLAGUE"], force={"weapon": "Gaia"}), gd, progress=seen.append)
+    fr = [p["fraction"] for p in seen]
+    assert fr and fr[-1] == 1.0
+    assert all(a <= b + 1e-9 for a, b in zip(fr, fr[1:]))
