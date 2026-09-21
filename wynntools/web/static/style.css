@@ -129,3 +129,18 @@ a { color: var(--accent); }
   #main { padding: 14px 16px 40px; }
   .sp { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* ---------------------------------------------------------------- terminal */
+#terminal-panel { position: relative; width: var(--term-width, 520px); min-width: 320px; max-width: 70vw;
+  background: #0b0d11; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+#term-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; }
+.term-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid #22262f; color: #e6e8ee; }
+.term-head .term-title { flex: 1 1 auto; font-weight: 600; }
+.term-head button { padding: 3px 9px; font-size: 12px; background: #1a1d24; border-color: #2c313c; color: #e6e8ee; }
+.term-head a { font-size: 12px; }
+#term-note { padding: 0 10px; }
+#term { flex: 1; min-height: 0; padding: 6px 4px 6px 8px; }
+@media (max-width: 900px) {
+  #terminal-panel { width: auto; max-width: none; height: 60vh; border-left: 0; border-top: 1px solid var(--line); }
+  #term-resize { display: none; }
+}

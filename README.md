@@ -45,6 +45,26 @@ uv run wt tree mage-poison-riftwalker --level 105
 - **Verifier**: skill points (negative bonuses included), tree activation order,
   and link round-trip. No link goes out without passing.
 
+## The web app
+
+```bash
+uv run wt serve        # opens http://127.0.0.1:8765 in your browser
+```
+
+- **Builds**: open, edit and save builds with item search, tomes, a clickable
+  ability tree and live re-checking. Changes the AI makes to the same files show
+  up within a second.
+- **New build from goals**: set what to maximize, your minimums and required
+  Major IDs, then watch the search run with a progress bar.
+- **Terminal panel**: a shell in the toolbox folder with one-click buttons for
+  Claude Code, Codex or Gemini CLI (whichever are installed). Log in and use your
+  AI assistant right next to your builds. The shell keeps running if you reload.
+
+**Security:** the app only accepts connections from this computer, needs the
+one-time token in the link `wt serve` prints, and the terminal only accepts
+connections from the app's own page. The terminal is a real shell with your
+permissions, so don't try to expose the app to other machines.
+
 See `AGENTS.md` for the rules the AI follows and `knowledge/mechanics.md` for
 what is proven, what was tested in game, and what is still unknown.
 

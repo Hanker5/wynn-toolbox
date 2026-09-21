@@ -76,6 +76,7 @@ All commands run through `uv run wt ...` from the repo root.
 | `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
+| `wt serve` | Start the local web app (this computer only) with the build editor and a terminal panel. |
 
 ## Build files are the shared record
 
@@ -84,6 +85,11 @@ the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
 `level`, `equipment`, `tomes`, `tree`, `powders`, `skillpoints`); `link` and
 `status` are generated, so run `wt link <file> --write` after any edit.
+
+You may be running inside the web app's terminal panel, with the player
+watching the same build on screen. The page reloads a build within a second of
+your write, and warns the player instead of overwriting if they have unsaved
+edits. Tell them which file you changed.
 
 ## Skills
 

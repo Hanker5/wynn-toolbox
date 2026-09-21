@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Wynn Toolbox</title>
+<link rel="stylesheet" href="/static/vendor/xterm.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -11,6 +12,7 @@
   <aside id="sidebar">
     <div class="brand">Wynn Toolbox <span id="version" class="muted"></span></div>
     <button id="new-build" class="primary wide">New build from goals</button>
+    <button id="toggle-terminal" class="wide">Show terminal</button>
     <details class="import">
       <summary>Import a WynnBuilder link</summary>
       <input id="import-link" placeholder="https://wynnbuilder.github.io/builder/#…">
@@ -31,9 +33,22 @@
     <section id="solver" hidden></section>
   </main>
 
-  <aside id="terminal-panel" hidden></aside>
+  <aside id="terminal-panel" hidden>
+    <div id="term-resize" title="Drag to resize"></div>
+    <div class="term-head">
+      <span class="term-title">Terminal <span class="muted">· runs in the toolbox folder</span></span>
+      <span id="term-clis" class="row"></span>
+      <button id="term-restart" title="Close this shell and start a fresh one">Restart shell</button>
+      <button id="term-close" aria-label="Hide terminal">✕</button>
+    </div>
+    <div id="term-note" class="hint"></div>
+    <div id="term"></div>
+  </aside>
 </div>
 <div id="toast"></div>
+<script src="/static/vendor/xterm.js"></script>
+<script src="/static/vendor/addon-fit.js"></script>
 <script src="/static/app.js"></script>
+<script src="/static/terminal.js"></script>
 </body>
 </html>

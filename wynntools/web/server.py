@@ -6,6 +6,7 @@ and requires a random per-run token, delivered once in the URL and then kept in
 an HttpOnly cookie.
 """
 import asyncio
+import contextlib
 import json
 import secrets
 import threading
@@ -13,7 +14,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -25,6 +26,7 @@ from ..presets import PRESETS
 from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
+from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
@@ -36,15 +38,24 @@ class Cancelled(Exception):
     pass
 
 
-def create_app(builds_dir, port, token=None):
+def create_app(builds_dir, port, token=None, terminal_cwd=None):
     builds_dir = Path(builds_dir).resolve()
     builds_dir.mkdir(parents=True, exist_ok=True)
     token = token or secrets.token_urlsafe(24)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
     gd = GameData()
     jobs = {}
-    app = FastAPI(title="Wynn Toolbox", docs_url=None, redoc_url=None, openapi_url=None)
+    term = TerminalSession(terminal_cwd or builds_dir.parent)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        yield
+        term.close()                      # don't leave the shell running after exit
+
+    app = FastAPI(title="Wynn Toolbox", docs_url=None, redoc_url=None, openapi_url=None,
+                  lifespan=lifespan)
     app.state.token = token
+    app.state.terminal = term
 
     # ------------------------------------------------------------ security
     @app.middleware("http")
@@ -314,6 +325,52 @@ def create_app(builds_dir, port, token=None):
                     return
                 await asyncio.sleep(0.25)
         return StreamingResponse(stream(), media_type="text/event-stream")
+
+    # ------------------------------------------------------------ terminal
+    @app.get("/api/terminal/clis")
+    def clis():
+        return available_clis()
+
+    @app.websocket("/ws/terminal")
+    async def terminal_ws(ws: WebSocket):
+        # The HTTP middleware does not see websockets, so check everything here.
+        # Origin matters most: without it any site open in the browser could
+        # connect to this shell (cross-site websocket hijacking).
+        origins = {f"http://{h}" for h in allowed_hosts}
+        supplied = ws.cookies.get(COOKIE) or ""
+        if ws.headers.get("host") not in allowed_hosts \
+                or ws.headers.get("origin") not in origins \
+                or not secrets.compare_digest(supplied, token):
+            await ws.close(code=1008)
+            return
+        await ws.accept()
+        term.ensure()
+        queue = term.attach()
+        await ws.send_bytes(bytes(term.scrollback))
+
+        async def pump():
+            while True:
+                await ws.send_bytes(await queue.get())
+        pump_task = asyncio.create_task(pump())
+        try:
+            while True:
+                msg = json.loads(await ws.receive_text())
+                if msg["type"] == "input":
+                    term.write(msg["data"])
+                elif msg["type"] == "resize":
+                    term.resize(int(msg["cols"]), int(msg["rows"]))
+                elif msg["type"] == "run":
+                    allowed = {c["cmd"] for c in available_clis()}
+                    if msg["cmd"] in allowed:
+                        await term.run(msg["cmd"])
+                elif msg["type"] == "restart":
+                    term.close()
+                    term.ensure()
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        finally:
+            pump_task.cancel()
+            term.detach(queue)
 
     return app
 
