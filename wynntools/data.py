@@ -81,17 +81,30 @@ def load(kind, version=LATEST):
     return json.loads(path.read_text())
 
 
+def _with_redirects(entries):
+    by_id = {e["id"]: e for e in entries if "remapID" not in e}
+    for e in entries:
+        if "remapID" in e and e["remapID"] in by_id:
+            by_id[e["id"]] = by_id[e["remapID"]]
+    return by_id
+
+
 class GameData:
     """Lookup tables for one game version."""
 
     def __init__(self, version=LATEST):
         self.version = version
         self.enc = load("encoding", version)
-        self.items = [i for i in load("items", version)["items"] if "id" in i]
+        # Entries with a remapID are redirects from a retired id to the current
+        # item (WynnBuilder's redirectMap); their own stats are stale. Old ids
+        # resolve to the current item, and names only ever mean current items.
+        raw = [i for i in load("items", version)["items"] if "id" in i]
+        self.items = [i for i in raw if "remapID" not in i]
         self.item_by_name = {self.name(i): i for i in self.items}
-        self.item_by_id = {i["id"]: i for i in self.items}
-        self.tomes = load("tomes", version)["tomes"]
-        self.tome_by_id = {t["id"]: t for t in self.tomes}
+        self.item_by_id = _with_redirects(raw)
+        raw_tomes = load("tomes", version)["tomes"]
+        self.tomes = [t for t in raw_tomes if "remapID" not in t]
+        self.tome_by_id = _with_redirects(raw_tomes)
         # Plain names are unique; the ֎-marked duplicates are cosmetic variants.
         self.tome_by_name = {self.name(t): t for t in self.tomes if "֎" not in self.name(t)}
         self.atrees = load("atree", version)
@@ -139,3 +152,8 @@ class GameData:
 
     def tree(self, cls):
         return self.atrees[cls]
+
+    def aspects(self, cls):
+        if not hasattr(self, "_aspects"):
+            self._aspects = load("aspects", self.version)
+        return self._aspects.get(cls, [])
