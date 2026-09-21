@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .. import buildfile
 from .. import inventory as inv_mod
+from .. import settings as settings_mod
 from ..codec import SLOTS, TOME_SLOTS
 from ..data import VERSIONS, GameData
 from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
@@ -27,9 +28,11 @@ from ..presets import PRESETS
 from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
+from . import terminal as term_mod
 from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
+STATE_FILE = ".server.json"       # in builds/: how a second `wt serve` finds the first
 COOKIE = "wt_token"
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
             "skillpoints")
@@ -92,6 +95,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
 
     # ------------------------------------------------------------ helpers
     inv_path = builds_dir / "inventory.json"
+    settings_path = builds_dir / "settings.json"
+    RESERVED = {inv_path.name, settings_path.name, STATE_FILE}
 
     def inv():
         return inv_mod.load(inv_path)
@@ -100,8 +105,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         p = (builds_dir / name).resolve()
         if p.parent != builds_dir or p.suffix != ".json":
             raise HTTPException(400, "build files must be .json directly inside builds/")
-        if p.name == inv_path.name:
-            raise HTTPException(400, "inventory.json is reserved for your inventory")
+        if p.name in RESERVED:
+            raise HTTPException(400, f"{p.name} is reserved for the app's own data")
         return p
 
     def version(p):
@@ -113,7 +118,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     def listing():
         out = []
         for p in sorted(builds_dir.glob("*.json")):
-            if p.name == inv_path.name:
+            if p.name in RESERVED:
                 continue
             try:
                 doc = buildfile.refresh(buildfile.read(p), gd, inv())
@@ -383,7 +388,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             seen = {x["file"]: x["mtime"] for x in listing()}
             while not await request.is_disconnected():
                 await asyncio.sleep(1)
-                now = {p.name: version(p) for p in builds_dir.glob("*.json")}
+                now = {p.name: version(p) for p in builds_dir.glob("*.json")
+                       if p.name not in RESERVED}
                 changed = [f for f in now if seen.get(f) != now[f]]
                 removed = [f for f in seen if f not in now]
                 if changed or removed:
@@ -593,10 +599,39 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                 await asyncio.sleep(0.25)
         return StreamingResponse(stream(), media_type="text/event-stream")
 
+    # ------------------------------------------------------------ settings
+    @app.get("/api/settings")
+    def get_settings():
+        return settings_mod.load(settings_path)
+
+    @app.put("/api/settings")
+    async def put_settings(request: Request):
+        body = await request.json()
+        if not isinstance(body, dict):
+            raise HTTPException(422, "expected a JSON object")
+        try:
+            return settings_mod.save(body, settings_path)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+
     # ------------------------------------------------------------ terminal
     @app.get("/api/terminal/clis")
     def clis():
-        return available_clis()
+        return {**available_clis(), "running": term.launched and term.alive()}
+
+    def start_ai(key):
+        """Type the command that starts AI `key`, if it is installed."""
+        cmd = term_mod.launch_command(key)
+        if cmd:
+            term.launched = True
+            asyncio.create_task(term.run(cmd))
+
+    def autolaunch():
+        """Start the saved AI once per fresh shell: a page reload reattaches to
+        the running one, and quitting the AI leaves the player at the prompt."""
+        ai = settings_mod.load(settings_path)["ai"]
+        if not term.launched and ai not in (None, settings_mod.SHELL):
+            start_ai(ai)
 
     @app.websocket("/ws/terminal")
     async def terminal_ws(ws: WebSocket):
@@ -614,6 +649,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         term.ensure()
         queue = term.attach()
         await ws.send_bytes(bytes(term.scrollback))
+        autolaunch()
 
         async def pump():
             while True:
@@ -626,13 +662,22 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                     term.write(msg["data"])
                 elif msg["type"] == "resize":
                     term.resize(int(msg["cols"]), int(msg["rows"]))
-                elif msg["type"] == "run":
-                    allowed = {c["cmd"] for c in available_clis()}
-                    if msg["cmd"] in allowed:
-                        await term.run(msg["cmd"])
+                elif msg["type"] == "run":           # by key only; never a command
+                    start_ai(msg.get("cmd"))
+                elif msg["type"] == "start":         # the saved AI, once per shell
+                    autolaunch()
+                elif msg["type"] == "install":
+                    cmd = term_mod.install_command(msg.get("cmd"))
+                    if cmd:
+                        asyncio.create_task(term.run(cmd))
+                elif msg["type"] == "install-node":
+                    cmd = term_mod.node_install_command()
+                    if cmd:
+                        asyncio.create_task(term.run(cmd))
                 elif msg["type"] == "restart":
                     term.close()
                     term.ensure()
+                    autolaunch()
         except (WebSocketDisconnect, RuntimeError):
             pass
         finally:
@@ -642,14 +687,67 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     return app
 
 
+def running_instance(builds_dir):
+    """The URL of a `wt serve` already running for these builds, or None."""
+    import urllib.request
+    try:
+        state = json.loads((Path(builds_dir) / STATE_FILE).read_text())
+        port, token = int(state["port"]), str(state["token"])
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/settings",
+                                     headers={"x-wt-token": token})
+        with urllib.request.urlopen(req, timeout=2) as r:
+            if r.status == 200:
+                return f"http://127.0.0.1:{port}/?token={token}"
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+
+def free_port(start, tries=20):
+    import socket
+    import sys
+    for port in range(start, start + tries):
+        with socket.socket() as s:
+            # Like uvicorn: a port left in TIME_WAIT by the last run is reusable,
+            # so a quick restart keeps its port (and the page's saved layout).
+            # On Windows SO_REUSEADDR would allow stealing a live port instead.
+            if sys.platform != "win32":
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    raise SystemExit(f"no free port between {start} and {start + tries - 1}")
+
+
 def serve(builds_dir="builds", port=8765, open_browser=True):
+    import os
     import webbrowser
 
     import uvicorn
+    builds_dir = Path(builds_dir)
+    url = running_instance(builds_dir)
+    if url:
+        print(f"Wynn Toolbox is already running at:\n  {url}", flush=True)
+        if open_browser:
+            webbrowser.open(url)
+        return
+    port = free_port(port)
     app = create_app(builds_dir, port)
     url = f"http://127.0.0.1:{port}/?token={app.state.token}"
+    state = builds_dir / STATE_FILE
+    # Readable only by this user: the token is the session's password.
+    fd = os.open(state, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"port": port, "token": app.state.token, "pid": os.getpid()}, f)
     print(f"Wynn Toolbox is running at:\n  {url}\n(only this computer can connect; "
-          f"the token in the link is the password for this session)", flush=True)
+          f"the token in the link is the password for this session)\n\n"
+          f"Keep this window open while you use Wynn Toolbox. Close it (or press Ctrl+C) "
+          f"to quit.", flush=True)
     if open_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+    finally:
+        state.unlink(missing_ok=True)

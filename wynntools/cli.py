@@ -466,6 +466,27 @@ def cmd_ingredient(a):
     return 0
 
 
+def cmd_config(a):
+    """Show or change app settings (builds/settings.json)."""
+    from . import settings
+    if a.key is None:
+        for k, v in settings.load(a.file).items():
+            print(f"{k} = {v if v is not None else '(not set)'}")
+        return 0
+    if a.key != "ai":
+        raise SystemExit("the only setting is: ai")
+    if a.value is None:
+        print(settings.load(a.file)["ai"] or "(not set)")
+        return 0
+    value = None if a.value in ("none", "unset") else a.value
+    try:
+        settings.save({"ai": value}, a.file)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    print(f"ai = {value or '(not set)'}; the web app uses it the next time its terminal starts.")
+    return 0
+
+
 def cmd_serve(a):
     from .web.server import serve
     serve(a.builds, a.port, open_browser=not a.no_browser)
@@ -549,6 +570,11 @@ def main(argv=None):
     s = sub.add_parser("ingredient", help="where a crafting ingredient drops")
     s.add_argument("name")
     s.set_defaults(fn=cmd_ingredient)
+    s = sub.add_parser("config", help="show or change app settings, e.g. `wt config ai claude`")
+    s.add_argument("key", nargs="?", help="setting name (ai)")
+    s.add_argument("value", nargs="?", help="claude, codex, gemini, shell, or none")
+    s.add_argument("--file", default="builds/settings.json")
+    s.set_defaults(fn=cmd_config)
     s = sub.add_parser("serve", help="start the local web app (this computer only)")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--builds", default="builds", help="folder of build files")

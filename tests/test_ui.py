@@ -322,3 +322,99 @@ def test_exact_search_from_the_form(page):
     assert page.input_value("#editor .name") == "ui exact test"
     assert "84,300" in page.inner_text("#ed-tiles")
     assert not page.errors
+
+
+# ------------------------------------------------------------ AI setup wizard
+def launch(tmp_path, **kw):
+    """A page on a fresh app (no builds); returns (playwright, browser, page, server)."""
+    srv = AppServer(str(tmp_path), terminal_cwd=str(tmp_path), **kw).__enter__()
+    p = playwright.sync_playwright().start()
+    try:
+        browser = p.chromium.launch()
+    except Exception as e:
+        p.stop(); srv.__exit__()
+        pytest.skip(f"headless Chromium unavailable: {e}")
+    pg = browser.new_page(viewport={"width": 1440, "height": 1000})
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg.goto(srv.url)
+    return p, browser, pg, srv
+
+
+@pytest.fixture()
+def fresh(tmp_path, request):
+    started = []
+
+    def go(**kw):
+        started.append(launch(tmp_path, **kw))
+        return started[-1][2]
+    yield go
+    for p, browser, _pg, srv in started:
+        browser.close(); p.stop(); srv.__exit__()
+
+
+def test_wizard_opens_on_first_run_and_remembers_choice(fresh, tmp_path):
+    pg = fresh(ai=None)
+    pg.wait_for_selector("#setup[open] .setup-card")
+    assert "Claude Code" in pg.inner_text("#setup") and "Codex" in pg.inner_text("#setup")
+    assert pg.is_disabled("#setup button:has-text('Next')")
+    pg.click("#setup .setup-card:has-text('No AI')")
+    pg.click("#setup button:has-text('Next')")
+    pg.wait_for_selector("#setup", state="hidden")
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"ai": "shell"}
+    assert "Plain terminal" in pg.inner_text("#ai-settings")
+    pg.reload()
+    pg.wait_for_timeout(800)
+    assert not pg.locator("#setup").is_visible()          # not asked again
+    pg.click("#ai-settings")                               # ...but can be changed
+    pg.wait_for_selector("#setup[open] .setup-card.on:has-text('No AI')")
+    assert not pg.errors
+
+
+def test_install_step_and_saved_ai_opens_terminal(fresh, tmp_path, monkeypatch):
+    """Not installed: the install step shows the command and types it into the
+    terminal. Installed and saved: opening the app opens the panel and starts it."""
+    import os
+    from wynntools.web import terminal
+    bindir = tmp_path / "bin"; bindir.mkdir()
+    fake = {**terminal.AI_CLIS[0], "cmd": "wt-ui-fake-ai",
+            "install": {"posix": f"printf '#!/bin/sh\\necho UI-AI-$((40+2))\\n' > {bindir}/wt-ui-fake-ai"
+                                 f" && chmod +x {bindir}/wt-ui-fake-ai", "windows": "rem"}}
+    monkeypatch.setattr(terminal, "AI_CLIS", [fake, *terminal.AI_CLIS[1:]])
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    pg = fresh(ai=None)
+    pg.wait_for_selector("#setup[open] .setup-card")
+    pg.click("#setup .setup-card:has-text('Claude Code')")
+    pg.click("#setup button:has-text('Next')")
+    pg.wait_for_selector("#setup h2:has-text('Install Claude Code')")
+    pg.screenshot(path=str(tmp_path / "wizard-install.png"))
+    pg.click("#setup button:has-text('Install Claude Code for me')")
+    pg.wait_for_selector("#terminal-panel:not([hidden]) .xterm")
+    for _ in range(20):                                    # the install is typed once the shell settles
+        again = pg.locator("#setup button:has-text('Check again')")
+        if not again.count():
+            break
+        again.click()
+        pg.wait_for_timeout(500)
+    pg.wait_for_selector("#setup h2:has-text('Claude Code is ready')")
+    pg.click("#setup button:has-text('Start Claude Code')")
+    pg.wait_for_function("document.querySelector('#term').innerText.includes('UI-AI-42')", timeout=15000)
+    assert json.loads((tmp_path / "settings.json").read_text()) == {"ai": "claude"}
+    assert "AI: Claude Code" in pg.inner_text("#ai-settings"), pg.errors
+    assert not pg.errors
+
+
+def test_saved_ai_autostarts_on_open(fresh, tmp_path, monkeypatch):
+    import os
+    from wynntools.web import terminal
+    bindir = tmp_path / "bin"; bindir.mkdir()
+    exe = bindir / "wt-ui-fake-ai"
+    exe.write_text("#!/bin/sh\necho UI-AUTO-$((20+22))\n"); exe.chmod(0o755)
+    monkeypatch.setattr(terminal, "AI_CLIS", [{**terminal.AI_CLIS[0], "cmd": "wt-ui-fake-ai"},
+                                              *terminal.AI_CLIS[1:]])
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    pg = fresh(ai="claude")
+    pg.wait_for_selector("#terminal-panel:not([hidden]) .xterm")
+    pg.wait_for_function("document.querySelector('#term').innerText.includes('UI-AUTO-42')", timeout=15000)
+    assert not pg.locator("#setup").is_visible()
+    assert not pg.errors

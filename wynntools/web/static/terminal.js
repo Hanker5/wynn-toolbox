@@ -6,6 +6,7 @@
   const toggle = document.getElementById("toggle-terminal");
   const note = document.getElementById("term-note");
   let term, fit, ws, retry = 0, opened = false;
+  let pending = [];               // messages sent before the socket opened
 
   const store = {
     get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -14,12 +15,19 @@
   const savedWidth = store.get("wt-term-width");
   if (savedWidth) document.documentElement.style.setProperty("--term-width", savedWidth);
 
-  function send(msg) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+  function send(msg) {
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
+    else pending.push(msg);
+  }
 
   function connect() {
     ws = new WebSocket(`ws://${location.host}/ws/terminal`);
     ws.binaryType = "arraybuffer";
-    ws.onopen = () => { retry = 0; note.textContent = ""; term.reset(); fitNow(); };
+    ws.onopen = () => {
+      retry = 0; note.textContent = ""; term.reset(); fitNow();
+      const queued = pending; pending = [];
+      for (const m of queued) ws.send(JSON.stringify(m));
+    };
     ws.onmessage = (ev) => term.write(new Uint8Array(ev.data));
     ws.onclose = () => {
       if (panel.hidden) return;
@@ -63,20 +71,20 @@
 
   async function drawClis() {
     const box = document.getElementById("term-clis");
-    const clis = await fetch("/api/terminal/clis", { credentials: "same-origin" }).then((r) => r.json());
-    box.replaceChildren(...clis.map((c) => {
-      if (c.installed) {
-        const b = document.createElement("button");
-        b.textContent = c.label;
-        b.title = `Start ${c.cmd} here. It reads AGENTS.md from this folder.`;
-        b.onclick = () => { send({ type: "run", cmd: c.cmd }); term.focus(); };
-        return b;
-      }
-      const a = document.createElement("a");
-      a.href = c.docs; a.target = "_blank"; a.rel = "noopener";
-      a.textContent = `${c.label} (not installed)`;
-      return a;
-    }));
+    const info = await fetch("/api/terminal/clis", { credentials: "same-origin" }).then((r) => r.json());
+    const buttons = info.clis.filter((c) => c.installed).map((c) => {
+      const b = document.createElement("button");
+      b.textContent = c.label;
+      b.title = `Type "${c.cmd}" here to start it. It reads AGENTS.md from this folder.`;
+      b.onclick = () => { send({ type: "run", cmd: c.key }); term.focus(); };
+      return b;
+    });
+    const setup = document.createElement("button");
+    setup.textContent = buttons.length ? "AI setup…" : "Set up an AI…";
+    setup.title = "Choose, install or change the AI assistant that starts here";
+    setup.onclick = () => window.wtSetup?.open();
+    box.replaceChildren(...buttons, setup);
+    return info;
   }
 
   // drag to resize
@@ -100,5 +108,8 @@
   document.getElementById("term-restart").addEventListener("click", () => {
     if (confirm("Close this shell (and anything running in it) and start a new one?")) send({ type: "restart" });
   });
+  // The setup wizard (setup.js) opens the panel when an AI is chosen.
+  window.wtTerminal = { open, send, refresh: () => (opened ? drawClis() : null),
+                        focus: () => term?.focus() };
   if (store.get("wt-term-open") === "1") open();
 })();

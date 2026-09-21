@@ -1,8 +1,10 @@
 """Run the web app in a background thread for browser tests and screenshots."""
+import json
 import shutil
 import socket
 import threading
 import time
+from pathlib import Path
 
 import uvicorn
 
@@ -20,11 +22,17 @@ def free_port():
 class AppServer:
     """Context manager: serves the app from `builds_dir` on a free localhost port."""
 
-    def __init__(self, builds_dir, seed_from=None, terminal_cwd=None):
+    def __init__(self, builds_dir, seed_from=None, terminal_cwd=None, ai="shell"):
+        """`ai` is the saved AI choice; the default ("shell") skips the setup
+        wizard, and None leaves settings.json out so the wizard opens."""
         self.builds_dir = builds_dir
         if seed_from:
             for f in seed_from:
                 shutil.copy(f, builds_dir)
+        if ai is not None:
+            settings_file = Path(builds_dir) / "settings.json"
+            if not settings_file.exists():
+                settings_file.write_text(json.dumps({"ai": ai}))
         self.port = free_port()
         self.app = create_app(builds_dir, self.port, token=TOKEN, terminal_cwd=terminal_cwd)
         self.server = uvicorn.Server(uvicorn.Config(self.app, host="127.0.0.1", port=self.port,

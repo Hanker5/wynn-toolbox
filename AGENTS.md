@@ -96,6 +96,7 @@ All commands run through `uv run wt ...` from the repo root.
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve` | Start the local web app (this computer only) with the build editor and a terminal panel. |
+| `wt config [ai [claude\|codex\|gemini\|shell\|none]]` | Show or change the AI assistant the web app starts in its terminal (`builds/settings.json`). |
 
 ## Build files are the shared record
 
@@ -109,6 +110,9 @@ the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wt own` (or the web app's Own buttons and Inventory page). When a player asks
 "what should I get next?", run `wt upgrades`; when they want a build they can
 wear today, run `wt gear --owned`.
+
+`builds/settings.json` (app settings) and `builds/.server.json` (the running
+server's address) are not builds either; change settings with `wt config`.
 
 The page mirrors WynnBuilder's layout (equipment grid with item icons, element
 colours, a drawn ability tree), so players can read it the way they read

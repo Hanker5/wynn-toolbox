@@ -277,3 +277,27 @@ table.cmp tr.changed td:first-child { border-left: 2px solid var(--fabled, #ff55
 
 .progress.busy i { width: 30% !important; animation: busy 1.2s ease-in-out infinite alternate; }
 @keyframes busy { from { margin-left: 0; } to { margin-left: 70%; } }
+
+/* ---------------------------------------------------------------- AI setup wizard */
+#setup { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
+#setup::backdrop { background: rgba(0, 0, 0, .6); }
+.setup-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.setup-head { display: flex; align-items: center; gap: 8px; }
+.setup-head h2 { margin: 0; flex: 1; font-size: 19px; }
+.setup-body p { margin: 0; }
+.setup-body h3 { margin: 6px 0 0; font-size: 14px; }
+.setup-x { border: 0; background: none; font-size: 16px; padding: 2px 6px; }
+.setup-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.setup-card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; text-align: left;
+  white-space: normal; padding: 12px; border-radius: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.setup-card.on { border-color: var(--accent); background: rgba(79, 209, 224, .1); outline: 1px solid var(--accent); }
+.setup-card-title { font-weight: 600; font-size: 15px; }
+.setup-card-sub { color: var(--muted); font-size: 12px; }
+.setup-cmd { display: flex; gap: 8px; align-items: center; background: #0b0d11; border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px; }
+.setup-cmd code { flex: 1; min-width: 0; overflow-wrap: anywhere; font: 13px ui-monospace, Menlo, Consolas, monospace; }
+.setup-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.setup-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 6px; }
+.setup-foot .msg { flex: 1; min-width: 160px; }
+.setup-foot .msg:empty { display: none; }
