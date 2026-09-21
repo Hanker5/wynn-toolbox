@@ -227,3 +227,15 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
   #terminal-panel { width: auto; max-width: none; height: 60vh; border-left: 0; border-top: 1px solid var(--line); }
   #term-resize { display: none; }
 }
+
+/* ---------------------------------------------------------------- inventory */
+button.own.on { border-color: #b8a13a; color: #ffe27a; }
+.row.tight { gap: 4px; flex-wrap: nowrap; }
+.inv-list { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.inv-item { background: var(--panel-2); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.inv-name { font-weight: 700; }
+.grow { flex: 1; }
+.rolls { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.roll { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
+.inv-tome, .up-row { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; }
+#upgrades { margin-top: 10px; }

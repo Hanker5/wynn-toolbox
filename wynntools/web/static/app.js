@@ -45,7 +45,7 @@ const slug = (s) => (s || "build").toLowerCase().replace(/[^a-z0-9]+/g, "-").rep
 const weaponClass = (name) => S.items[name]?.cls;
 
 function show(which) {
-  for (const id of ["empty", "editor", "solver"]) $("#" + id).hidden = id !== which;
+  for (const id of ["empty", "editor", "solver", "inventory"]) $("#" + id).hidden = id !== which;
 }
 
 // ------------------------------------------------------------------ game display constants
@@ -239,6 +239,83 @@ function autocomplete(input, fetchOptions, onPick) {
   return wrap;
 }
 
+// ------------------------------------------------------------------ inventory
+S.inv = { items: {}, tomes: [], crafts: [] };
+const owns = (name) => !!name && (name in S.inv.items || S.inv.crafts.includes(name));
+async function loadInventory() {
+  S.inv = await api("GET", "/api/inventory");
+  const n = Object.keys(S.inv.items).length + S.inv.crafts.length;
+  $("#open-inventory").textContent = `Inventory · ${n} item${n === 1 ? "" : "s"}`;
+}
+async function setOwned(name, own, extra = {}) {
+  const kind = name.startsWith("CR-") ? "craft" : extra.kind || "item";
+  S.inv = await api("POST", "/api/inventory", { action: own ? "add" : "remove", kind, name, ...extra });
+  await loadInventory();
+  if (S.cur && !$("#editor").hidden) { S.cur.checking = true; runCheck(); }
+}
+function ownButton(getName) {
+  const b = h("button", { class: "mini own", title: "Mark whether you own this item" });
+  const draw = () => {
+    const n = getName();
+    b.disabled = !n;
+    b.textContent = owns(n) ? "★ Owned" : "☆ Own";
+    b.classList.toggle("on", owns(n));
+  };
+  b.onclick = async () => { const n = getName(); if (n) { await setOwned(n, !owns(n)); draw(); } };
+  draw();
+  b.redraw = draw;
+  return b;
+}
+
+async function renderInventory() {
+  await loadInventory();
+  const inv = S.inv, box = $("#inventory");
+  const names = [...Object.keys(inv.items), ...inv.crafts];
+  await Promise.all(names.map((n) => itemInfo("any", n)));
+  const addInput = h("input", { placeholder: "Search any item to add…", "aria-label": "Add owned item" });
+  const addAc = autocomplete(addInput, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
+    async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); renderInventory(); });
+  const rows = names.sort().map((n) => {
+    const it = S.items[n];
+    const rolls = (inv.items[n] || {}).rolls || {};
+    const rolled = Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi);
+    const inputs = rolled.map(([k, [lo, mid, hi]]) => {
+      const [label, unit] = idLabel(k);
+      const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
+        "aria-label": `${n} ${label}`, value: rolls[k] ?? "" });
+      inp.dataset.id = k;
+      return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
+    });
+    const save = h("button", { class: "mini", onclick: async () => {
+      const r = {};
+      for (const inp of card.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
+      await setOwned(n, true, { rolls: r }); toast("Rolls saved");
+    } }, "Save rolls");
+    const card = h("div", { class: "inv-item" },
+      h("div", { class: "row" }, itemIcon(it?.type, 32, it?.tier),
+        h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n)),
+        h("span", { class: "grow" }),
+        rolled.length && !n.startsWith("CR-") ? save : null,
+        h("button", { class: "mini danger", onclick: async () => { await setOwned(n, false); renderInventory(); } }, "Remove")),
+      rolled.length && !n.startsWith("CR-") ? h("div", { class: "rolls" }, inputs) : null,
+      h("div", { class: "eq-line" }, itemLine(it)));
+    attachTooltip(card.querySelector(".eq-icon"), () => S.items[n]);
+    return card;
+  });
+  const tomeTypes = Object.keys(S.tomes).sort();
+  const tomeSel = h("select", { "aria-label": "Add owned tome" }, h("option", { value: "" }, "Add a tome you own…"),
+    ...tomeTypes.map((t) => h("optgroup", { label: t }, ...S.tomes[t].map((x) => h("option", { value: x.name }, x.name)))));
+  tomeSel.onchange = async () => { if (tomeSel.value) { await setOwned(tomeSel.value, true, { kind: "tome" }); renderInventory(); } };
+  setKids(box,
+    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Inventory")),
+    h("p", { class: "hint" }, "Mark the items you own. The solver can then build only from these (\"Only items I own\") and rank what to get next. Enter real roll values if you know them; blank means a typical 100% roll."),
+    h("section", { class: "panel" }, h("div", { class: "panel-h" }, `Items · ${names.length}`), addAc,
+      rows.length ? h("div", { class: "inv-list" }, rows) : h("p", { class: "muted" }, "Nothing yet. Search above, or use the ☆ Own button on a build's items.")),
+    h("section", { class: "panel" }, h("div", { class: "panel-h" }, `Tomes · ${inv.tomes.length}`), tomeSel,
+      h("div", { class: "inv-list" }, inv.tomes.map((t, i) => h("div", { class: "row inv-tome" }, h("span", {}, t), h("span", { class: "grow" }),
+        h("button", { class: "mini danger", onclick: async () => { await setOwned(t, false, { kind: "tome" }); renderInventory(); } }, "Remove"))))));
+}
+
 // ------------------------------------------------------------------ sidebar
 async function loadList() {
   S.builds = await api("GET", "/api/builds");
@@ -356,9 +433,11 @@ function slotView(slot) {
     input.className = "eq-name tier-" + (S.items[cur()]?.tier || "none");
     icon.replaceChildren(itemIcon(typeNow(), 44, S.items[cur()]?.tier));
     meta.replaceChildren(...itemLine(S.items[cur()]));
+    ownBtn.redraw?.();
   };
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
     onclick: () => openCraft(slot, i, craftBox, refresh) }, "Craft…");
+  const ownBtn = ownButton(() => cur());
   const ac = autocomplete(input,
     // Weapons are not class-filtered so picking one can switch the class.
     (q) => api("GET", `/api/items?slot=${slot}&level=${S.cur.doc.level}` +
@@ -377,7 +456,8 @@ function slotView(slot) {
   attachTooltip(meta, () => S.items[cur()]);
   return h("div", { class: "slot" }, icon,
     h("div", { class: "eq-body" },
-      h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)), craftBtn),
+      h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)),
+        h("span", { class: "row tight" }, ownBtn, craftBtn)),
       ac, meta, craftBox));
 }
 
@@ -813,6 +893,7 @@ function renderSolver() {
   f.weapon = h("input", { placeholder: "any" });
   f.mythic = h("input", { type: "checkbox" });
   f.crafted = h("input", { type: "checkbox" });
+  f.owned = h("input", { type: "checkbox" });
   f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
   f.preset = h("select", {});
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
@@ -832,39 +913,80 @@ function renderSolver() {
 
   const bar = h("i"), status = h("div", { class: "hint" }), cancelBtn = h("button", { class: "danger", hidden: true }, "Cancel");
   const runBtn = h("button", { class: "primary" }, "Find the best build");
-  runBtn.onclick = async () => {
+  async function readForm() {
     const floors = {};
     for (const k of ["hp", "mr", "spd", "mana", "weapon_dps"]) if (f[k].value !== "") floors[k] = +f[k].value;
     const objective = { [f.goal.value]: 1 };
     if (f.tie.value && f.tie.value !== f.goal.value) objective[f.tie.value] = 0.01;
     let tomes = [];
     if (f.tomesFrom.value) tomes = (await api("GET", `/api/builds/${encodeURIComponent(f.tomesFrom.value)}`)).tomes || [];
-    const name = f.name.value.trim() || `${f.cls.value} ${f.goal.value}`;
-    let file = slug(name) + ".json", n = 2;
-    while (S.builds.some((b) => b.file === file)) file = `${slug(name)}-${n++}.json`;
-    const spec = { class: f.cls.value, level: +f.level.value, objective, floors,
+    return { class: f.cls.value, level: +f.level.value, objective, floors,
       require_major: [...majors], force: f.weapon.value ? { weapon: f.weapon.value } : {},
       exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
-      crafted: f.crafted.checked };
+      crafted: f.crafted.checked && !f.owned.checked };
+  }
+  function follow(job, onDone) {
+    runBtn.disabled = upBtn.disabled = true; cancelBtn.hidden = false;
+    cancelBtn.onclick = () => api("POST", `/api/jobs/${job}/cancel`);
+    const es = new EventSource(`/api/jobs/${job}/events`);
+    es.onmessage = async (ev) => {
+      const j = JSON.parse(ev.data), p = j.progress;
+      if (p) {
+        bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
+        const mm = Math.floor(p.elapsed / 60), ss = String(Math.floor(p.elapsed % 60)).padStart(2, "0");
+        status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}` +
+          (p.elapsed ? ` · ${mm}:${ss}` : "");
+      }
+      if (j.state !== "running") {
+        es.close(); runBtn.disabled = upBtn.disabled = false; cancelBtn.hidden = true;
+        if (j.state === "done") { bar.style.width = "100%"; await onDone(j); }
+        else status.textContent = j.state === "cancelled" ? "Cancelled." : `Failed: ${j.error}`;
+      }
+    };
+  }
+  runBtn.onclick = async () => {
+    const spec = await readForm();
+    const name = f.name.value.trim() || `${f.cls.value} ${idLabel(f.goal.value)[0]}`;
+    let file = slug(name) + ".json", n = 2;
+    while (S.builds.some((b) => b.file === file)) file = `${slug(name)}-${n++}.json`;
     try {
-      const { job } = await api("POST", "/api/solve", { spec, file, name, tree_preset: f.preset.value || null });
-      runBtn.disabled = true; cancelBtn.hidden = false;
-      cancelBtn.onclick = () => api("POST", `/api/jobs/${job}/cancel`);
-      const es = new EventSource(`/api/jobs/${job}/events`);
-      es.onmessage = async (ev) => {
-        const j = JSON.parse(ev.data), p = j.progress;
-        if (p) {
-          bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
-          const mm = Math.floor(p.elapsed / 60), ss = String(Math.floor(p.elapsed % 60)).padStart(2, "0");
-          status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${fmt(p.nodes)} combinations checked · best so far ${p.best ?? "—"} · ${mm}:${ss}`;
-        }
-        if (j.state !== "running") {
-          es.close(); runBtn.disabled = false; cancelBtn.hidden = true;
-          if (j.state === "done") { bar.style.width = "100%"; toast("Build found"); await loadList(); openBuild(j.file); }
-          else status.textContent = j.state === "cancelled" ? "Cancelled." : `Failed: ${j.error}`;
-        }
-      };
+      const { job } = await api("POST", "/api/solve", { spec, file, name, tree_preset: f.preset.value || null,
+        owned_only: f.owned.checked });
+      upgradesBox.replaceChildren();
+      follow(job, async (j) => { toast("Build found"); await loadList(); openBuild(j.file); });
     } catch (e) { status.textContent = e.message; }
+  };
+  const upgradesBox = h("div", { id: "upgrades" });
+  const upBtn = h("button", { title: "Rank items you don't own by how much each would improve your best owned-only build" },
+    "What should I get next?");
+  upBtn.onclick = async () => {
+    const spec = await readForm();
+    try {
+      const { job } = await api("POST", "/api/upgrades", { spec, top: 10 });
+      upgradesBox.replaceChildren(h("div", { class: "hint" }, "Trying each item you don't own, one at a time…"));
+      follow(job, async (j) => {
+        status.textContent = "";
+        const r = j.result, goal = idLabel(f.goal.value);
+        await Promise.all(r.upgrades.map((u) => itemInfo(u.slot, u.item)));
+        setKids(upgradesBox,
+          h("div", { class: "panel-h" }, "What to get next"),
+          r.base ? h("p", {}, `Best from what you own: ${goal[0]} ${fmt(r.base.score)}${goal[1]} — `,
+                     h("span", { class: "muted" }, r.base.equipment.map((x) => displayName(x) || "(empty)").join(" / ")))
+                 : h("p", { class: "neg" }, "You can't make a build that meets these goals from what you own yet."),
+          r.upgrades.length ? h("div", { class: "inv-list" }, r.upgrades.map((u) => {
+            const it = S.items[u.item];
+            const row = h("div", { class: "row up-row" }, itemIcon(it?.type, 28, it?.tier),
+              h("span", { class: `tier-${it?.tier} inv-name` }, u.item),
+              h("span", { class: "muted" }, u.slot),
+              h("span", { class: "grow" }),
+              h("strong", { class: "pos" }, u.gain === null ? "makes a build possible" : `+${fmt(Math.round(u.gain * 100) / 100)}${goal[1]}`),
+              ownButton(() => u.item));
+            attachTooltip(row.firstChild, () => S.items[u.item]);
+            return row;
+          })) : h("p", { class: "muted" }, "No single item you don't own improves on that."),
+          h("p", { class: "hint" }, "Each item is tried alone, added to everything you own; gains don't add up across items."));
+      });
+    } catch (e) { upgradesBox.replaceChildren(h("p", { class: "neg" }, e.message)); }
   };
 
   $("#solver").replaceChildren(
@@ -881,11 +1003,13 @@ function renderSolver() {
       h("div", { class: "form" }, field("Required major IDs", majorIn), field("Weapon (optional)", weaponAc),
         field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),
         h("label", { class: "check" }, f.mythic, "No mythics"),
-        h("label", { class: "check" }, f.crafted, "Include crafted items")),
+        h("label", { class: "check" }, f.crafted, "Include crafted items"),
+        h("label", { class: "check" }, f.owned, "Only items I own")),
       majorChips),
     h("div", { class: "card" }, h("h3", {}, "Run"), h("div", { class: "progress" }, bar), status,
-      h("div", { class: "row", style: "margin-top:10px" }, runBtn, cancelBtn),
-      h("p", { class: "hint" }, "Stats are 100% rolls. The search is exact within each slot's shortlist; raise the shortlist size to double-check a result.")));
+      h("div", { class: "row", style: "margin-top:10px" }, runBtn, upBtn, cancelBtn),
+      h("p", { class: "hint" }, "Stats are 100% rolls (or your real rolls for items you own). The search is exact within each slot's shortlist; raise the shortlist size to double-check a result."),
+      upgradesBox));
 }
 
 // ------------------------------------------------------------------ live updates
@@ -893,6 +1017,10 @@ function watch() {
   const es = new EventSource("/api/events");
   es.onmessage = async (ev) => {
     const { changed, removed } = JSON.parse(ev.data);
+    if (changed.includes("inventory.json") || removed.includes("inventory.json")) {
+      await loadInventory();
+      if (!$("#inventory").hidden) renderInventory();
+    }
     await loadList();
     const c = S.cur; if (!c) return;
     if (removed.includes(c.file)) { toast("This build's file was deleted"); return; }
@@ -911,6 +1039,7 @@ async function boot() {
   [S.meta, S.tomes] = await Promise.all([api("GET", "/api/meta"), api("GET", "/api/tomes")]);
   $("#version").textContent = `data ${S.meta.version}`;
   $("#new-build").onclick = () => { renderSolver(); show("solver"); };
+  $("#open-inventory").onclick = async () => { await renderInventory(); show("inventory"); };
   $("#import-go").onclick = async () => {
     const link = $("#import-link").value.trim(), name = $("#import-name").value.trim();
     if (!link) return;
@@ -923,7 +1052,7 @@ async function boot() {
     } catch (e) { $("#import-msg").textContent = e.message; }
   };
   window.addEventListener("beforeunload", (e) => { if (S.cur?.dirty) e.preventDefault(); });
-  await loadList();
+  await Promise.all([loadList(), loadInventory()]);
   watch();
 }
 boot().catch((e) => { document.body.textContent = "Could not start: " + e.message; });

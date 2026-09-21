@@ -19,9 +19,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import buildfile
+from .. import inventory as inv_mod
 from ..codec import SLOTS, TOME_SLOTS
 from ..data import VERSIONS, GameData
-from ..gear_solver import CLASS_WEAPON, Spec, solve_gear
+from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
 from ..presets import PRESETS
 from ..rules import ability_points
 from ..tree_solver import solve_tree
@@ -89,10 +90,17 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         return response
 
     # ------------------------------------------------------------ helpers
+    inv_path = builds_dir / "inventory.json"
+
+    def inv():
+        return inv_mod.load(inv_path)
+
     def path_for(name):
         p = (builds_dir / name).resolve()
         if p.parent != builds_dir or p.suffix != ".json":
             raise HTTPException(400, "build files must be .json directly inside builds/")
+        if p.name == inv_path.name:
+            raise HTTPException(400, "inventory.json is reserved for your inventory")
         return p
 
     def version(p):
@@ -104,8 +112,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     def listing():
         out = []
         for p in sorted(builds_dir.glob("*.json")):
+            if p.name == inv_path.name:
+                continue
             try:
-                doc = buildfile.refresh(buildfile.read(p), gd)
+                doc = buildfile.refresh(buildfile.read(p), gd, inv())
                 st = doc.get("status") or {}
                 weapon = (doc.get("equipment") or [None] * 9)[8]
                 try:
@@ -125,7 +135,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
 
     def checked(doc):
         try:
-            return buildfile.refresh({k: doc[k] for k in doc if not k.startswith("_")}, gd)
+            return buildfile.refresh({k: doc[k] for k in doc if not k.startswith("_")}, gd, inv())
         except (KeyError, ValueError, NotImplementedError) as e:
             raise HTTPException(422, str(e).strip('"'))
 
@@ -198,6 +208,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         kind = {"ring1": "ring", "ring2": "ring"}.get(slot, slot)
         if kind == "weapon":
             kinds = {CLASS_WEAPON[cls]} if cls else set(CLASS_WEAPON.values())
+        elif kind == "any":
+            kinds = {"helmet", "chestplate", "leggings", "boots", "ring", "bracelet", "necklace",
+                     *CLASS_WEAPON.values()}
         else:
             kinds = {kind}
         q = q.lower().strip()
@@ -293,7 +306,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         try:
             # Re-check on every open so a file saved by older code, or edited by
             # hand without `wt link --write`, never shows stale numbers.
-            doc = buildfile.refresh(doc, gd)
+            doc = buildfile.refresh(doc, gd, inv())
         except (KeyError, ValueError, NotImplementedError) as e:
             doc = {**doc, "status": {**(doc.get("status") or {}), "verified": False,
                                      "problems": [f"can't read this build: {e}"]}}
@@ -370,6 +383,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                         roll=raw.get("roll") or "base")
         except (KeyError, ValueError, TypeError) as e:
             raise HTTPException(422, f"bad spec: {e}")
+        owned = inv()
+        if body.get("owned_only"):
+            spec.only, spec.inventory, spec.crafted = owned.names(), owned, False
         preset = body.get("tree_preset") or None
         if preset and PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
@@ -398,11 +414,97 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                     b.atree = solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
                                          ability_points(spec.level))
                     doc["tree"] = buildfile.from_build(b, gd)["tree"]
-                buildfile.write(p, buildfile.refresh(doc, gd))
+                buildfile.write(p, buildfile.refresh(doc, gd, owned))
                 job["state"] = "done"
             except Cancelled:
                 job["state"] = "cancelled"
             except Exception as e:   # surface anything else to the page
+                job["state"], job["error"] = "failed", f"{type(e).__name__}: {e}"
+
+        threading.Thread(target=run, daemon=True).start()
+        return {"job": job["id"]}
+
+    @app.get("/api/inventory")
+    def get_inventory():
+        i = inv()
+        return {**i.to_json(), "unknown": inv_mod.validate(i, gd)}
+
+    @app.post("/api/inventory")
+    async def change_inventory(request: Request):
+        """{"action": "add"|"remove", "kind": "item"|"tome"|"craft", "name": ..., "rolls": {...}?}"""
+        body = await request.json()
+        i, name, kind = inv(), body.get("name") or "", body.get("kind", "item")
+        try:
+            if kind == "tome":
+                gd.tome(name)
+            else:
+                gd.item(name)
+        except (KeyError, ValueError, NotImplementedError):
+            raise HTTPException(422, f"unknown {kind}: {name}")
+        if body.get("action") == "add":
+            if kind == "tome":
+                i.tomes.append(name)
+            elif name.startswith("CR-"):
+                if name not in i.crafts:
+                    i.crafts.append(name)
+            else:
+                entry = i.items.setdefault(name, {})
+                if "rolls" in body:
+                    rolls = {k: int(v) for k, v in (body["rolls"] or {}).items() if v not in ("", None)}
+                    if rolls:
+                        entry["rolls"] = rolls
+                    else:
+                        entry.pop("rolls", None)
+        elif body.get("action") == "remove":
+            if kind == "tome":
+                if name in i.tomes:
+                    i.tomes.remove(name)
+            else:
+                i.items.pop(name, None)
+                if name in i.crafts:
+                    i.crafts.remove(name)
+        else:
+            raise HTTPException(422, "action must be add or remove")
+        inv_mod.save(i, inv_path)
+        return i.to_json()
+
+    @app.post("/api/upgrades")
+    async def upgrades_api(request: Request):
+        body = await request.json()
+        raw = body["spec"]
+        try:
+            spec = Spec(cls=raw["class"], level=int(raw["level"]), objective=raw["objective"],
+                        floors=raw.get("floors") or {}, require_major=raw.get("require_major") or [],
+                        force={k: v for k, v in (raw.get("force") or {}).items() if v},
+                        exclude_tiers=set(raw.get("exclude_tiers") or []),
+                        tomes=[gd.tome(t)["id"] if t else None for t in raw.get("tomes") or []],
+                        topn=int(raw.get("topn") or 8))
+        except (KeyError, ValueError, TypeError) as e:
+            raise HTTPException(422, f"bad spec: {e}")
+        owned = inv()
+        if not owned.names():
+            raise HTTPException(422, "your inventory is empty; mark some items as owned first")
+        job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None, "file": None,
+               "error": None, "cancel": False, "result": None, "started": time.time()}
+        jobs[job["id"]] = job
+
+        def on_progress(pr):
+            job["progress"] = pr
+            if job["cancel"]:
+                raise Cancelled()
+
+        def run():
+            try:
+                base, ups = upgrades(spec, gd, owned, per_slot=int(body.get("per_slot") or 6),
+                                     top=int(body.get("top") or 10), progress=on_progress)
+                job["result"] = {
+                    "base": None if base is None else {"score": base.score, "equipment": base.equipment},
+                    "upgrades": [{"item": u.item, "slot": u.slot, "gain": u.gain,
+                                  "score": u.result.score, "equipment": u.result.equipment} for u in ups]}
+                job["state"] = "done"
+            except Cancelled:
+                job["state"] = "cancelled"
+            except Exception as e:
                 job["state"], job["error"] = "failed", f"{type(e).__name__}: {e}"
 
         threading.Thread(target=run, daemon=True).start()
@@ -423,8 +525,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         async def stream():
             while not await request.is_disconnected():
                 j = jobs[jid]
-                yield "data: " + json.dumps({k: j[k] for k in ("state", "progress", "file",
-                                                               "error")}) + "\n\n"
+                yield "data: " + json.dumps({k: j.get(k) for k in ("state", "progress", "file",
+                                                                   "error", "result")}) + "\n\n"
                 if j["state"] != "running":
                     return
                 await asyncio.sleep(0.25)

@@ -120,3 +120,32 @@ def test_expired_link_gets_a_readable_page(tmp_path):
     r = c.get("/?token=old")
     assert r.status_code == 401 and "expired" in r.text and "wt serve" in r.text
     assert c.get("/api/meta").json()["detail"].startswith("missing or wrong token")
+
+
+def test_inventory_api_and_reserved_file(client):
+    assert client.post("/api/inventory", json={"action": "add", "name": "Galleon"}).status_code == 200
+    assert client.post("/api/inventory", json={"action": "add", "name": "Galleon",
+                                               "rolls": {"eSteal": 10}}).json()["items"]["Galleon"] == {"rolls": {"eSteal": 10}}
+    assert client.post("/api/inventory", json={"action": "add", "name": "Not An Item"}).status_code == 422
+    assert client.get("/api/builds").json() == []                 # inventory.json is not a build
+    assert client.put("/api/builds/inventory.json", json={}).status_code == 400
+
+
+def test_upgrades_job(client):
+    for n in ["Slimy Shako", "Contagion", "Caterpillar", "Cytotoxic Striders", "Coral Ring",
+              "Summa", "Contrast", "Gaia"]:
+        client.post("/api/inventory", json={"action": "add", "name": n})
+    spec = {"class": "Mage", "level": 105, "objective": {"poison": 1},
+            "floors": {"hp": 15000, "mr": 20, "mana": 113}, "require_major": ["PLAGUE"]}
+    job = client.post("/api/upgrades", json={"spec": spec, "top": 5}).json()["job"]
+    for _ in range(300):
+        with client.stream("GET", f"/api/jobs/{job}/events") as s:
+            last = [line for line in s.iter_lines() if line.startswith("data:")][-1]
+        if '"state": "done"' in last or '"state": "failed"' in last:
+            break
+        time.sleep(0.1)
+    import json as _json
+    result = _json.loads(last[5:])["result"]
+    ranked = [u["item"] for u in result["upgrades"]]
+    # without a forced weapon, owning Sequoia beats any bracelet; Dying Lobelia fills the gap
+    assert ranked[0] == "Sequoia" and "Dying Lobelia" in ranked

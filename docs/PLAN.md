@@ -27,7 +27,7 @@ equipment sets (applied points, final points, active sets); all session links
 re-verified; the corrected numbers for the original Cosmic Foundations build
 reported.
 
-## 2. Owned items and an upgrade shopping list
+## 2. Owned items and an upgrade shopping list — DONE
 **Work.** An inventory file (`builds/inventory.json`) listing owned items and
 tomes, optionally with real roll values. Gear search option "owned only" and an
 "upgrades" report: for each missing item, how much it improves the goal if

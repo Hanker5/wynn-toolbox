@@ -196,3 +196,24 @@ def test_set_bonuses_shown(page):
     assert "Cosmic Foundations" in sets and "4/4" in sets and "+1,500" in sets
     assert "19,118" in page.inner_text("#ed-tiles")          # includes the set's +1,500 health
     assert not page.errors
+
+
+def test_own_button_rolls_and_upgrades(page, app):
+    """Mark an item owned from a build, give it a real roll, see totals follow."""
+    open_build(page, "shaman_105_stormdrain")
+    before = page.inner_text("#ed-tiles")
+    own = page.locator(".slot:has(input[aria-label='boots']) button.own")
+    own.click()
+    playwright.expect(own).to_contain_text("Owned")
+    inv = json.loads((Path(app.builds_dir) / "inventory.json").read_text())
+    assert "Galleon" in inv["items"]
+    page.click("#open-inventory")
+    page.wait_for_selector("#inventory:not([hidden]) .inv-item")
+    page.get_by_role("spinbutton", name="Galleon Stealing").fill("5")      # base is 15
+    page.locator(".inv-item:has-text('Galleon') button:has-text('Save rolls')").click()
+    page.wait_for_function("document.querySelector('#toast').textContent.includes('Rolls saved')")
+    inv = json.loads((Path(app.builds_dir) / "inventory.json").read_text())
+    assert inv["items"]["Galleon"]["rolls"]["eSteal"] == 5
+    open_build(page, "shaman_105_stormdrain")
+    page.wait_for_function(f"!document.querySelector('#ed-tiles').innerText.includes({before.split('Stealing')[1].split(chr(10))[1]!r})")
+    assert not page.errors

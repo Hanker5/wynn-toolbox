@@ -63,10 +63,11 @@ def from_build(b, gd):
     return doc
 
 
-def refresh(doc, gd):
-    """Re-derive link and status from the editable fields. Returns the new doc."""
+def refresh(doc, gd, inventory=None):
+    """Re-derive link and status from the editable fields. Returns the new doc.
+    With an inventory, owned items use their real rolls in the totals."""
     link = to_link(to_build(doc, gd), gd)
-    ok, rep = check_link(link, gd)
+    ok, rep = check_link(link, gd, inventory=inventory)
     s = rep["summary"]
     status = {"verified": ok, "problems": rep["problems"],
               "totals": s["totals"], "totals_max": s["totals_max"], "sp_need": s["sp_need"], "sp_total": s["sp_total"],

@@ -80,6 +80,9 @@ All commands run through `uv run wt ...` from the repo root.
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
+| `wt own add\|remove\|list [NAME] [--tome] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes and real roll values. |
+| `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |
+| `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve` | Start the local web app (this computer only) with the build editor and a terminal panel. |
 
 ## Build files are the shared record
@@ -89,6 +92,11 @@ the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
 `level`, `equipment`, `tomes`, `tree`, `powders`, `skillpoints`); `link` and
 `status` are generated, so run `wt link <file> --write` after any edit.
+
+`builds/inventory.json` is the player's inventory, not a build. Change it with
+`wt own` (or the web app's Own buttons and Inventory page). When a player asks
+"what should I get next?", run `wt upgrades`; when they want a build they can
+wear today, run `wt gear --owned`.
 
 The page mirrors WynnBuilder's layout (equipment grid with item icons, element
 colours, a drawn ability tree), so players can read it the way they read
