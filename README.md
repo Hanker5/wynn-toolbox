@@ -87,7 +87,9 @@ Game data and the build-link format come from
 the link codec and formulas are ports of its source. Wynn Toolbox is therefore
 also licensed under the **GNU GPL v3.0 or later** (see `LICENSE`).
 
-Item and ability-tree icons are WynnBuilder's images, downloaded into the local
+The ability tree is drawn with a port of WynnBuilder's tree renderer (grid,
+connector routing, highlight rules and "can take now" logic from
+`js/builder/atree.js`). Item and ability-tree icons are WynnBuilder's images, downloaded into the local
 cache by `wt fetch` rather than stored in this repository, since some are
 derived from Wynncraft's own art. The web app's layout follows WynnBuilder's.
 

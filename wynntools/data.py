@@ -32,7 +32,8 @@ _BASELINE = {"items": "data/baseline/compressed/compress.json",
 # Images used by the web app, fetched from WynnBuilder at run time (not stored in
 # this repo; some are derived from Wynncraft's own art). Credit: WynnBuilder.
 MEDIA = {"items.png": "media/items/new.png",          # 12 item-type icons, 120px each
-         "atree-icons.png": "media/atree/icons.png"}  # 10 node types x 3 states, 32px
+         "atree-icons.png": "media/atree/icons.png",  # 10 node types x 3 states, 32px
+         "atree-connectors.png": "media/atree/connectors.png"}  # 12 x 4 connector tiles, 18px
 
 WEAPON_CLASS = {"wand": "Mage", "bow": "Archer", "dagger": "Assassin",
                 "spear": "Warrior", "relik": "Shaman"}

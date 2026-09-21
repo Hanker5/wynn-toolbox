@@ -265,6 +265,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                  "archetype": n.get("archetype") or "", "req": n.get("archetype_req") or 0,
                  "parents": n["parents"], "deps": n.get("dependencies") or [],
                  "blockers": n.get("blockers") or [],
+                 "req_archetype": n.get("req_archetype") or n.get("archetype") or "",
                  "desc": (n.get("desc") or "").replace("</br>", "\n")}
                 for n in gd.tree(cls)]
 

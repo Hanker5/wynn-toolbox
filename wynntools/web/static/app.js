@@ -436,8 +436,87 @@ function renderTomes() {
   });
 }
 
-// ------------------------------------------------------------------ ability tree (drawn like WynnBuilder's)
-const TREE_CELL = 54, TREE_SPRITE = 48;
+// ------------------------------------------------------------------ ability tree
+// A port of WynnBuilder's tree drawing (js/builder/atree.js: render_AT,
+// resolve_connector, atree_set_edge, abil_can_activate; GPL-3.0), using its
+// node and connector art so trees read the same as on WynnBuilder.
+const TREE_CELL = 40;                        // one grid square
+const NODE_PX = TREE_CELL * 2;               // node art is drawn at 200% of a square
+const CONN_PX = TREE_CELL * 1.125;           // connector tiles at 112.5%
+// connector type (left right up down) -> highlight -> [x, y] tile in connectors.png
+const CONNECTOR_ATLAS = {
+  "1100": { "0000": [0, 0], "1100": [1, 0] },
+  "1010": { "0000": [2, 0], "1010": [3, 0] },
+  "0110": { "0000": [4, 0], "0110": [5, 0] },
+  "1001": { "0000": [6, 0], "1001": [7, 0] },
+  "0101": { "0000": [8, 0], "0101": [9, 0] },
+  "0011": { "0000": [10, 0], "0011": [11, 0] },
+  "1101": { "0000": [0, 1], "1101": [1, 1], "1100": [2, 1], "1001": [3, 1], "0101": [4, 1] },
+  "0111": { "0000": [5, 1], "0111": [6, 1], "0110": [7, 1], "0101": [8, 1], "0011": [9, 1] },
+  "1110": { "0000": [0, 2], "1110": [1, 2], "1100": [2, 2], "1010": [3, 2], "0110": [4, 2] },
+  "1011": { "0000": [5, 2], "1011": [6, 2], "1010": [7, 2], "1001": [8, 2], "0011": [9, 2] },
+  "1111": { "0000": [0, 3], "1111": [1, 3], "1110": [2, 3], "1101": [3, 3], "1100": [4, 3], "1011": [5, 3],
+            "1010": [6, 3], "1001": [7, 3], "0111": [8, 3], "0110": [9, 3], "0101": [10, 3], "0011": [11, 3] },
+};
+
+/** Connector cells for every parent->child edge, merged per cell (resolve_connector). */
+function treeConnectors(tree, byId) {
+  const cells = new Map();                  // "row,col" -> {connections:[l,r,u,d]}
+  const edges = new Map();                  // child id -> Map(parent id -> [cell keys])
+  const add = (key, conn) => {
+    if (!cells.has(key)) { cells.set(key, { connections: [...conn] }); return; }
+    const c = cells.get(key).connections;
+    for (let i = 0; i < 4; i++) c[i] += conn[i];
+  };
+  for (const n of tree) {
+    const perParent = new Map();
+    for (const pid of n.parents) {
+      const p = byId.get(pid); if (!p) continue;
+      const keys = [];
+      for (let r = n.row - 1; r > p.row; r--) { keys.push(`${r},${n.col}`); add(`${r},${n.col}`, [0, 0, 1, 1]); }
+      for (let c = Math.min(p.col, n.col) + 1; c < Math.max(p.col, n.col); c++) {
+        keys.push(`${p.row},${c}`); add(`${p.row},${c}`, [1, 1, 0, 0]);
+      }
+      if (p.row !== n.row && p.col !== n.col) {
+        const conn = [0, 0, 0, 1];
+        conn[p.col > n.col ? 1 : 0] = 1;
+        keys.push(`${p.row},${n.col}`); add(`${p.row},${n.col}`, conn);
+      }
+      perParent.set(pid, keys);
+    }
+    edges.set(n.id, perParent);
+  }
+  for (const c of cells.values()) c.type = c.connections.map((x) => (x ? "1" : "0")).join("");
+  return { cells, edges };
+}
+
+/** Which unselected nodes could be taken now (abil_can_activate over the reachable set). */
+function treeAvailability(tree, byId, selected, apCap) {
+  const root = tree.find((n) => !n.parents.length);
+  const reachable = new Set(), arch = new Map();
+  let cost = 0;
+  const canActivate = (n, pointsLeft) => {
+    if (!n.parents.length) return true;
+    if (n.deps.some((d) => !reachable.has(d))) return false;
+    if (n.blockers.some((b) => reachable.has(b))) return false;
+    if (!n.parents.some((p) => reachable.has(p))) return false;
+    if (n.req && (arch.get(n.req_archetype) || 0) < n.req) return false;
+    return n.cost <= pointsLeft;
+  };
+  let pending = tree.filter((n) => selected.has(n.id) || n.id === root.id);
+  for (;;) {
+    const still = [];
+    for (const n of pending) {
+      if (!canActivate(n, 9999)) { still.push(n); continue; }
+      if (n.archetype) arch.set(n.archetype, (arch.get(n.archetype) || 0) + 1);
+      cost += n.cost; reachable.add(n.id);
+    }
+    if (still.length === pending.length) break;
+    pending = still;
+  }
+  const left = apCap - cost;
+  return new Set(tree.filter((n) => !selected.has(n.id) && canActivate(n, left)).map((n) => n.id));
+}
 
 async function renderTree() {
   const d = S.cur.doc, box = $("#ed-tree"), head = $("#ed-tree-h"), cls = weaponClass(d.equipment[8]);
@@ -461,72 +540,106 @@ async function renderTree() {
 
   const byId = new Map(tree.map((n) => [n.id, n]));
   const root = tree.find((n) => !n.parents.length);
-  const rows = Math.max(...tree.map((n) => n.row)) + 1, cols = Math.max(8, ...tree.map((n) => n.col)) + 1;
+  const rows = Math.max(...tree.map((n) => n.row)) + 1, cols = 9;
+  const pad = TREE_CELL / 2;                 // node art overhangs its square by half a square
   const canvas = h("div", { class: "tree-canvas" });
-  canvas.style.width = `${cols * TREE_CELL}px`; canvas.style.height = `${rows * TREE_CELL}px`;
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("width", cols * TREE_CELL); svg.setAttribute("height", rows * TREE_CELL);
-  svg.setAttribute("class", "tree-lines");
-  const mid = (v) => v * TREE_CELL + TREE_CELL / 2;
-  const lines = [];
-  for (const n of tree) for (const pid of n.parents) {
-    const p = byId.get(pid); if (!p) continue;
-    const path = document.createElementNS(NS, "path");
-    path.setAttribute("d", `M${mid(p.col)} ${mid(p.row)} H${mid(n.col)} V${mid(n.row)}`);
-    svg.append(path); lines.push([p, n, path]);
+  canvas.style.width = `${cols * TREE_CELL + 2 * pad}px`;
+  canvas.style.height = `${rows * TREE_CELL + 2 * pad}px`;
+  const nodeCells = new Set(tree.map((n) => `${n.row},${n.col}`));
+  const { cells, edges } = treeConnectors(tree, byId);
+
+  const connEls = new Map();
+  for (const [key, c] of cells) {
+    if (nodeCells.has(key)) continue;        // WynnBuilder hides links drawn over a node
+    const [r, col] = key.split(",").map(Number);
+    const el = h("span", { class: "tree-conn" });
+    el.style.left = `${pad + col * TREE_CELL + (TREE_CELL - CONN_PX) / 2}px`;
+    el.style.top = `${pad + r * TREE_CELL + (TREE_CELL - CONN_PX) / 2}px`;
+    connEls.set(key, el); canvas.append(el);
   }
-  canvas.append(svg);
-  const desc = h("div", { class: "tree-desc" });
   const nodes = new Map();
   for (const n of tree) {
-    const spr = h("span", { class: "node-spr" });
-    const b = h("button", { class: "node", "aria-label": n.name }, spr);
-    b.style.left = `${n.col * TREE_CELL}px`; b.style.top = `${n.row * TREE_CELL}px`;
-    b.addEventListener("mouseenter", () => describe(n));
-    b.addEventListener("focus", () => describe(n));
-    b.addEventListener("mouseleave", () => describeDefault());
-    b.addEventListener("click", () => {
+    const art = h("span", { class: "tree-node-art" });
+    art.style.left = `${pad + n.col * TREE_CELL - TREE_CELL / 2}px`;
+    art.style.top = `${pad + n.row * TREE_CELL - TREE_CELL / 2}px`;
+    const hit = h("button", { class: "tree-hit", "aria-label": n.name });
+    hit.style.left = `${pad + n.col * TREE_CELL}px`; hit.style.top = `${pad + n.row * TREE_CELL}px`;
+    hit.addEventListener("mouseenter", () => describe(n));
+    hit.addEventListener("focus", () => describe(n));
+    hit.addEventListener("mouseleave", () => describeDefault());
+    hit.addEventListener("click", () => {
       if (n.id === root.id) return;
       edit((x) => { const s = new Set(x.tree || []); s.has(n.name) ? s.delete(n.name) : s.add(n.name); x.tree = [...s]; });
       paint(); describe(n);
     });
-    nodes.set(n.id, { b, spr });
-    canvas.append(b);
+    nodes.set(n.id, { art, hit });
+    canvas.append(art, hit);
   }
-  function active() { const on = new Set(S.cur.doc.tree || []); on.add(root.name); return on; }
+
+  const selectedIds = () => {
+    const names = new Set(S.cur.doc.tree || []);
+    return new Set(tree.filter((n) => n.id === root.id || names.has(n.name)).map((n) => n.id));
+  };
+  const setTile = (el, [x, y]) => { el.style.backgroundPosition = `-${x * CONN_PX}px -${y * CONN_PX}px`; };
+
   function paint() {
-    const on = active(), failed = new Set(S.cur.doc.status?.tree_failed || []);
+    const sel = selectedIds();
+    const failed = new Set(S.cur.doc.status?.tree_failed || []);
+    const avail = treeAvailability(tree, byId, sel, S.cur.doc.status?.ap?.[1] ?? S.cur.doc._ap_cap ?? 45);
     for (const n of tree) {
-      const sel = on.has(n.name);
-      const avail = !sel && n.parents.some((pid) => on.has(byId.get(pid)?.name));
-      const { b, spr } = nodes.get(n.id);
-      spr.style.backgroundPosition = `-${(NODE_ATLAS[n.icon] ?? 0) * TREE_SPRITE}px -${(sel ? 2 : avail ? 1 : 0) * TREE_SPRITE}px`;
-      b.classList.toggle("on", sel); b.classList.toggle("fail", failed.has(n.name));
-      b.setAttribute("aria-pressed", String(sel));
-      b.title = `${n.name} (${n.cost} AP)` + (failed.has(n.name) ? " — can't activate" : "");
+      const { art, hit } = nodes.get(n.id);
+      const state = sel.has(n.id) ? 2 : avail.has(n.id) ? 1 : 0;
+      art.style.backgroundPosition = `-${(NODE_ATLAS[n.icon] ?? 0) * NODE_PX}px -${state * NODE_PX}px`;
+      hit.classList.toggle("fail", failed.has(n.name));
+      hit.setAttribute("aria-pressed", String(sel.has(n.id)));
+      hit.title = `${n.name} (${n.cost} AP)` + (failed.has(n.name) ? " — can't be activated" : "");
     }
-    for (const [p, n, path] of lines) path.setAttribute("class", on.has(p.name) && on.has(n.name) ? "on" : "");
+    // atree_set_edge, recomputed from scratch: an edge is lit when both ends are selected
+    const hl = new Map([...cells.keys()].map((k) => [k, [0, 0, 0, 0]]));
+    for (const n of tree) for (const [pid, keys] of edges.get(n.id)) {
+      if (!(sel.has(n.id) && sel.has(pid))) continue;
+      const p = byId.get(pid);
+      const childSide = p.col > n.col ? 0 : 1, parentSide = 1 - childSide;
+      for (const key of keys) {
+        const c = cells.get(key), state = hl.get(key);
+        if (c.type.split("1").length - 1 > 2) {  // T-branch or 4-way: light individual arms
+          const [r, col] = key.split(",").map(Number);
+          if (r === p.row) state[parentSide]++; else state[2]++;
+          if (col === n.col) state[3]++; else state[childSide]++;
+        } else {
+          state[0]++;
+        }
+      }
+    }
+    for (const [key, el] of connEls) {
+      const c = cells.get(key), state = hl.get(key), atlas = CONNECTOR_ATLAS[c.type];
+      if (!atlas) { el.hidden = true; continue; }
+      let tile;
+      if (c.type.split("1").length - 1 > 2) tile = atlas[state.map((v) => (v ? "1" : "0")).join("")] || atlas["0000"];
+      else tile = state[0] > 0 ? atlas[c.type] : atlas["0000"];
+      setTile(el, tile);
+    }
   }
   function describe(n) {
     const names = (ids) => ids.map((i) => byId.get(i)?.name).filter(Boolean).join(", ");
     const text = n.desc.replace(/<[^>]*>/g, "").replace(/&emsp;/g, " ").replace(/&nbsp;/g, " ");
-    const on = active().has(n.name);
+    const on = selectedIds().has(n.id);
     setKids(desc,
       h("div", { class: "td-name" }, n.name),
       h("div", { class: "muted" }, `${n.cost} AP` + (n.archetype ? ` · ${n.archetype}` : "") +
-        (n.req ? ` · needs ${n.req} ${n.archetype} abilities first` : "")),
+        (n.req ? ` · needs ${n.req} ${n.req_archetype} abilities first` : "")),
       h("div", { class: "td-text" }, text),
       n.deps.length ? h("div", { class: "muted" }, `Requires: ${names(n.deps)}`) : null,
       n.blockers.length ? h("div", { class: "muted" }, `Can't be taken with: ${names(n.blockers)}`) : null,
-      h("div", { class: on ? "pos" : "muted" }, on ? "Selected — click to remove" : "Click to add"));
+      h("div", { class: on ? "pos" : "muted" }, n.id === root.id ? "Always active" : on ? "Selected — click to remove" : "Click to add"));
   }
   function describeDefault() {
-    const on = active();
-    desc.replaceChildren(h("div", { class: "td-name" }, `Active abilities: ${on.size}`),
+    const sel = selectedIds();
+    desc.replaceChildren(h("div", { class: "td-name" }, `Active abilities: ${sel.size}`),
       h("div", { class: "muted" }, "Hover an ability for details. Click to add or remove it."),
-      h("ul", { class: "td-list" }, ...tree.filter((n) => on.has(n.name)).map((n) => h("li", {}, n.name))));
+      h("ul", { class: "td-list" }, ...tree.filter((n) => sel.has(n.id)).map((n) => h("li", {}, n.name))));
   }
+  const desc = h("div", { class: "tree-desc" });
   S.cur.drawChips = paint;
   paint(); describeDefault();
   box.replaceChildren(h("div", { class: "tree-wrap" }, h("div", { class: "tree-scroll" }, canvas), desc));

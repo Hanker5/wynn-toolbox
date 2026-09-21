@@ -152,3 +152,20 @@ def test_item_icons_and_tooltip(page):
     page.wait_for_selector("#tooltip:not([hidden]) .item-card", timeout=5000)
     card = page.inner_text("#tooltip")
     assert "Galleon" in card and "Stealing" in card
+
+
+def test_ability_tree_uses_wynnbuilder_art_and_toggles(page):
+    open_build(page, "shaman_105_stormdrain")
+    assert page.locator(".tree-hit").count() > 80
+    assert page.locator(".tree-conn").count() > 100
+    assert page.evaluate("fetch('/assets/atree-connectors.png').then(r => r.status)") == 200
+    # lit connectors use a highlighted tile (column != the dark "0000" tile for straight links)
+    title = page.locator("#ed-tree-title")
+    before = title.inner_text()
+    node = page.locator(".tree-hit[aria-label='Shepherd']")
+    was = node.get_attribute("aria-pressed")
+    node.click()
+    assert node.get_attribute("aria-pressed") != was
+    page.wait_for_function(
+        f"document.querySelector('#ed-tree-title').innerText !== {before!r}", timeout=15000)
+    assert not page.errors
