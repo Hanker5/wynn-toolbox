@@ -263,3 +263,6 @@ input.powders.invalid { border-color: var(--bad, #ff5555); }
 .aspects .aspect { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-bottom: 8px; }
 .aspects .aspect .eq-line { grid-column: 1 / -1; white-space: pre-line; }
 .aspects .tier-sel { width: auto; }
+
+details.sources > summary { cursor: pointer; }
+details.sources ul { margin: 4px 0; padding-left: 18px; font-size: 12px; }

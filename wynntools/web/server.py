@@ -197,6 +197,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                                                   "defReq", "agiReq")]}
         if gd.name(it).startswith("CR-"):
             c = it["craft"]
+            from ..crafting import NO_INGREDIENT, ingredient_sources
+            out["sources"] = {n: ingredient_sources(gd.crafts.ing_by_name[n])
+                              for n in dict.fromkeys(c.ingredients) if n != NO_INGREDIENT}
             out["craft"] = {"recipe": c.recipe, "ingredients": c.ingredients,
                             "mat_tiers": list(c.mat_tiers), "durability": it["durability"],
                             "problems": it["problems"],

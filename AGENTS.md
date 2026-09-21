@@ -86,6 +86,7 @@ All commands run through `uv run wt ...` from the repo root.
 | `wt damage <link or build file> [--perfect] [--parts]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP. Typical rolls by default; `--perfect` matches the WynnBuilder page. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
+| `wt ingredient "Stolen Pearls"` | Which mobs drop an ingredient and where (x, y, z). `wt craft` lists this for every suggested ingredient. |
 | `wt own add\|remove\|list [NAME] [--tome] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes and real roll values. |
 | `wt gear spec.json --tree PRESET` with `"floors": {"damage": {"Ophanim": 15000}}` | Damage minimums: a spell's headline number (melee: average DPS), checked exactly on every candidate with the preset's tree. |
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |

@@ -338,7 +338,7 @@ def cmd_own(a):
 CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
 
 
-def describe_craft(it):
+def describe_craft(it, cd=None):
     """Human-readable lines for a crafted item."""
     from .verify import stat
     c = it["craft"]
@@ -354,6 +354,13 @@ def describe_craft(it):
     reqs = {s: it[f"{s}Req"] for s in ("str", "dex", "int", "def", "agi") if it[f"{s}Req"]}
     lines.append(f"  requirements {reqs or 'none'} · durability {it['durability'][0]}-{it['durability'][1]}")
     lines.append(f"  {CRAFTER_URL}{it['name'][3:]}")
+    if cd is not None:
+        from .crafting import NO_INGREDIENT, source_line
+        lines.append("  where to get them (x, z):")
+        for name in dict.fromkeys(c.ingredients):
+            if name != NO_INGREDIENT:
+                n = c.ingredients.count(name)
+                lines.append(f"    {n}x {name}: {source_line(cd.ing_by_name[name])}")
     return lines
 
 
@@ -373,8 +380,36 @@ def cmd_craft(a):
           f"(IDs at {a.roll} roll; crafted ranges are ingredient min–max)")
     for rank, (score, it) in enumerate(res, 1):
         print(f"\n#{rank}  score {score:g}")
-        for line in describe_craft(it):
+        for line in describe_craft(it, gd.crafts):
             print("  " + line)
+    return 0
+
+
+def cmd_ingredient(a):
+    """Where an ingredient drops, with every known spot."""
+    from .crafting import ingredient_sources
+    cd = GameData().crafts
+    matches = [n for n in cd.ing_by_name if a.name.lower() in n.lower()]
+    exact = [n for n in matches if n.lower() == a.name.lower()]
+    if exact:
+        matches = exact
+    if not matches:
+        raise SystemExit(f"no ingredient matches {a.name!r}")
+    if len(matches) > 1:
+        print("Several ingredients match: " + ", ".join(sorted(matches)[:20]))
+        return 1
+    ing = cd.ing_by_name[matches[0]]
+    stats = ", ".join(f"{k} {v['minimum']}..{v['maximum']}" for k, v in (ing.get("ids") or {}).items())
+    print(f"{matches[0]} · level {ing.get('lvl')} · {'★' * (ing.get('tier') or 0)} · "
+          f"{', '.join(s.title() for s in ing.get('skills') or [])}")
+    if stats:
+        print(f"  {stats}")
+    src = ingredient_sources(ing)
+    if not src:
+        print("  No mob is listed in WynnBuilder's data (it may come from a merchant, quest or gathering).")
+    for e in src:
+        where = "; ".join(f"({x}, {y}, {z}) within {r}" for x, y, z, r in e["spots"]) or "no location listed"
+        print(f"  {e['mob']}: {where}")
     return 0
 
 
@@ -451,6 +486,9 @@ def main(argv=None):
     s.add_argument("--max-reqs", type=int, help="cap on total skill requirements")
     s.add_argument("--top", type=int, default=3)
     s.set_defaults(fn=cmd_craft)
+    s = sub.add_parser("ingredient", help="where a crafting ingredient drops")
+    s.add_argument("name")
+    s.set_defaults(fn=cmd_ingredient)
     s = sub.add_parser("serve", help="start the local web app (this computer only)")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--builds", default="builds", help="folder of build files")

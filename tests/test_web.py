@@ -96,6 +96,7 @@ def test_craft_suggest_and_item_lookup(client):
     res = client.post("/api/craft-suggest", json={"slot": "ring1", "level": 105,
                                                   "objective": {"eSteal": 1}, "top": 2}).json()
     assert res and res[0]["craft"]["ingredients"] and not res[0]["craft"]["problems"]
+    assert res[0]["sources"]["Stolen Pearls"][0]["mob"] == "Tribal Exile"
     it = client.get("/api/item", params={"name": res[0]["name"]}).json()
     assert it["craft"]["recipe"] == "Ring-103-105"
     assert client.post("/api/craft-suggest", json={"slot": "weapon", "level": 105,

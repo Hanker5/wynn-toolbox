@@ -130,8 +130,9 @@ entries may be stated as fact.
   Mage presets assume they do.
 - Whether a **crafted item's IDs roll randomly** within the ingredient range when
   crafted. The tools treat the middle of the range as typical.
-- **How obtainable ingredients are** (drop rates, trading). The suggester only
-  knows what is legal, not what is easy to get.
+- **How obtainable ingredients are** (drop rates, trading). WynnBuilder's data
+  says which mobs drop an ingredient and where (`wt ingredient`), but not how
+  often; 152 of 972 ingredients list no mob at all.
 - Whether two copies of the same tome can sit in paired slots (both mobXp slots,
   for example). WynnBuilder allows it.
 

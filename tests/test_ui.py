@@ -279,3 +279,13 @@ def test_powders_and_aspects_in_editor(page, app):
         page.set_viewport_size({"width": 1440, "height": 1800})
         page.locator(".ed-main").screenshot(path=f"{os.environ['WT_SHOTS']}/72-powders-aspects.png")
     assert not page.errors
+
+
+def test_craft_helper_shows_where_ingredients_drop(page):
+    open_build(page, "shaman_105_stormdrain")
+    page.click(".slot:has-text('Ring 1') button:has-text('Craft')")
+    page.wait_for_selector(".craft-opt details.sources", timeout=60000)
+    page.locator(".craft-opt details.sources summary").first.click()
+    text = page.locator(".craft-opt details.sources").first.inner_text()
+    assert "Stolen Pearls" in text and "Tribal Exile (1488, -1513)" in text
+    assert not page.errors

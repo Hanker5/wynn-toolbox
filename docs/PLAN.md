@@ -63,7 +63,9 @@ supports aspects), aspect effects applied.
 **Done when.** Links with powders/aspects made in WynnBuilder round-trip and
 show the same totals.
 
-## 5. Where to get crafting ingredients
+## 5. Where to get crafting ingredients — DONE
+`wt ingredient`, sources under every `wt craft` suggestion, and a "where to get
+them" list in the editor's craft helper, from WynnBuilder's `droppedBy` data.
 **Work.** Show `droppedBy` mobs (and coordinates when known) in the crafting
 helper and `wt craft`; flag ingredients with no known source.
 

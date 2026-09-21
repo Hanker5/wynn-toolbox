@@ -38,3 +38,19 @@ def test_suggested_crafts_are_valid_and_strong(gd):
     assert res and all(not it["problems"] for _, it in res)
     assert stat(res[0][1], "eSteal") >= 22          # vs 8 for the best normal ring
     assert res == suggest_crafts(CraftSpec("ring", 105, {"eSteal": 1}), gd.crafts, top=3)
+
+
+def test_ingredient_sources_merge_mobs_and_spots(gd):
+    from wynntools.crafting import ingredient_sources, source_line
+    cd = gd.crafts
+    src = ingredient_sources(cd.ing_by_name["Stolen Pearls"])
+    assert [e["mob"] for e in src] == ["Tribal Exile", "Rymek Citizen"]   # listed 2x and 3x
+    assert src[0]["spots"] == [[1488, 113, -1513, 7]]                     # single spot, deduped
+    assert len(src[1]["spots"]) == 9                                      # 10 listed, one repeat
+    fake = {"droppedBy": [{"name": "A", "coords": None}, {"name": "B", "coords": False},
+                          {"name": "A", "coords": [1, 2, 3, 4]}]}
+    assert ingredient_sources(fake) == [{"mob": "A", "spots": [[1, 2, 3, 4]]},
+                                        {"mob": "B", "spots": []}]
+    assert "no mob listed" in source_line({"droppedBy": []})
+    assert source_line(cd.ing_by_name["Stolen Pearls"]).startswith("Tribal Exile (1488, -1513), Rymek Citizen (1265, -1280) +8 spots")
+    assert "powder" in source_line(cd.ing_by_name["Fire Powder VI"]).lower()

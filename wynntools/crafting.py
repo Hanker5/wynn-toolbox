@@ -84,6 +84,44 @@ class CraftData:
         return [r for r in self.recipes if r["type"] == item_type.upper()]
 
 
+def ingredient_sources(ing):
+    """Mobs that drop an ingredient, from WynnBuilder's `droppedBy`, merged by mob:
+    [{"mob": name, "spots": [[x, y, z, radius], ...]}]. A mob listed without
+    coordinates gets no spots. An empty list means the data names no mob (it may
+    come from somewhere else, such as a merchant, quest or gathering)."""
+    out = {}
+    for d in ing.get("droppedBy") or []:
+        entry = out.setdefault(d["name"], {"mob": d["name"], "spots": []})
+        c = d.get("coords")
+        spots = c if isinstance(c, list) and c and isinstance(c[0], list) else \
+            [c] if isinstance(c, list) and c else []
+        for s in spots:
+            if s not in entry["spots"]:
+                entry["spots"].append(s)
+    return list(out.values())
+
+
+def source_line(ing, max_mobs=3):
+    """One human line: "Tribal Exile (1488, -1513), Rymek Citizen (1265, -1280) +9 spots"."""
+    if ing.get("isPowder"):
+        return "a powder (from mobs, or made at a Powder Master)"
+    src = ingredient_sources(ing)
+    if not src:
+        return "no mob listed in WynnBuilder's data (merchant, quest or gathering?)"
+    parts = []
+    for e in src[:max_mobs]:
+        if e["spots"]:
+            x, _, z, *_ = e["spots"][0]
+            n = len(e["spots"]) - 1
+            more = f" +{n} spot{'s' if n > 1 else ''}" if n else ""
+            parts.append(f"{e['mob']} ({x}, {z}){more}")
+        else:
+            parts.append(f"{e['mob']} (no location listed)")
+    if len(src) > max_mobs:
+        parts.append(f"{len(src) - max_mobs} more mob(s)")
+    return ", ".join(parts)
+
+
 # ------------------------------------------------------------------ stats
 
 def _range(recipe, key):

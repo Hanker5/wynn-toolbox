@@ -41,7 +41,9 @@ Set `"crafted": true` to let the search use crafted gear. It often wins for
 niche stats (Stealing, for one) and costs little search time. Ask first if the
 player doesn't craft, since crafts need ingredients they must collect. For one
 slot, `uv run wt craft --type <slot> --level N --maximize <stat>` shows the best
-crafts with their ingredient grid and a WynnBuilder crafter link.
+crafts with their ingredient grid, a WynnBuilder crafter link, and which mobs
+drop each ingredient and where (`uv run wt ingredient <name>` for all spots).
+Mention when an ingredient has no listed mob.
 
 Use one objective stat unless the player asked for more. A tiny tiebreaker
 weight (0.01) on a second stat is fine.

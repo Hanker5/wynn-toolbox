@@ -526,11 +526,7 @@ async function openCraft(slot, i, box, refresh) {
       out.replaceChildren(...res.map((r) => {
         const opt = h("div", { class: "craft-opt" },
           h("div", { class: "eq-line" }, itemLine(r)),
-          h("div", { class: "hint" }, "Ingredients: " + (() => {
-            const counts = {};
-            for (const x of r.craft.ingredients) if (x !== "No Ingredient") counts[x] = (counts[x] || 0) + 1;
-            return Object.entries(counts).map(([n, c]) => (c > 1 ? `${c}× ${n}` : n)).join(", ") || "none";
-          })()),
+          ingredientSources(r),
           h("div", { class: "row" },
             h("button", { class: "mini primary", onclick: () => {
               S.items[r.name] = { ...r, cls: TYPE_CLASS[r.type] };
@@ -548,6 +544,21 @@ async function openCraft(slot, i, box, refresh) {
     h("div", { class: "hint" }, "Crafted stats are ranges from the ingredients; the middle of the range counts as typical."));
   box.hidden = false;
   find();
+}
+
+function ingredientSources(r) {
+  // Each ingredient with the mobs that drop it (WynnBuilder's data), nearest spot first listed.
+  const counts = {};
+  for (const x of r.craft.ingredients) if (x !== "No Ingredient") counts[x] = (counts[x] || 0) + 1;
+  const rows = Object.entries(counts).map(([n, c]) => {
+    const src = r.sources?.[n] || [];
+    const where = /Powder [IVX]+$/.test(n) ? "a powder" : !src.length ? "no mob listed (merchant, quest or gathering?)"
+      : src.slice(0, 3).map((e) => e.spots.length ? `${e.mob} (${e.spots[0][0]}, ${e.spots[0][2]})${e.spots.length > 1 ? ` +${e.spots.length - 1}` : ""}` : e.mob).join(", ")
+        + (src.length > 3 ? `, ${src.length - 3} more` : "");
+    return h("li", {}, h("strong", {}, c > 1 ? `${c}× ${n}` : n), h("span", { class: "muted" }, ` · ${where}`));
+  });
+  return h("details", { class: "sources" }, h("summary", { class: "hint" }, `Ingredients: ${Object.keys(counts).join(", ") || "none"} · where to get them`),
+    h("ul", {}, rows), h("div", { class: "hint" }, "Coordinates are (x, z). From WynnBuilder's ingredient data."));
 }
 
 function renderTomes() {
