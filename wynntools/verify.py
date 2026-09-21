@@ -123,8 +123,30 @@ def summarize(build, gd, roll="base", inventory=None):
     set_stats, set_majors = set_bonus_stats(sp.set_counts, gd.sets)
     totals = {k: sum(stat(o, k, roll) for o in (*items, *tomes)) for k in STAT_KEYS}
     totals_max = {k: sum(stat(o, k, "max") for o in (*items, *tomes)) for k in STAT_KEYS}
+    from .codec import POWDERABLE
+    from .damage import armor_powder_stats       # applyArmorPowders: +def, -def, +hp
+    powder = {}
+    for idx, pw in zip(POWDERABLE, build.powders):
+        name = build.equipment[idx]
+        if name and pw and gd.item(name).get("category") == "armor":
+            for k, v in armor_powder_stats(gd.item(name), pw).items():
+                powder[k] = powder.get(k, 0) + v
     for t in (totals, totals_max):
+        for k, v in powder.items():
+            t[k] += v
         t["hp"] += base_hp(build.level) + set_stats.get("hpBonus", 0)
+    if build.weapon is not None:
+        # Stats the ability tree adds (e.g. +5 mana regen), as WynnBuilder's page shows
+        from .damage import build_stats, final_stats
+        for r, t in ((roll, totals), ("max", totals_max)):
+            before, after = build_stats(build, gd, r, inventory), final_stats(build, gd, r, inventory)[0]
+            for k in STAT_KEYS:
+                if k == "hp":
+                    d = after.get("hp", 0) + after.get("hpBonus", 0) - before.get("hp", 0) - before.get("hpBonus", 0)
+                else:
+                    d = after.get(k, 0) - before.get(k, 0)
+                if d:
+                    t[k] += d
         for k, v in set_stats.items():
             if k in t and k != "hpBonus":
                 t[k] += v

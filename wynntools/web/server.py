@@ -31,7 +31,8 @@ from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
-EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "skillpoints")
+EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
+            "skillpoints")
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
 
 
@@ -267,6 +268,16 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         for v in out.values():
             v.sort(key=lambda t: (-(t["lvl"] or 0), t["name"]))
         return out
+
+    @app.get("/api/aspects/{cls}")
+    def aspects_api(cls: str):
+        if cls not in gd.atrees:
+            raise HTTPException(404, f"no aspects for {cls}")
+        return [{"name": a["displayName"], "rarity": a.get("tier"),
+                 "tiers": [{"threshold": t.get("threshold"),
+                            "desc": (t.get("description") or "").replace("</br>", "\n")}
+                           for t in a["tiers"]]}
+                for a in sorted(gd.aspects(cls), key=lambda a: a["displayName"])]
 
     @app.get("/api/tree/{cls}")
     def tree(cls: str):

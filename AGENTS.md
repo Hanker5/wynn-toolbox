@@ -38,7 +38,8 @@ questions; you run the commands.
      roll 30–130%). If the player gives real rolls, use them.
    - Skill points are left on **automatic**. If a mana floor relied on spare
      points going into Intelligence, say so; WynnBuilder won't do that itself.
-   - **Aspects are empty.**
+   - **Aspects are empty** in solver builds; say so. (Players can add them in
+     the editor or the build file's `aspects`; they change damage, not totals.)
    - Tomes are **goals to collect** unless the player said they own them.
    - WynnBuilder's page shows **perfect (130%) rolls**; say which one you quote.
    - Crafted items are **ranges**; the middle counts as typical. Mention that
@@ -96,7 +97,7 @@ All commands run through `uv run wt ...` from the repo root.
 Player builds live in `builds/*.json` (ignored by git). The player edits them in
 the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
-`level`, `equipment`, `tomes`, `tree`, `powders`, `skillpoints`); `link` and
+`level`, `equipment`, `tomes`, `tree`, `powders`, `aspects`, `skillpoints`); `link` and
 `status` are generated, so run `wt link <file> --write` after any edit.
 
 `builds/inventory.json` is the player's inventory, not a build. Change it with

@@ -76,6 +76,12 @@ entries may be stated as fact.
   damage except parts marked `use_str: false`.
 - Effective HP = HP / (agility dodge and defence reduction) / (2 − class defence);
   class defence is 0.6 relik, 0.7 bow, 0.8 wand, 1.0 dagger and spear.
+- Armor powders add defence to their element, take some from the element
+  before it (cycle ETWFA) and add flat HP by tier (5/10/20/30/45/60/75);
+  weapon powders convert neutral damage in the order first applied.
+- The page's totals include ability-tree stat bonuses (the Mage tree gives
+  +5 mana regen); the Summary does too. Solver floors count gear only, which
+  errs on the safe side.
 - Ability sliders (stacks, orbs) and toggles change damage; WynnBuilder opens a
   link with sliders at their defaults and toggles off, and so does `wt damage`.
 

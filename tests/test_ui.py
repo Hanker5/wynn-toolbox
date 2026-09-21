@@ -249,3 +249,33 @@ def test_solver_offers_spell_damage_minimum(page):
     options = spell.locator("option").all_inner_texts()
     assert "Wand Melee (DPS)" in options and "Ophanim" in options
     assert not page.errors
+
+
+def test_powders_and_aspects_in_editor(page, app):
+    open_build(page, "mage_105_gaia_lightbender")
+    before = page.inner_text("#ed-damage")
+    box = page.locator("input[aria-label='weapon powders']")
+    box.fill("t6 t6 t6 t6")                                 # Gaia has 3 slots
+    box.press("Tab")
+    assert "invalid" in (box.get_attribute("class") or "")
+    box.fill("t6t6")
+    box.press("Tab")
+    settle(page)
+    assert box.input_value() == "t6 t6"
+    assert page.inner_text("#ed-damage") != before          # powders change the damage
+    page.click("#ed-aspects-panel summary")
+    first = page.locator("select[aria-label='Aspect 1']")
+    name = first.locator("option").nth(1).inner_text()
+    first.select_option(name)
+    settle(page)
+    assert "1/5" in page.inner_text("#ed-aspects-sum")
+    assert page.locator("select[aria-label='Aspect 1 tier']").input_value() != ""
+    page.click("#ed-save")
+    page.wait_for_function("document.querySelector('#ed-save').disabled")
+    doc = json.loads((Path(app.builds_dir) / "gaia.json").read_text())
+    assert doc["powders"][4] == ["t6", "t6"] and doc["aspects"][0][0] == name
+    import os
+    if os.environ.get("WT_SHOTS"):
+        page.set_viewport_size({"width": 1440, "height": 1800})
+        page.locator(".ed-main").screenshot(path=f"{os.environ['WT_SHOTS']}/72-powders-aspects.png")
+    assert not page.errors

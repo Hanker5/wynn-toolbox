@@ -333,7 +333,7 @@ async function loadList() {
 }
 
 // ------------------------------------------------------------------ build editor
-const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "skillpoints"];
+const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects", "skillpoints"];
 const editable = (doc) => Object.fromEntries(EDITABLE.filter((k) => k in doc).map((k) => [k, doc[k]]));
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -380,6 +380,10 @@ async function renderEditor() {
     h("summary", { class: "panel-h" }, h("span", { id: "ed-tomes-sum" }, "Tomes")),
     h("div", { id: "ed-tomes", class: "tomes" }));
   tomesPanel.addEventListener("toggle", () => store.set("wt-tomes-open", tomesPanel.open ? "1" : "0"));
+  const aspectsPanel = h("details", { class: "panel", id: "ed-aspects-panel", open: store.get("wt-aspects-open") === "1" },
+    h("summary", { class: "panel-h" }, h("span", { id: "ed-aspects-sum" }, "Aspects")),
+    h("div", { id: "ed-aspects", class: "aspects" }));
+  aspectsPanel.addEventListener("toggle", () => store.set("wt-aspects-open", aspectsPanel.open ? "1" : "0"));
   ed.replaceChildren(
     h("div", { class: "ed-head" },
       h("input", { class: "name", value: d.name || "", "aria-label": "Build name",
@@ -392,7 +396,7 @@ async function renderEditor() {
       h("div", { class: "ed-main" },
         h("section", { class: "panel" }, h("div", { id: "ed-equip", class: "equip" })),
         h("section", { class: "panel" }, h("div", { id: "ed-sp", class: "sp" }), h("div", { id: "ed-sp-foot", class: "sp-foot" })),
-        tomesPanel,
+        tomesPanel, aspectsPanel,
         h("section", { class: "panel" }, h("div", { class: "panel-h", id: "ed-tree-h" }), h("div", { id: "ed-tree" }))),
       h("aside", { class: "ed-side" },
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, h("span", {}, "Summary"), rollToggle()),
@@ -404,7 +408,7 @@ async function renderEditor() {
           h("div", { id: "ed-sets", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Checks"), h("div", { id: "ed-checks", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Notes"), notes))));
-  renderEquipment(); renderTomes(); await renderTree(); renderDerived();
+  renderEquipment(); renderTomes(); await renderTree(); await renderAspects(); renderDerived();
 }
 
 function renderEquipment() {
@@ -431,12 +435,14 @@ function slotView(slot) {
     placeholder: `No ${slotLabel(slot).toLowerCase()}`, "aria-label": slot, spellcheck: "false" });
   const meta = h("div", { class: "eq-line" }, itemLine(S.items[cur()]));
   const craftBox = h("div", { class: "craft-box", hidden: true });
+  const powderBox = POWDER_SLOTS.includes(slot) ? powderInput(slot, () => S.items[cur()]) : null;
   const refresh = () => {
     input.value = displayName(cur());
     input.className = "eq-name tier-" + (S.items[cur()]?.tier || "none");
     icon.replaceChildren(itemIcon(typeNow(), 44, S.items[cur()]?.tier));
     meta.replaceChildren(...itemLine(S.items[cur()]));
     ownBtn.redraw?.();
+    powderBox?.redraw();
   };
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
     onclick: () => openCraft(slot, i, craftBox, refresh) }, "Craft…");
@@ -448,8 +454,8 @@ function slotView(slot) {
     (o) => {
       S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] };
       const oldCls = weaponClass(S.cur.doc.equipment[8]);
-      edit((x) => { x.equipment[i] = o.name; if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) x.tree = []; });
-      if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { renderEquipment(); renderTree(); } else refresh();
+      edit((x) => { x.equipment[i] = o.name; if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { x.tree = []; x.aspects = null; } });
+      if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { renderEquipment(); renderTree(); renderAspects(); } else refresh();
     });
   input.addEventListener("change", () => {
     if (!input.value.trim()) { edit((x) => { x.equipment[i] = null; }); refresh(); }
@@ -461,7 +467,48 @@ function slotView(slot) {
     h("div", { class: "eq-body" },
       h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)),
         h("span", { class: "row tight" }, ownBtn, craftBtn)),
-      ac, meta, craftBox));
+      ac, meta, powderBox, craftBox));
+}
+
+// Powders, typed as WynnBuilder does: element letter + tier ("t6 t6 e6" or "t6t6e6").
+const POWDER_SLOTS = ["helmet", "chestplate", "leggings", "boots", "weapon"];
+const POWDER_EL = { e: "earth", t: "thunder", w: "water", f: "fire", a: "air" };
+function parsePowders(text) {
+  const t = text.toLowerCase().replace(/[\s,]+/g, "");
+  const out = [];
+  for (let i = 0; i < t.length; i += 2) {
+    const p = t.slice(i, i + 2);
+    if (!/^[etwfa][1-7]$/.test(p)) return null;
+    out.push(p);
+  }
+  return out;
+}
+function powderInput(slot, item) {
+  const k = POWDER_SLOTS.indexOf(slot);
+  const cur = () => (S.cur.doc.powders || [])[k] || [];
+  const chips = h("span", { class: "powder-chips" });
+  const box = h("input", { class: "powders", spellcheck: "false", "aria-label": `${slot} powders`,
+    value: cur().join(" ") });
+  const draw = () => {
+    const slots = item()?.slots || 0;
+    box.placeholder = slots ? `${slots} powder slot${slots > 1 ? "s" : ""}` : "no powder slots";
+    box.title = slots ? "Element + tier, like t6 t6 (earth e, thunder t, water w, fire f, air a)" : "";
+    box.disabled = !slots && !cur().length;
+    chips.replaceChildren(...cur().map((p) => h("span", { class: `powder ${POWDER_EL[p[0]]}` }, `${ELEMENTS[ELEM_BY_PREFIX[p[0]]].sym}${p[1]}`)));
+  };
+  box.addEventListener("change", () => {
+    const got = parsePowders(box.value), slots = item()?.slots || 0;
+    const bad = got === null || got.length > slots;
+    box.classList.toggle("invalid", bad);
+    box.title = got === null ? "Use element + tier, like t6 or e4" : bad ? `Only ${slots} slot(s)` : "";
+    if (bad) return;
+    edit((x) => { x.powders = x.powders || [[], [], [], [], []]; x.powders[k] = got; });
+    box.value = got.join(" "); draw();
+  });
+  draw();
+  const wrap = h("div", { class: "powder-row" }, box, chips);
+  wrap.redraw = () => { box.value = cur().join(" "); draw(); };
+  return wrap;
 }
 
 async function openCraft(slot, i, box, refresh) {
@@ -521,6 +568,43 @@ function renderTomes() {
     describe();
     box.append(h("div", { class: "tome" }, h("label", {}, slot.replace(/Tome(\d)/, " tome $1").replace(/Xp/, " XP").replace(/^./, (c) => c.toUpperCase())), sel, info));
   });
+}
+
+// ------------------------------------------------------------------ aspects
+async function renderAspects() {
+  const d = S.cur.doc, box = $("#ed-aspects"); if (!box) return;
+  const cls = weaponClass(d.equipment[8]);
+  const sum = $("#ed-aspects-sum");
+  if (!cls) { box.replaceChildren(h("p", { class: "hint" }, "Pick a weapon first: aspects belong to a class.")); if (sum) sum.textContent = "Aspects"; return; }
+  S.aspects ??= {};
+  S.aspects[cls] ??= await api("GET", `/api/aspects/${cls}`);
+  const all = S.aspects[cls], byName = Object.fromEntries(all.map((a) => [a.name, a]));
+  const cur = () => (S.cur.doc.aspects || [null, null, null, null, null]);
+  const setAt = (k, v) => edit((x) => { const a = [...(x.aspects || [null, null, null, null, null])]; a[k] = v; x.aspects = a.some(Boolean) ? a : null; });
+  const rows = [0, 1, 2, 3, 4].map((k) => {
+    const entry = cur()[k];
+    const sel = h("select", { "aria-label": `Aspect ${k + 1}` }, h("option", { value: "" }, "— none —"),
+      all.map((a) => h("option", { value: a.name, class: `tier-${a.rarity}` }, a.name)));
+    const tier = h("select", { "aria-label": `Aspect ${k + 1} tier`, class: "tier-sel" });
+    const info = h("div", { class: "eq-line" });
+    const draw = () => {
+      const a = byName[sel.value];
+      sel.className = a ? `tier-${a.rarity}` : "";
+      tier.replaceChildren(...(a ? a.tiers.map((t, i) => h("option", { value: i + 1 }, `Tier ${i + 1}`)) : []));
+      tier.disabled = !a; tier.hidden = !a;
+      const e = cur()[k];
+      if (a && e) tier.value = String(e[1]);
+      info.replaceChildren(...(a && e ? [h("span", { class: "muted" }, `${a.rarity} · `), a.tiers[e[1] - 1]?.desc || ""] : []));
+    };
+    sel.value = entry?.[0] || "";
+    sel.onchange = () => { const a = byName[sel.value]; setAt(k, a ? [a.name, a.tiers.length] : null); draw(); drawSum(); };
+    tier.onchange = () => { setAt(k, [sel.value, +tier.value]); draw(); };
+    draw();
+    return h("div", { class: "aspect" }, sel, tier, info);
+  });
+  const drawSum = () => { if (sum) sum.textContent = `Aspects · ${cur().filter(Boolean).length}/5`; };
+  drawSum();
+  box.replaceChildren(...rows, h("p", { class: "hint" }, "New aspects start at their top tier. Aspects change abilities, so they show up in the Damage panel."));
 }
 
 // ------------------------------------------------------------------ ability tree
@@ -784,7 +868,8 @@ function renderChecks(st) {
     statRow("Skill points", `${fmt(st.sp_total)} / ${fmt(st.sp_available)}`, st.sp_total > st.sp_available ? "neg" : ""),
     statRow("Ability points", `${ap[0]} / ${ap[1]}`, ap[0] > ap[1] ? "neg" : ""),
     crafted ? statRow("Crafted items", `${crafted}`, "", h("span", { class: "muted" }, "  (ranges)")) : null,
-    h("p", { class: "hint" }, "Skill points are assigned automatically in the link. Aspects aren't set."));
+    h("p", { class: "hint" }, "Skill points are assigned automatically in the link. " +
+      ((c.doc.aspects || []).some(Boolean) ? "" : "No aspects set.")));
 }
 
 const DAMAGE_CLASS = { Neutral: "neutral", Earth: "earth", Thunder: "thunder", Water: "water", Fire: "fire", Air: "air" };

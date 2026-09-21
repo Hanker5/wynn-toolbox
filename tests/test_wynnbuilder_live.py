@@ -57,15 +57,23 @@ def browser():
         b.close()
 
 
-def page_numbers(browser, h):
+def page_numbers(browser, h, edit=None):
+    """The page's numbers for hash `h`. With `edit(page)`, the edit is made in
+    WynnBuilder's own inputs first, and the hash it then writes is returned too."""
     page = browser.new_page()
     try:
         page.goto(PAGE + h, wait_until="networkidle", timeout=120_000)
-        page.wait_for_function(
-            "() => typeof stat_agg_node !== 'undefined' && stat_agg_node.value"
-            " && atree_collect_spells.value", timeout=120_000)
+        ready = ("() => typeof stat_agg_node !== 'undefined' && stat_agg_node.value"
+                 " && atree_collect_spells.value")
+        page.wait_for_function(ready, timeout=120_000)
         page.wait_for_timeout(500)
-        return page.evaluate(PROBE)
+        if edit is None:
+            return page.evaluate(PROBE)
+        edit(page)
+        page.keyboard.press("Tab")
+        page.wait_for_function(f"() => location.hash.slice(1) !== {json.dumps(h)}", timeout=30_000)
+        page.wait_for_timeout(1000)
+        return page.evaluate(PROBE), page.evaluate("() => location.hash.slice(1)")
     finally:
         page.close()
 
@@ -108,6 +116,13 @@ def compare(build, gd, got):
                         close(x, y, f"{where} {key}")
             elif theirs.get("type") == "heal":
                 close(mine["heal_amount"], theirs["heal_amount"], f"{where} heal")
+    # Summary totals (gear, tomes, sets, armor powders, tree bonuses) at perfect rolls
+    from wynntools.verify import STAT_KEYS, summarize
+    tm = summarize(build, gd)["totals_max"]
+    page = got["stats"]
+    for k in STAT_KEYS:
+        want = page.get("hp", 0) + page.get("hpBonus", 0) if k == "hp" else page.get(k, 0)
+        close(tm[k], want, f"summary {k}")
     d = damage_report(build, gd)["defense"]
     hp, ehp, hpr, ehpr = got["defense"][:4]
     close(d["hp"], hp, "hp")
@@ -187,3 +202,42 @@ def test_random_builds_match_wynnbuilder(gd, browser, cls, seed):
     h = encode(build, gd)
     build = decode(h, gd)             # exactly what the page will see
     compare(build, gd, page_numbers(browser, h))
+
+
+@pytest.mark.parametrize("cls", list(CLASS_WEAPON))
+def test_links_edited_in_wynnbuilder_round_trip(gd, browser, cls):
+    """Powders and aspects typed into WynnBuilder's own inputs: the link it writes
+    round-trips through our codec, and our totals and damage equal the page's."""
+    rng = random.Random(f"edit-{cls}")
+    build = decode(encode(random_build(gd, cls, rng), gd), gd)
+    powders = {}
+    for slot, idx in zip(["helmet", "chestplate", "leggings", "boots", "weapon"], POWDERABLE):
+        name = build.equipment[idx]
+        slots = gd.item(name).get("slots") or 0 if name else 0
+        powders[slot] = "".join(f"{'etwfa'[rng.randrange(5)]}{rng.randint(1, 7)}"
+                                for _ in range(rng.randint(0, slots)))
+    aspect = rng.choice(gd.aspects(cls))
+    tier = rng.randint(1, len(aspect["tiers"]))
+
+    def edit(page):
+        for slot, text in powders.items():
+            page.fill(f"#{slot}-powder", text)
+        # the aspect inputs live in a collapsed dropdown: set them as typing would
+        page.evaluate("""([name, tier]) => {
+            for (const [id, v] of [['aspect1-choice', name], ['aspect1-tier-choice', tier]]) {
+                const el = document.getElementById(id);
+                el.value = v;
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        }""", [aspect["displayName"], str(tier)])
+
+    got, new_hash = page_numbers(browser, encode(build, gd), edit)
+    edited = decode(new_hash, gd)
+    assert encode(edited, gd) == new_hash
+    assert edited.aspects[0] == (aspect["id"], tier)
+    for slot, idx in zip(powders, POWDERABLE):
+        want = [f"{c}{t}" for c, t in zip(powders[slot][::2], powders[slot][1::2])]
+        from wynntools.codec import powder_name
+        assert [powder_name(p) for p in edited.powders[POWDERABLE.index(idx)]] == want, slot
+    compare(edited, gd, got)

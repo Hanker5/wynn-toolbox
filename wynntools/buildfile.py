@@ -10,6 +10,8 @@ are names, not ids, so people can edit them by hand:
       "tomes": [14 tome names or null, in codec.TOME_SLOTS order],
       "tree": [ability node names],
       "powders": [[...], ...],          # optional, 5 lists of names like "t6"
+                                        # (helmet, chestplate, leggings, boots, weapon)
+      "aspects": [["Aspect of ...", 3], null, ...],   # optional, 5 [name, tier] or null
       "skillpoints": null,              # optional; null = automatic
       "spec": {...}, "tree_preset": "...",   # optional: how it was generated
       "link": "...", "status": {...}    # written by the tools, do not edit
@@ -40,6 +42,24 @@ def to_build(doc, gd):
     if doc.get("powders"):
         b.powders = [[_powder_id(p) for p in slot] for slot in doc["powders"]]
     b.skillpoints = doc.get("skillpoints")
+    if doc.get("aspects") and any(doc["aspects"]):
+        if b.weapon is None:
+            raise KeyError("aspects need a weapon (they belong to a class)")
+        cls = gd.weapon_class(b.weapon)
+        by_name = {a["displayName"]: a for a in gd.aspects(cls)}
+        aspects = []
+        for entry in doc["aspects"]:
+            if not entry:
+                aspects.append(None)
+                continue
+            name, tier = entry
+            if name not in by_name:
+                raise KeyError(f"not a {cls} aspect: {name!r}")
+            tiers = len(by_name[name]["tiers"])
+            if not 1 <= int(tier) <= tiers:
+                raise KeyError(f"{name} has tiers 1-{tiers}, not {tier}")
+            aspects.append((by_name[name]["id"], int(tier)))
+        b.aspects = aspects + [None] * (5 - len(aspects))
     if b.weapon is not None:
         tree = gd.tree(gd.weapon_class(b.weapon))
         ids = {n["display_name"]: n["id"] for n in tree}
@@ -59,6 +79,9 @@ def from_build(b, gd):
         doc["tree"] = [names[i] for i in sorted(b.atree)]
     if any(b.powders):
         doc["powders"] = [[powder_name(p) for p in slot] for slot in b.powders]
+    if b.aspects and any(b.aspects) and b.weapon is not None:
+        names = {a["id"]: a["displayName"] for a in gd.aspects(gd.weapon_class(b.weapon))}
+        doc["aspects"] = [None if a is None else [names[a[0]], a[1]] for a in b.aspects]
     doc["skillpoints"] = b.skillpoints
     return doc
 

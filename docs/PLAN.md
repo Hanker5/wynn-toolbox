@@ -51,7 +51,11 @@ column; add DPS as a solver objective or floor.
 **Done when.** Differential tests match WynnBuilder's spell damage numbers for
 the session builds (all classes represented) within rounding.
 
-## 4. Powders and aspects in the editor
+## 4. Powders and aspects in the editor — DONE
+Powder boxes on the five powderable slots, an Aspects panel, `aspects` in build
+files, armor powders and ability-tree bonuses in the Summary totals.
+`-m live` types powders and an aspect into WynnBuilder's own inputs for every
+class; the link it writes round-trips and all totals and damage match.
 **Work.** Powder slots on powderable items (the codec already encodes them) and
 powder effects on stats/damage; aspect picker per class with tiers (codec
 supports aspects), aspect effects applied.

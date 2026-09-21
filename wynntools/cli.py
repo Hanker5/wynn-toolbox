@@ -33,6 +33,9 @@ def _print_report(ok, rep, gd):
     print(f"Tomes: {len(used)}/14")
     for slot, name in used:
         print(f"  {slot:<15}{name}")
+    if b.weapon and b.aspects and any(b.aspects):
+        names = {a["id"]: a["displayName"] for a in gd.aspects(gd.weapon_class(b.weapon))}
+        print("Aspects: " + ", ".join(f"{names[a[0]]} (tier {a[1]})" for a in b.aspects if a))
     if b.weapon:
         tree = gd.tree(gd.weapon_class(b.weapon))
         names = sorted(n["display_name"] for n in tree if n["id"] in b.atree)
