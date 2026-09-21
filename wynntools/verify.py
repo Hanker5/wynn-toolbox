@@ -3,7 +3,8 @@
 Each check here exists because the design session produced a wrong answer
 without it; see knowledge/mechanics.md "Mistakes the verifiers catch".
 """
-from .codec import decode, encode, link_hash
+from .codec import SLOTS, TOME_SLOTS, decode, encode, link_hash
+from .skillpoints import WYNN_ORDER, SPItem, calculate_skillpoints, set_bonus_stats
 from .rules import SKILLS, base_hp, max_mana, poison_per_second, rolled, skill_points
 
 REQ = [s + "Req" for s in SKILLS]
@@ -17,6 +18,9 @@ def stat(obj, key, roll="base"):
     plus Health Bonus (rolled). Crafted items carry explicit min/max values."""
     if key == "hp":
         return (obj.get("hp") or 0) + stat(obj, "hpBonus", roll)
+    actual = obj.get("_actual")
+    if actual and key in actual:                          # a real roll from the inventory
+        return actual[key]
     if "rolls" in obj and key in obj["rolls"]:          # crafted item
         lo, hi = obj["rolls"][key]
         return {"min": lo, "max": hi, "base": (lo + hi) // 2}[roll]
@@ -41,6 +45,23 @@ def sp_requirements(items, bonus_sources=()):
         for j, s in enumerate(SKILLS):
             need[j] = max(need[j], (it.get(REQ[j]) or 0) - (tot[j] - (it.get(s) or 0)))
     return [max(0, n) for n in need]
+
+
+def build_skillpoints(equipment, tomes, gd):
+    """WynnBuilder's skill-point result for gear (9 names in SLOTS order, None for
+    empty) and tome ids (14, TOME_SLOTS order). See wynntools.skillpoints."""
+    by_slot = dict(zip(SLOTS, equipment))
+    guild_id = tomes[TOME_SLOTS.index("guildTome1")] if tomes else None
+    eq = []
+    for slot in WYNN_ORDER:
+        if slot == "guildTome1":
+            eq.append(SPItem.of(gd.tome(guild_id)) if guild_id is not None else SPItem())
+        else:
+            name = by_slot.get(slot)
+            eq.append(SPItem.of(gd.item(name), gd.set_of.get(name)) if name else SPItem())
+    weapon = by_slot.get("weapon")
+    w = SPItem.of(gd.item(weapon), gd.set_of.get(weapon)) if weapon else SPItem()
+    return calculate_skillpoints(eq, w, gd.sets)
 
 
 def sp_feasible(need, level):
@@ -87,37 +108,51 @@ def ap_cost(tree, selected):
     return sum(by_id[i].get("cost") or 0 for i in selected)
 
 
-def summarize(build, gd, roll="base"):
-    """Totals for a build, with gear, tomes and base stats combined.
+def summarize(build, gd, roll="base", inventory=None):
+    """Totals for a build: gear, tomes, set bonuses and base stats combined.
 
     `totals` use `roll`; `totals_max` are perfect rolls, which is what
-    WynnBuilder's build page displays.
+    WynnBuilder's build page displays. Skill points follow WynnBuilder exactly
+    (build_skillpoints).
     """
-    items = [gd.item(n) for n in build.equipment if n is not None]
+    from .inventory import with_rolls
+    items = [with_rolls(gd.item(n), inventory.rolls(n) if inventory else None)
+             for n in build.equipment if n is not None]
     tomes = [gd.tome(t) for t in build.tomes if t is not None]
-    need = sp_requirements(items, tomes)
-    spare = skill_points(build.level) - sum(need)
+    sp = build_skillpoints(build.equipment, build.tomes, gd)
+    set_stats, set_majors = set_bonus_stats(sp.set_counts, gd.sets)
     totals = {k: sum(stat(o, k, roll) for o in (*items, *tomes)) for k in STAT_KEYS}
-    totals["hp"] += base_hp(build.level)
     totals_max = {k: sum(stat(o, k, "max") for o in (*items, *tomes)) for k in STAT_KEYS}
-    totals_max["hp"] += base_hp(build.level)
-    bonus_int = sum(stat(o, "int") for o in (*items, *tomes))
-    mana_min = max_mana(totals["maxMana"], need[2] + bonus_int)
-    # (skill points never roll, so requirements and Int bonuses are roll-independent)
-    mana_spare_int = max_mana(totals["maxMana"], min(100, need[2] + max(spare, 0)) + bonus_int)
-    return {"totals": totals, "totals_max": totals_max, "roll": roll, "sp_need": dict(zip(SKILLS, need)), "sp_total": sum(need),
-            "sp_available": skill_points(build.level), "spare_sp": spare,
+    for t in (totals, totals_max):
+        t["hp"] += base_hp(build.level) + set_stats.get("hpBonus", 0)
+        for k, v in set_stats.items():
+            if k in t and k != "hpBonus":
+                t[k] += v
+    available = skill_points(build.level)
+    spare = available - sp.total_assigned
+    int_from_items = sp.final[2] - sp.assigned[2]
+    mana_min = max_mana(totals["maxMana"], sp.final[2])
+    mana_spare_int = max_mana(totals["maxMana"],
+                              min(100, sp.assigned[2] + max(spare, 0)) + int_from_items)
+    sets = [{"name": name, "pieces": count, "of": len(gd.sets[name]["items"]),
+             "bonus": {k: v for k, v in gd.sets[name]["bonuses"][count - 1].items()}}
+            for name, count in sorted(sp.set_counts.items())]
+    return {"totals": totals, "totals_max": totals_max, "roll": roll,
+            "sp_need": dict(zip(SKILLS, sp.assigned)), "sp_total": sp.total_assigned,
+            "sp_final": dict(zip(SKILLS, sp.final)), "sp_under_100": sp.under_100,
+            "sp_available": available, "spare_sp": spare,
             "mana_min_int": mana_min, "mana_spare_into_int": mana_spare_int,
-            "poison_per_second": poison_per_second(totals["poison"])}
+            "poison_per_second": poison_per_second(totals["poison"]),
+            "sets": sets, "set_majors": sorted(set_majors)}
 
 
-def check_link(link, gd=None):
+def check_link(link, gd=None, inventory=None):
     """Run every check on a link. Returns (ok, report)."""
     h = link_hash(link)
     build = decode(h, gd)
     from .data import GameData
     gd = gd if gd is not None and gd.version == build.version else GameData(build.version)
-    report = {"build": build, "summary": summarize(build, gd), "problems": []}
+    report = {"build": build, "summary": summarize(build, gd, inventory=inventory), "problems": []}
     if encode(build, gd) != h:
         report["problems"].append("link does not round-trip through the encoder")
     s = report["summary"]
@@ -128,7 +163,7 @@ def check_link(link, gd=None):
                 report["problems"].append(f"crafted {slot}: {p}")
     if s["sp_total"] > s["sp_available"]:
         report["problems"].append(f"needs {s['sp_total']} skill points, only {s['sp_available']} available")
-    if max(s["sp_need"].values()) > 100:
+    if not s["sp_under_100"]:
         report["problems"].append("a skill needs more than 100 assigned points")
     if build.weapon is not None:
         from .rules import ability_points

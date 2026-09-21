@@ -70,7 +70,8 @@ def refresh(doc, gd):
     s = rep["summary"]
     status = {"verified": ok, "problems": rep["problems"],
               "totals": s["totals"], "totals_max": s["totals_max"], "sp_need": s["sp_need"], "sp_total": s["sp_total"],
-              "sp_available": s["sp_available"],
+              "sp_available": s["sp_available"], "sp_final": s["sp_final"],
+              "sets": s["sets"], "set_majors": s["set_majors"],
               "mana_min_int": s["mana_min_int"], "mana_spare_into_int": s["mana_spare_into_int"],
               "poison_per_second": s["poison_per_second"],
               "ap": list(rep.get("ap", (0, 0))), "tree_failed": rep.get("tree_failed", []),

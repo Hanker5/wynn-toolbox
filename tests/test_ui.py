@@ -24,7 +24,7 @@ from tests.ui.harness import AppServer  # noqa: E402
 @pytest.fixture()
 def app(tmp_path, gd, links):
     for name, key in [("stormdrain.json", "shaman_105_stormdrain"), ("crafted.json", "shaman_105_crafted"),
-                      ("gaia.json", "mage_105_gaia_lightbender")]:
+                      ("gaia.json", "mage_105_gaia_lightbender"), ("original.json", "original_user_build")]:
         doc = buildfile.from_build(decode(links[key]["hash"], gd), gd)
         buildfile.write(tmp_path / name, buildfile.refresh({"name": key, **doc}, gd))
     with AppServer(str(tmp_path), terminal_cwd=str(tmp_path)) as srv:
@@ -68,10 +68,17 @@ def test_hidden_panels_stay_hidden_and_sidebar_classes(page):
 
 
 def test_bad_swap_is_flagged_live(page):
+    """Gaea-Hewn Boots alone are fine (WynnBuilder: 160 points); adding The Watched,
+    which needs 30 in every skill, makes WynnBuilder warn (265 points)."""
     open_build(page, "shaman_105_stormdrain")
     boots = page.locator("input[aria-label='boots']")
     boots.fill("Gaea-Hewn")
     page.locator(".ac-item", has_text="Gaea-Hewn Boots").first.click()
+    settle(page)
+    assert "Verified" in page.inner_text("#ed-badge")
+    weapon = page.locator("input[aria-label='weapon']")
+    weapon.fill("The Watched")
+    page.locator(".ac-item", has_text="The Watched").first.click()
     settle(page)
     assert "problem" in page.inner_text("#ed-badge")
     assert "skill points" in page.inner_text("#ed-banners")
@@ -179,3 +186,13 @@ def test_item_icons_glow_in_tier_colour(page):
     assert "Mythic-shadow" in boots.get_attribute("class")
     assert "rgb(170, 0, 170)" in boots.evaluate("e => getComputedStyle(e).boxShadow")
     assert "rgb(85, 255, 255)" in chest.evaluate("e => getComputedStyle(e).boxShadow")
+
+
+def test_set_bonuses_shown(page):
+    """The original build wears all four Cosmic Foundations pieces."""
+    open_build(page, "original_user_build")
+    assert page.locator("#ed-sets-panel").is_visible()
+    sets = page.inner_text("#ed-sets")
+    assert "Cosmic Foundations" in sets and "4/4" in sets and "+1,500" in sets
+    assert "19,118" in page.inner_text("#ed-tiles")          # includes the set's +1,500 health
+    assert not page.errors

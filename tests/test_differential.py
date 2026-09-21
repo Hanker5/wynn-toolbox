@@ -25,7 +25,8 @@ from wynntools.rules import SKILLS
 pytestmark = pytest.mark.differential
 HARNESS = Path(__file__).parent / "js" / "wynnbuilder_harness.py"
 JS_FILES = ("js/utils.js", "js/build_utils.js", "js/powders.js", "js/loader.js",
-            "js/load_ing.js", "js/craft.js", "js/builder/build_encode_decode.js")
+            "js/load_ing.js", "js/craft.js", "js/builder/build_encode_decode.js",
+            "js/skillpoints.js")
 
 
 @pytest.fixture(scope="module")
@@ -159,3 +160,70 @@ def test_build_sections_match_wynnbuilder(gd, js_dir):
         aspects = None if c["aspects"] is None else [None if a is None else tuple(a) for a in c["aspects"]]
         assert py("aspects", codec._encode_aspects, aspects) == j["aspects"], c
         assert py("tomes", codec._encode_tomes, c["tomes"]) == j["tomes"], c
+
+
+def test_skillpoints_match_wynnbuilder(gd, js_dir):
+    """calculate_skillpoints on random equipment: set pieces, crafted items and
+    negative bonuses included."""
+    from wynntools.skillpoints import SPItem, calculate_skillpoints
+
+    rng = random.Random(4242)
+    by_type = {}
+    for it in gd.items:
+        by_type.setdefault(it.get("type"), []).append(it)
+    with_reqs = {t: [i for i in v if any(i.get(r) for r in ("strReq", "dexReq", "intReq", "defReq", "agiReq"))]
+                 for t, v in by_type.items()}
+    set_names = [n for n, st in gd.sets.items() if len(st["items"]) >= 3]
+    guilds = [t for t in gd.tomes if t.get("type") == "guildTome" and "֎" not in gd.name(t)]
+    slots = ["boots", "leggings", "chestplate", "helmet", "ring", "ring", "bracelet", "necklace"]
+    weapons = [i for t in ("wand", "bow", "dagger", "spear", "relik") for i in with_reqs[t]]
+
+    def crafted():
+        return SPItem(skillpoints=[rng.choice([0, 0, rng.randint(-8, 8)]) for _ in range(5)],
+                      reqs=[rng.choice([0, 0, rng.randint(-40, 90)]) for _ in range(5)], crafted=True)
+
+    cases = []
+    for _ in range(300):
+        eq = []
+        favourite = rng.choice(set_names) if rng.random() < 0.4 else None
+        for t in slots:
+            if favourite:
+                pieces = [gd.item(n) for n in gd.sets[favourite]["items"]
+                          if n in gd.item_by_name and gd.item(n).get("type") == t]
+                if pieces and rng.random() < 0.8:
+                    it = rng.choice(pieces)
+                    eq.append(SPItem.of(it, gd.set_of.get(gd.name(it))))
+                    continue
+            r = rng.random()
+            if r < 0.1:
+                eq.append(SPItem())
+            elif r < 0.2:
+                eq.append(crafted())
+            else:
+                it = rng.choice(with_reqs[t])
+                eq.append(SPItem.of(it, gd.set_of.get(gd.name(it))))
+        eq.append(SPItem.of(rng.choice(guilds)) if rng.random() < 0.5 else SPItem())
+        w = rng.choice(weapons)
+        cases.append((eq, SPItem.of(w, gd.set_of.get(gd.name(w)))))
+
+    def js_item(it):
+        return {"skillpoints": it.skillpoints, "reqs": it.reqs, "set": it.set, "crafted": it.crafted}
+    payload = [[[js_item(i) for i in eq], js_item(w)] for eq, w in cases]
+    program = ("var sets = new Map(Object.entries(" + json.dumps(gd.sets) + "));"
+               "JSON.stringify(" + json.dumps(payload) + """.map(([eq, w]) => {
+                   const mk = (o) => { const m = new Map(Object.entries(o)); if (o.crafted) m.set("crafted", true);
+                                       else m.delete("crafted"); if (!o.set) m.delete("set"); return m; };
+                   const r = calculate_skillpoints(eq.map(mk), mk(w));
+                   return {assigned: r[1], final: r[2], total: r[3], sets: Object.fromEntries(r[4])};
+               }))""")
+    js = run_js(js_dir, program)
+    assert len(js) == len(cases)
+    assert sum(bool(j["sets"]) for j in js) > 50              # set pieces really exercised
+    assert sum(j["total"] > 150 for j in js) > 20             # hard cases included
+    for (eq, w), j in zip(cases, js):
+        r = calculate_skillpoints(eq, w, gd.sets)
+        where = [(i.name, i.set, i.reqs, i.skillpoints) for i in eq + [w]]
+        assert r.assigned == j["assigned"], where
+        assert r.total_assigned == j["total"], where
+        assert r.final == j["final"], where
+        assert r.set_counts == j["sets"], where

@@ -95,6 +95,9 @@ class GameData:
         # Plain names are unique; the ֎-marked duplicates are cosmetic variants.
         self.tome_by_name = {self.name(t): t for t in self.tomes if "֎" not in self.name(t)}
         self.atrees = load("atree", version)
+        # Items don't name their set; WynnBuilder builds this map from the set list.
+        self.sets = load("items", version).get("sets") or {}
+        self.set_of = {item: name for name, st in self.sets.items() for item in st["items"]}
         self.majids = load("majid", version)
 
     @staticmethod

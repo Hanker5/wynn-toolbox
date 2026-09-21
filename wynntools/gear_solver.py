@@ -11,8 +11,12 @@ from itertools import product
 
 from .codec import SLOTS
 from .rules import SKILLS, base_hp, max_mana, skill_points
-from .verify import REQ, sp_requirements
+from .skillpoints import set_bonus_stats
+from .verify import REQ, build_skillpoints
 from .verify import stat as _stat
+
+# Stand-in for an empty slot (allowed when searching only what you own).
+EMPTY = {"name": "", "displayName": "", "tier": "", "type": ""}
 
 CLASS_WEAPON = {"Mage": "wand", "Archer": "bow", "Assassin": "dagger",
                 "Warrior": "spear", "Shaman": "relik"}
@@ -28,9 +32,11 @@ class Spec:
     force: dict = field(default_factory=dict)    # slot -> item name
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
-    tomes: list = field(default_factory=list)    # tome ids; their stats count toward floors
+    tomes: list = field(default_factory=list)    # 14 tome ids (None = empty), TOME_SLOTS order
     roll: str = "base"                           # "base" (100%), "max" (perfect) or "min"
     crafted: bool = False                        # also consider crafted items (see craft_solver)
+    only: set | None = None                      # restrict to these names (e.g. what you own)
+    inventory: object = None                     # Inventory: use real rolls of owned items
     topn: int = 8                                # shortlist size per ranking (8 reproduces all session results)
 
 
@@ -51,16 +57,23 @@ def _slot_of(item, cls):
 
 
 def _usable(gd, spec):
+    from .inventory import with_rolls
     pools = {s: [] for s in SLOTS}
-    for it in gd.items:
+    extra = [gd.item(n) for n in (spec.only or ()) if n.startswith("CR-")]   # owned crafts
+    for it in [*gd.items, *extra]:
+        name = gd.name(it)
+        if spec.only is not None and name not in spec.only:
+            continue
         slot = _slot_of(it, spec.cls)
         if slot is None or (it.get("lvl") or 0) > spec.level:
             continue
         cr = it.get("classReq")
         if cr and cr.lower() != spec.cls.lower():
             continue
-        if gd.name(it) in spec.exclude or it.get("tier") in spec.exclude_tiers:
+        if name in spec.exclude or it.get("tier") in spec.exclude_tiers:
             continue
+        if spec.inventory is not None:
+            it = with_rolls(it, spec.inventory.rolls(name))
         for s in (("ring1", "ring2") if slot == "ring" else (slot,)):
             pools[s].append(it)
     return pools
@@ -75,7 +88,8 @@ def _major_options(pools, gd, major):
             if major in (it.get("majorIds") or []):
                 opts.append(("ring" if s == "ring1" else s, gd.name(it)))
     if not opts:
-        raise ValueError(f"no usable item carries major ID {major}")
+        where = " that you own" if getattr(_major_options, "owned_only", False) else ""
+        raise ValueError(f"no usable item{where} carries major ID {major}")
     return opts
 
 
@@ -144,8 +158,54 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 ("weapon",) if kind == CLASS_WEAPON[spec.cls] else (kind,)
             for s in slots:
                 pools[s].extend(items)
-    tomes = [gd.tome(t) for t in spec.tomes]
+    tome_ids = list(spec.tomes) + [None] * (14 - len(spec.tomes))
+    tomes = [gd.tome(t) for t in tome_ids if t is not None]
     obj = lambda i: sum(w * stat(i, k) for k, w in spec.objective.items())
+
+    def set_contrib(stats):
+        """(objective, hp, mr, spd) added by a set bonus's stats."""
+        return (sum(w * (stats.get("hpBonus", 0) if k == "hp" else stats.get(k, 0))
+                    for k, w in spec.objective.items()),
+                stats.get("hpBonus", 0), stats.get("mr", 0), stats.get("spd", 0))
+
+    def set_tables(cl):
+        """Per-set bound tables so pruning stays valid with set bonuses.
+
+        bound[si][k][c] = the most set `si` can add (objective, hp, mr, spd) when
+        it has c pieces after slot k and the slots from k on could add up to
+        cap[k] more. Only sets that can add something relevant are tracked.
+        """
+        n = len(cl)
+        names = sorted({gd.set_of[gd.name(it)] for pool in cl for it in pool if gd.name(it) in gd.set_of})
+        tracked, bound, set_idx = [], [], {}
+        for name in names:
+            nb = len(gd.sets[name]["bonuses"])
+            contrib = [(0.0, 0, 0, 0)] + [set_contrib(set_bonus_stats({name: c}, gd.sets)[0])
+                                          for c in range(1, nb + 1)]
+            if not any(v > 0 for row in contrib for v in row):
+                continue
+            has = [any(gd.set_of.get(gd.name(it)) == name for it in cl[k]) for k in range(n)]
+            cap = [sum(has[k:]) for k in range(n + 1)]
+            table = []
+            for k in range(n + 1):
+                row = []
+                for c in range(10):
+                    hi = min(nb, c + cap[k])
+                    rng = contrib[min(c, nb):hi + 1] or [contrib[min(c, nb)]]
+                    row.append(tuple(max(r[i] for r in rng) for i in range(4)))
+                table.append(row)
+            set_idx[name] = len(tracked)
+            tracked.append(name)
+            bound.append(table)
+        return set_idx, bound
+
+    sp_cache = {}
+
+    def exact_sp(names):
+        key = tuple(names)
+        if key not in sp_cache:
+            sp_cache[key] = build_skillpoints(list(names), tome_ids, gd)
+        return sp_cache[key]
     fl = spec.floors
     tconst = {k: sum(stat(t, k) for t in tomes) for k in ("hp", "mr", "spd")}
     hp_floor = fl.get("hp", -1e18) - base_hp(spec.level) - tconst["hp"]
@@ -160,7 +220,7 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
         if slot == "weapon" and "weapon_dps" in fl:
             pool = [i for i in pool if (i.get("averageDps") or 0) >= fl["weapon_dps"]]
         if not pool:
-            return []
+            return [EMPTY] if spec.only is not None else []
         omax = max(abs(obj(i)) for i in pool) or 1
         hmax = max(abs(stat(i, "hp")) for i in pool) or 1
         keys = [obj, lambda i: stat(i, "hp"),
@@ -177,6 +237,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 if gd.name(it) not in seen:
                     seen.add(gd.name(it))
                     out.append(it)
+        if spec.only is not None:
+            out.append(EMPTY)          # an inventory may have nothing for this slot
         return out
 
     # Seed the search with a quick pass over smaller shortlists. Its build is
@@ -202,6 +264,7 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
     for fi, force in enumerate(forces):
         track["force"], track["pos"] = fi, [0, 1, 0, 1]
         cl = [candidates(s, force) for s in SLOTS]
+        cl[SLOTS.index("weapon")] = [c for c in cl[SLOTS.index("weapon")] if c is not EMPTY]
         if any(not c for c in cl):
             continue
         n = len(SLOTS)
@@ -212,13 +275,19 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
             for s in ("hp", "mr", "spd"):
                 suf[s][k] = suf[s][k + 1] + max(stat(c, s) for c in cl[k])
             for j, sk in enumerate(SKILLS):
-                mb[k][j] = mb[k + 1][j] + max(stat(c, sk) for c in cl[k]) \
-                    + (sum(stat(t, sk) for t in tomes) if k == n - 1 else 0)
+                # optimistic bonus per slot (never negative: WynnBuilder ignores the
+                # weapon's bonus, so a negative one can't raise the requirement)
+                mb[k][j] = mb[k + 1][j] + max(0, max(stat(c, sk) for c in cl[k])) \
+                    + (sum(max(0, stat(t, sk)) for t in tomes) if k == n - 1 else 0)
+        set_idx, set_bound = set_tables(cl)
+        n_sets = len(set_bound)
+        set_cnt = [0] * n_sets
         ring_sym = "ring1" not in force and "ring2" not in force
         # Precompute each candidate once; the search loop only touches these tuples.
         # (name, item, objective, hp, mr, spd, requirements, is_crafted)
         pre = [[(gd.name(c), c, obj(c), stat(c, "hp"), stat(c, "mr"), stat(c, "spd"),
-                 tuple(c.get(r) or 0 for r in REQ), gd.name(c).startswith("CR-"))
+                 tuple(c.get(r) or 0 for r in REQ), c is EMPTY or gd.name(c).startswith("CR-"),
+                 set_idx.get(gd.set_of.get(gd.name(c)), -1) if c is not EMPTY else -1)
                 for c in cl[k]] for k in range(n)]
         is_ring2 = [SLOTS[k] == "ring2" for k in range(n)]
         is_ring1 = [SLOTS[k] == "ring1" for k in range(n)]
@@ -229,28 +298,41 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
             track["nodes"] += 1
             if track["nodes"] % 2000 == 0:
                 report()
-            if best and val + suf["obj"][k] <= best.score:
+            s_obj = s_hp = s_mr = s_spd = 0
+            for si in range(n_sets):
+                b = set_bound[si][k][set_cnt[si]]
+                s_obj += b[0]; s_hp += b[1]; s_mr += b[2]; s_spd += b[3]
+            if best and val + suf["obj"][k] + s_obj <= best.score:
                 return
-            if hp + suf["hp"][k] < hp_floor or mr + suf["mr"][k] < mr_floor \
-                    or spd + suf["spd"][k] < spd_floor:
+            if hp + suf["hp"][k] + s_hp < hp_floor or mr + suf["mr"][k] + s_mr < mr_floor \
+                    or spd + suf["spd"][k] + s_spd < spd_floor:
                 return
             mbk = mb[k]
             if sum(max(0, mreq[j] - mbk[j]) for j in range(5)) > budget:
                 return
             if k == n:
-                need = sp_requirements(chosen, tomes)
-                if sum(need) > budget or max(need) > 100:
+                names_now = [None if c is EMPTY else gd.name(c) for c in chosen]
+                sp = exact_sp(names_now)          # WynnBuilder's skill-point rules
+                if sp.total_assigned > budget or not sp.under_100:
+                    return
+                set_stats, _ = set_bonus_stats(sp.set_counts, gd.sets)
+                a_obj, a_hp, a_mr, a_spd = set_contrib(set_stats)
+                total = val + a_obj
+                if best and total <= best.score:
+                    return
+                if hp + a_hp < hp_floor or mr + a_mr < mr_floor or spd + a_spd < spd_floor:
                     return
                 if "mana" in fl:
-                    spare = budget - sum(need)
-                    bonus_int = sum(stat(o, "int") for o in (*chosen, *tomes))
-                    mana = max_mana(sum(stat(o, "maxMana") for o in (*chosen, *tomes)),
-                                    min(100, need[2] + spare) + bonus_int)
+                    spare = budget - sp.total_assigned
+                    int_items = sp.final[2] - sp.assigned[2]
+                    mana = max_mana(sum(stat(o, "maxMana") for o in (*chosen, *tomes))
+                                    + set_stats.get("maxMana", 0),
+                                    min(100, sp.assigned[2] + spare) + int_items)
                     if mana < fl["mana"]:
                         return
-                best = Result(val, [gd.name(c) for c in chosen], need, 0)
+                best = Result(total, names_now, sp.assigned, 0)
                 return
-            for ci, (nm, c, o, h, m, sp_, rq, crafted) in enumerate(pre[k]):
+            for ci, (nm, c, o, h, m, sp_, rq, crafted, si) in enumerate(pre[k]):
                 if k < 2:
                     track["pos"][2 * k:2 * k + 2] = [ci, len(pre[k])]
                     if k == 0:
@@ -261,15 +343,69 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                     continue               # ring pairs are unordered (a craft may repeat)
                 chosen.append(c)
                 names[nm] = names.get(nm, 0) + 1
+                if si >= 0:
+                    set_cnt[si] += 1
                 dfs(k + 1, val + o, hp + h, mr + m, spd + sp_,
                     (max(mreq[0], rq[0]), max(mreq[1], rq[1]), max(mreq[2], rq[2]),
                      max(mreq[3], rq[3]), max(mreq[4], rq[4])),
                     ci if is_ring1[k] else ring1_idx)
                 chosen.pop()
                 names[nm] -= 1
+                if si >= 0:
+                    set_cnt[si] -= 1
 
         dfs(0, 0.0, 0, 0, 0, (0, 0, 0, 0, 0), -1)
     report(final=True)
     if best:
         best.seconds = time.time() - t0
     return best
+
+
+@dataclass
+class Upgrade:
+    item: str
+    slot: str
+    gain: float | None       # objective gained over the owned-only build (None: no owned build existed)
+    result: Result
+
+
+def upgrades(spec, gd, inventory, per_slot=6, top=10, progress=None):
+    """Rank items you don't own by how much each alone would improve the best
+    owned-only build. Returns (baseline Result or None, [Upgrade, ...])."""
+    owned = inventory.names()
+    base_spec = dataclasses.replace(spec, only=owned, inventory=inventory, crafted=False)
+    try:
+        base = solve_gear(base_spec, gd)
+    except ValueError:
+        base = None                      # e.g. you own nothing with a required major ID
+    full = _usable(gd, dataclasses.replace(spec, only=None, inventory=inventory))
+    obj = lambda i: sum(w * stat(i, k) for k, w in spec.objective.items())
+    stat = lambda i, k: _stat(i, k, spec.roll)
+    majors = set(spec.require_major)
+    cands, seen = [], set()
+    for slot in SLOTS:
+        if slot == "ring2":
+            continue
+        pool = [i for i in full[slot] if gd.name(i) not in owned]
+        picks = sorted(pool, key=obj, reverse=True)[:per_slot]
+        picks += sorted(pool, key=lambda i: stat(i, "hp"), reverse=True)[:max(1, per_slot // 2)]
+        picks += [i for i in pool if majors & set(i.get("majorIds") or [])]
+        for it in picks:
+            if gd.name(it) not in seen:
+                seen.add(gd.name(it))
+                cands.append((slot, it))
+    out = []
+    for n, (slot, it) in enumerate(cands):
+        name = gd.name(it)
+        try:
+            r = solve_gear(dataclasses.replace(base_spec, only=owned | {name}), gd)
+        except ValueError:
+            r = None
+        if r is not None and name in r.equipment and (base is None or r.score > base.score + 1e-9):
+            out.append(Upgrade(name, "ring" if slot == "ring1" else slot,
+                               None if base is None else r.score - base.score, r))
+        if progress:
+            progress({"fraction": (n + 1) / len(cands), "nodes": n + 1,
+                      "best": max((u.gain or 0 for u in out), default=None), "elapsed": 0})
+    out.sort(key=lambda u: (u.gain is None, -(u.gain or 0), -u.result.score))
+    return base, out[:top]

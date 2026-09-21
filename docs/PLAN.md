@@ -4,7 +4,7 @@ Worked in this order. Each step ships with tests; anything ported from
 WynnBuilder is checked against WynnBuilder's own JavaScript with the QuickJS
 differential harness (`tests/js/`, `pytest -m differential`).
 
-## 1. Set bonuses and WynnBuilder's exact skill-point calculation  (correctness)
+## 1. Set bonuses and WynnBuilder's exact skill-point calculation  (correctness) — DONE
 **Why.** Set bonuses are ignored today (a 4-piece Cosmic Foundations set gives
 +1,500 HP, +15 to all skills, +24 mana steal). Researching them showed our
 skill-point model also differs from WynnBuilder's `calculate_skillpoints`:

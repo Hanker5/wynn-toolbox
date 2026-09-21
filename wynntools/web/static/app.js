@@ -181,6 +181,7 @@ function itemCard(it) {
   }
   for (const m of it.majors) lines.push(h("div", { class: "ic-major" }, `+${majorName(m)}`));
   if (it.slots) lines.push(h("div", { class: "ic-sub muted" }, `[${it.slots}] powder slots`));
+  if (it.set) lines.push(h("div", { class: "ic-set" }, `${it.set} set piece`));
   if (it.craft) {
     const counts = {};
     for (const x of it.craft.ingredients) if (x !== "No Ingredient") counts[x] = (counts[x] || 0) + 1;
@@ -319,6 +320,8 @@ async function renderEditor() {
       h("aside", { class: "ed-side" },
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, h("span", {}, "Summary"), rollToggle()),
           h("div", { id: "ed-tiles", class: "summary" })),
+        h("section", { class: "panel", id: "ed-sets-panel", hidden: true }, h("div", { class: "panel-h" }, "Set bonuses"),
+          h("div", { id: "ed-sets", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Checks"), h("div", { id: "ed-checks", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Notes"), notes))));
   renderEquipment(); renderTomes(); await renderTree(); renderDerived();
@@ -701,6 +704,24 @@ function renderChecks(st) {
     h("p", { class: "hint" }, "Skill points are assigned automatically in the link. Aspects aren't set."));
 }
 
+function renderSets(st) {
+  const sets = st.sets || [];
+  $("#ed-sets-panel").hidden = !sets.length;
+  const out = [];
+  for (const set of sets) {
+    out.push(h("div", { class: "srow set-h" }, h("span", { class: "tier-Set" }, set.name),
+      h("span", { class: "muted" }, `${set.pieces}/${set.of} pieces`)));
+    const entries = Object.entries(set.bonus);
+    if (!entries.length) out.push(h("div", { class: "hint" }, "No bonus at this many pieces."));
+    for (const [k, v] of entries) {
+      if (k === "majorIds") { for (const m of v) out.push(statRow(h("span", { class: "major" }, majorName(m)), "")); continue; }
+      const [label, unit, el] = idLabel(k === "hpBonus" ? "hpBonus" : k);
+      out.push(statRow(h("span", {}, elemTag(el), label), `${sign(v)}${unit}`, v >= 0 ? "pos" : "neg"));
+    }
+  }
+  $("#ed-sets").replaceChildren(...out);
+}
+
 function renderSP(st) {
   const need = st.sp_need || {};
   $("#ed-sp").replaceChildren(...SKILLS.map((s) => {
@@ -709,7 +730,7 @@ function renderSP(st) {
       h("div", { class: `sp-h ${e.cls}` }, `${e.sym} ${e.name}`),
       h("div", { class: "sp-v" }, fmt(v)),
       h("div", { class: "bar" }, h("i", { style: `width:${Math.min(100, v)}%` })),
-      h("div", { class: "sp-sub" }, "to assign"));
+      h("div", { class: "sp-sub" }, `assign · total ${fmt(st.sp_final?.[s] ?? v)}`));
   }));
   const left = (st.sp_available ?? 0) - (st.sp_total ?? 0);
   $("#ed-sp-foot").replaceChildren("Assigned ", h("strong", {}, fmt(st.sp_total)), " skill points. Remaining: ",
@@ -733,7 +754,7 @@ function renderDerived() {
   else if (st.problems?.length) banners.append(h("div", { class: "banner bad" },
     h("div", {}, h("strong", {}, "Problems"), h("ul", {}, st.problems.map((p) => h("li", {}, p))))));
 
-  renderSP(st); renderSummary(st); renderChecks(st);
+  renderSP(st); renderSummary(st); renderSets(st); renderChecks(st);
   const filled = (d.tomes || []).filter(Boolean).length;
   const sum = $("#ed-tomes-sum"); if (sum) sum.textContent = `Tomes · ${filled}/14 filled`;
   const title = $("#ed-tree-title");

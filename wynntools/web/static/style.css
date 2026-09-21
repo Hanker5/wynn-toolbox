@@ -168,6 +168,8 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 .ic-row .range { font-size: 11px; }
 .ic-gap { height: 8px; }
 .ic-major { color: #d9b8ff; margin-top: 6px; }
+.ic-set { color: var(--set); text-align: center; margin-top: 6px; }
+.set-h { font-weight: 700; margin-top: 4px; }
 
 /* autocomplete */
 .ac { position: relative; }

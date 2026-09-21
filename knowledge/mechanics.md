@@ -21,8 +21,22 @@ entries may be stated as fact.
 ### Levels, points, rolls
 - Skill points: 200 at level 101 and above (`levelToSkillPoints`). At most 100
   assigned to any one skill.
-- A skill requirement is met by assigned points plus the bonuses of every other
-  equipped item and tome, **including negative bonuses**.
+- Skill points follow WynnBuilder's `calculate_skillpoints` exactly (ported in
+  `wynntools/skillpoints.py`, differential-tested, and matched against
+  WynnBuilder's page):
+  - the nine equippables (boots, leggings, chestplate, helmet, rings, bracelet,
+    necklace, guild tome) go on one at a time in the cheapest order; a bonus
+    only helps items equipped after it;
+  - the **weapon and crafted items go on last**, so their bonuses never help
+    another item's requirement;
+  - a negative bonus only costs points when some item actually **requires**
+    that skill (a requirement of 0 needs nothing);
+  - "pop" rule: an item whose requirement is met only by its own bonus would
+    fall off, so points are assigned to prevent it.
+- **Set bonuses** (`sets` in the item data; items don't name their set): the
+  bonus for the number of pieces worn is added to the build's stats. Its skill
+  points are added to the build's totals but never count toward requirements.
+  Example: 4/4 Cosmic Foundations = +1,500 HP, +15 all skills, +24 mana steal.
 - Ability points: 45 at levels 104–106, 46 at 107, 50 at 121 (`atree_level_table`).
 - Max build level is 121; items go up to level 120.
 - Base HP = 5 × level + 5.
@@ -108,6 +122,8 @@ Each has a regression test.
 | Mistake | Symptom | Test |
 |---|---|---|
 | Negative skill bonuses ignored | WynnBuilder: "Too many skillpoints need to be assigned!" | `test_negative_bonuses_count` |
+| Simplified skill-point model (every bonus helps every item) | Off by up to 40 points vs. WynnBuilder, both ways | `test_skillpoints_match_wynnbuilder`, `test_matches_wynnbuilder_page` |
+| Set bonuses ignored | Full Cosmic Foundations build understated by 1,500 HP | `test_matches_wynnbuilder_page`, `test_set_bonuses_shown` |
 | Archetype requirement counted over the whole tree, not in order | Only 10 of 29 nodes could activate | `test_archetype_requirement_is_checked_in_order` |
 | Unrequested stat in the objective | A 154% Loot Bonus, 0-HP chest dominated a Stealing build | AGENTS.md rule 5 |
 | `averageDps` used to rank summon/spell weapons | Steered away from the best per-hit relik | mechanics note above |

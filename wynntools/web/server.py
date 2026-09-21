@@ -179,7 +179,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                "type": it.get("type"), "majors": it.get("majorIds") or [],
                "slots": it.get("slots") or 0, "hp_base": it.get("hp") or 0,
                "atkSpd": it.get("atkSpd"), "damage": damage, "ids": ids,
-               "classReq": it.get("classReq"),
+               "classReq": it.get("classReq"), "set": gd.set_of.get(gd.name(it)),
                "stats": {k: stat(it, k) for k in ("hp", "eSteal", "poison", "lb", "mr",
                                                    "maxMana", "spd") if stat(it, k)},
                "reqs": [it.get(r) or 0 for r in ("strReq", "dexReq", "intReq",
@@ -365,7 +365,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                         force={k: v for k, v in (raw.get("force") or {}).items() if v},
                         exclude=set(raw.get("exclude") or []),
                         exclude_tiers=set(raw.get("exclude_tiers") or []),
-                        tomes=[gd.tome(t)["id"] for t in raw.get("tomes") or [] if t],
+                        tomes=[gd.tome(t)["id"] if t else None for t in raw.get("tomes") or []],
                         topn=int(raw.get("topn") or 8), crafted=bool(raw.get("crafted")),
                         roll=raw.get("roll") or "base")
         except (KeyError, ValueError, TypeError) as e:

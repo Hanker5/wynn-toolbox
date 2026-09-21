@@ -7,7 +7,8 @@ from pathlib import Path
 from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link
 from .data import LATEST, VERSIONS, GameData, fetch
 from . import buildfile
-from .gear_solver import Spec, solve_gear
+from . import inventory as inv_mod
+from .gear_solver import Spec, solve_gear, upgrades
 from .progress import ProgressBar
 from .presets import PRESETS, summoner_hits_per_sec
 from .rules import ability_points
@@ -49,7 +50,10 @@ def _print_report(ok, rep, gd):
     tm = s["totals_max"]
     perfect = [f"HP {tm['hp']:,}"] + [f"{k} {tm[k]:,}" for k in ("eSteal", "poison", "mr", "lb") if tm[k]]
     print("  perfect rolls (what WynnBuilder shows): " + " · ".join(perfect))
-    print(f"Skill points: {s['sp_total']}/{s['sp_available']} needed {s['sp_need']}")
+    for st in s["sets"]:
+        bonus = ", ".join(f"{k} {v:+}" if isinstance(v, int) else f"{k} {v}" for k, v in st["bonus"].items())
+        print(f"Set {st['name']} ({st['pieces']}/{st['of']}): {bonus or 'no bonus at this count'}")
+    print(f"Skill points: {s['sp_total']}/{s['sp_available']} to assign {s['sp_need']}")
     print("Note: totals above are 100% rolls; real items roll 30-130%.")
     print("VERIFIED OK" if ok else "PROBLEMS:\n  - " + "\n  - ".join(rep["problems"]))
 
@@ -109,16 +113,24 @@ def _build_from(spec, equipment, tree_preset, gd):
     return b
 
 
-def cmd_gear(a):
-    gd = GameData()
-    raw = json.load(open(a.spec))
-    spec = Spec(cls=raw["class"], level=raw["level"], objective=raw["objective"],
+def _spec_from(raw, gd):
+    return Spec(cls=raw["class"], level=raw["level"], objective=raw["objective"],
                 floors=raw.get("floors", {}), require_major=raw.get("require_major", []),
                 force=raw.get("force", {}), exclude=set(raw.get("exclude", [])),
                 exclude_tiers=set(raw.get("exclude_tiers", [])),
-                tomes=[gd.tome(t)["id"] for t in raw.get("tomes", []) if t is not None],
+                tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes", [])],
                 topn=raw.get("topn", 8), crafted=bool(raw.get("crafted")),
                 roll=raw.get("roll", "base"))
+
+
+def cmd_gear(a):
+    gd = GameData()
+    raw = json.load(open(a.spec))
+    spec = _spec_from(raw, gd)
+    if a.owned:
+        inv = inv_mod.load(a.inventory)
+        spec.only, spec.inventory, spec.crafted = inv.names(), inv, False
+        print(f"Searching only the {len(inv.names())} items in {a.inventory} (real rolls where given).")
     r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
     if r is None:
         print("No build satisfies these constraints.")
@@ -172,6 +184,72 @@ def cmd_link(a):
         buildfile.write(a.build, buildfile.refresh(doc, gd))
         print(f"updated {a.build}")
     return 0 if ok else 1
+
+
+def cmd_upgrades(a):
+    gd = GameData()
+    spec = _spec_from(json.load(open(a.spec)), gd)
+    inv = inv_mod.load(a.inventory)
+    if not inv.names():
+        print(f"{a.inventory} is empty. Add items with: uv run wt own add \"Item Name\"")
+        return 1
+    base, ups = upgrades(spec, gd, inv, per_slot=a.per_slot, top=a.top,
+                         progress=None if a.quiet else ProgressBar("upgrade search"))
+    goal = ", ".join(spec.objective)
+    if base:
+        print(f"Best build from what you own: {goal} score {base.score:,.2f}")
+        print("  " + " / ".join(n or "(empty)" for n in base.equipment))
+    else:
+        print("You can't make a build that meets these requirements from what you own yet.")
+    if not ups:
+        print("No single item you don't own improves on that.")
+        return 0
+    print(f"\nBest single items to get next (each alone, added to what you own):")
+    for u in ups:
+        gain = "makes a valid build possible" if u.gain is None else f"+{u.gain:,.2f}"
+        print(f"  {gain:>28}  {u.slot:<10} {u.item}")
+    return 0
+
+
+def cmd_own(a):
+    gd = GameData()
+    inv = inv_mod.load(a.inventory)
+    if a.action == "list":
+        for n in sorted(inv.items):
+            r = inv.rolls(n)
+            print(f"  {n}" + (f"  (rolls: {', '.join(f'{k} {v}' for k, v in r.items())})" if r else ""))
+        for t in inv.tomes:
+            print(f"  tome: {t}")
+        for c in inv.crafts:
+            it = gd.item(c)
+            print(f"  crafted {it['type']}: {c}")
+        bad = inv_mod.validate(inv, gd)
+        if bad:
+            print("Not found in the game data: " + ", ".join(bad))
+        return 0
+    for name in a.names:
+        if a.action == "add":
+            if a.tome:
+                gd.tome(name)
+                inv.tomes.append(name)
+            elif name.startswith("CR-"):
+                gd.item(name)
+                inv.crafts.append(name)
+            else:
+                gd.item(name)                                # raises on typos
+                entry = inv.items.setdefault(name, {})
+                if a.roll:
+                    entry["rolls"] = {**entry.get("rolls", {}),
+                                      **{k: int(v) for k, v in (r.split("=") for r in a.roll)}}
+        else:
+            if a.tome and name in inv.tomes:
+                inv.tomes.remove(name)
+            inv.items.pop(name, None)
+            if name in inv.crafts:
+                inv.crafts.remove(name)
+    inv_mod.save(inv, a.inventory)
+    print(f"{a.inventory}: {len(inv.items)} items, {len(inv.tomes)} tomes, {len(inv.crafts)} crafts")
+    return 0
 
 
 CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
@@ -246,7 +324,23 @@ def main(argv=None):
     s.add_argument("--save", metavar="PATH", help="write the result as a build file")
     s.add_argument("--name", help="display name for the saved build")
     s.add_argument("--quiet", action="store_true", help="no progress output")
+    s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_gear)
+    s = sub.add_parser("upgrades", help="rank items you don't own by how much each would help")
+    s.add_argument("spec")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.add_argument("--top", type=int, default=10)
+    s.add_argument("--per-slot", type=int, default=6, help="candidates tried per slot")
+    s.add_argument("--quiet", action="store_true")
+    s.set_defaults(fn=cmd_upgrades)
+    s = sub.add_parser("own", help="manage your inventory (items, tomes, crafts you own)")
+    s.add_argument("action", choices=["add", "remove", "list"])
+    s.add_argument("names", nargs="*")
+    s.add_argument("--tome", action="store_true", help="the names are tomes")
+    s.add_argument("--roll", action="append", metavar="ID=VALUE", help="real roll, e.g. poison=20640")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_own)
     s = sub.add_parser("import", help="save a WynnBuilder link as a build file")
     s.add_argument("link")
     s.add_argument("path")

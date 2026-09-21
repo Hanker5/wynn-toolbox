@@ -17,6 +17,7 @@ var window = this; var self = this;
 var console = {log(){}, warn(){}, error(){}, info(){}};
 var navigator = {userAgent: "quickjs", userAgentData: {mobile: false}};
 var screen = {width: 1920, height: 1080};
+var performance = {now() { return 0; }};
 var location = {hash: "", search: "", host: "127.0.0.1", protocol: "http:", pathname: "/builder/"};
 window.location = location;
 var document = {getElementById(){return null}, createElement(){return {classList:{add(){}}}},
@@ -24,7 +25,7 @@ var document = {getElementById(){return null}, createElement(){return {classList
 function assert(c, m) { if (!c) throw new Error(m || "assert"); }
 """
 FILES = ("js/utils.js", "js/build_utils.js", "js/powders.js", "js/loader.js", "js/load_ing.js",
-         "js/craft.js", "js/builder/build_encode_decode.js")
+         "js/craft.js", "js/builder/build_encode_decode.js", "js/skillpoints.js")
 ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz+-"
 # This QuickJS release (2021-03-27) cannot read a class's own static fields inside
 # its static initializers, which browsers allow. Inline those values; the
