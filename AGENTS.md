@@ -90,6 +90,11 @@ the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `level`, `equipment`, `tomes`, `tree`, `powders`, `skillpoints`); `link` and
 `status` are generated, so run `wt link <file> --write` after any edit.
 
+The page mirrors WynnBuilder's layout (equipment grid with item icons, element
+colours, a drawn ability tree), so players can read it the way they read
+WynnBuilder. Its Summary has a Typical/Perfect toggle; "Perfect" matches the
+numbers WynnBuilder shows.
+
 You may be running inside the web app's terminal panel, with the player
 watching the same build on screen. The page reloads a build within a second of
 your write, and warns the player instead of overwriting if they have unsaved

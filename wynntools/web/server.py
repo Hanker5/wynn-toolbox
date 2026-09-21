@@ -136,6 +136,21 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
+    @app.get("/assets/{name}")
+    def asset(name: str):
+        from fastapi.responses import FileResponse
+        from ..data import CACHE_DIR, MEDIA
+        if name not in MEDIA:
+            raise HTTPException(404, "unknown asset")
+        path = CACHE_DIR / "media" / name
+        if not path.exists():
+            from ..data import fetch
+            fetch()
+        if not path.exists():
+            raise HTTPException(404, "icons not downloaded (offline?)")
+        return FileResponse(path, media_type="image/png",
+                            headers={"Cache-Control": "max-age=86400"})
+
     # ------------------------------------------------------------ reference data
     @app.get("/api/meta")
     def meta():
@@ -146,6 +161,37 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
                 "stats": ["eSteal", "poison", "lb", "hp", "mr", "ms", "sdPct", "mdPct",
                           "spd", "xpb", "hprRaw", "ls"]}
+
+    def item_summary(it):
+        ids = {}
+        for k, v in it.items():
+            if k in ("hp", "lvl", "id", "slots", "lvlLow", "hpLow") or k.endswith("Req"):
+                continue
+            numeric = isinstance(v, (int, float)) and not isinstance(v, bool)
+            if (numeric and v) or (isinstance(v, dict) and v.get("raw")):
+                ids[k] = [stat(it, k, "min"), stat(it, k), stat(it, k, "max")]
+        for k, (lo, hi) in (it.get("rolls") or {}).items():
+            if lo or hi:
+                ids[k] = [lo, (lo + hi) // 2, hi]
+        damage = {k: it[k] for k in ("nDam", "eDam", "tDam", "wDam", "fDam", "aDam")
+                  if isinstance(it.get(k), str) and it[k] != "0-0"}
+        out = {"name": gd.name(it), "tier": it.get("tier"), "lvl": it.get("lvl"),
+               "type": it.get("type"), "majors": it.get("majorIds") or [],
+               "slots": it.get("slots") or 0, "hp_base": it.get("hp") or 0,
+               "atkSpd": it.get("atkSpd"), "damage": damage, "ids": ids,
+               "classReq": it.get("classReq"),
+               "stats": {k: stat(it, k) for k in ("hp", "eSteal", "poison", "lb", "mr",
+                                                   "maxMana", "spd") if stat(it, k)},
+               "reqs": [it.get(r) or 0 for r in ("strReq", "dexReq", "intReq",
+                                                  "defReq", "agiReq")]}
+        if gd.name(it).startswith("CR-"):
+            c = it["craft"]
+            out["craft"] = {"recipe": c.recipe, "ingredients": c.ingredients,
+                            "mat_tiers": list(c.mat_tiers), "durability": it["durability"],
+                            "problems": it["problems"],
+                            "ranges": {k: list(v) for k, v in it["rolls"].items() if any(v)},
+                            "crafter": "https://wynnbuilder.github.io/crafter/#" + gd.name(it)[3:]}
+        return out
 
     @app.get("/api/items")
     def items(slot: str, level: int = 121, cls: str | None = None, q: str = ""):
@@ -167,29 +213,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                 continue
             hits.append(it)
         hits.sort(key=lambda i: (not gd.name(i).lower().startswith(q), -(i.get("lvl") or 0)))
-        return [{"name": gd.name(i), "tier": i.get("tier"), "lvl": i.get("lvl"),
-                 "type": i.get("type"), "majors": i.get("majorIds") or [],
-                 "stats": {k: stat(i, k) for k in ("hp", "eSteal", "poison", "lb", "mr",
-                                                     "maxMana", "spd") if stat(i, k)},
-                 "reqs": [i.get(r) or 0 for r in ("strReq", "dexReq", "intReq",
-                                                   "defReq", "agiReq")]}
-                for i in hits[:40]]
-
-    def item_summary(it):
-        out = {"name": gd.name(it), "tier": it.get("tier"), "lvl": it.get("lvl"),
-               "type": it.get("type"), "majors": it.get("majorIds") or [],
-               "stats": {k: stat(it, k) for k in ("hp", "eSteal", "poison", "lb", "mr",
-                                                   "maxMana", "spd") if stat(it, k)},
-               "reqs": [it.get(r) or 0 for r in ("strReq", "dexReq", "intReq",
-                                                  "defReq", "agiReq")]}
-        if gd.name(it).startswith("CR-"):
-            c = it["craft"]
-            out["craft"] = {"recipe": c.recipe, "ingredients": c.ingredients,
-                            "mat_tiers": list(c.mat_tiers), "durability": it["durability"],
-                            "problems": it["problems"],
-                            "ranges": {k: list(v) for k, v in it["rolls"].items() if any(v)},
-                            "crafter": "https://wynnbuilder.github.io/crafter/#" + gd.name(it)[3:]}
-        return out
+        return [item_summary(i) for i in hits[:40]]
 
     @app.get("/api/item")
     def item(name: str):
@@ -236,6 +260,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         if cls not in gd.atrees:
             raise HTTPException(404, f"no tree for {cls}")
         return [{"id": n["id"], "name": n["display_name"], "cost": n.get("cost") or 0,
+                 "row": n["display"]["row"], "col": n["display"]["col"],
+                 "icon": n["display"].get("icon", "node_0"),
                  "archetype": n.get("archetype") or "", "req": n.get("archetype_req") or 0,
                  "parents": n["parents"], "deps": n.get("dependencies") or [],
                  "blockers": n.get("blockers") or [],

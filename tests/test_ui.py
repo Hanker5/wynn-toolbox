@@ -126,3 +126,29 @@ def test_terminal_runs_commands(page):
     page.locator(".xterm-helper-textarea").type("echo wt-ui-$((6*7))\n")
     page.wait_for_function("document.querySelector('#term').innerText.includes('wt-ui-42')", timeout=15000)
     assert not page.errors
+
+
+def test_perfect_roll_toggle_matches_wynnbuilder_numbers(page, gd, links):
+    """Typical shows 100% rolls; Perfect shows WynnBuilder's 130% numbers."""
+    from wynntools.verify import summarize
+    s = summarize(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    want_typical, want_perfect = s["totals"]["eSteal"], s["totals_max"]["eSteal"]
+    assert want_perfect > want_typical
+    open_build(page, "shaman_105_stormdrain")
+    page.click("#roll-toggle button:has-text('Typical')")
+    typical = page.inner_text("#ed-tiles")
+    page.click("#roll-toggle button:has-text('Perfect')")
+    perfect = page.inner_text("#ed-tiles")
+    assert f"+{want_typical}%" in typical and f"+{want_perfect}%" in perfect
+    page.click("#roll-toggle button:has-text('Typical')")
+
+
+def test_item_icons_and_tooltip(page):
+    open_build(page, "shaman_105_stormdrain")
+    sprite = page.locator(".slot:has(input[aria-label='boots']) .sprite")
+    assert "/assets/items.png" in sprite.evaluate("e => e.style.backgroundImage")
+    assert page.evaluate("fetch('/assets/items.png').then(r => r.status)") == 200
+    page.hover(".slot:has(input[aria-label='boots']) .eq-icon-wrap")
+    page.wait_for_selector("#tooltip:not([hidden]) .item-card", timeout=5000)
+    card = page.inner_text("#tooltip")
+    assert "Galleon" in card and "Stealing" in card

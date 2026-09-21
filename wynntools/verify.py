@@ -8,7 +8,8 @@ from .rules import SKILLS, base_hp, max_mana, poison_per_second, rolled, skill_p
 
 REQ = [s + "Req" for s in SKILLS]
 STAT_KEYS = ["hp", "maxMana", "mr", "ms", "spd", "eSteal", "lb", "poison", "sdPct",
-             "mdPct", "hprRaw", "hprPct", "ls", "xpb"]
+             "mdPct", "hprRaw", "hprPct", "ls", "xpb", "sdRaw", "mdRaw", "atkTier",
+             "eDef", "tDef", "wDef", "fDef", "aDef", "thorns", "ref", "expd"]
 
 
 def stat(obj, key, roll="base"):
@@ -19,7 +20,12 @@ def stat(obj, key, roll="base"):
     if "rolls" in obj and key in obj["rolls"]:          # crafted item
         lo, hi = obj["rolls"][key]
         return {"min": lo, "max": hi, "base": (lo + hi) // 2}[roll]
-    return rolled(key, obj.get(key) or 0, roll, fixed=bool(obj.get("fixID")))
+    value = obj.get(key) or 0
+    if isinstance(value, dict):          # {"static": true, "raw": n}: fixed, never rolls
+        return value.get("raw") or 0
+    if isinstance(value, str):           # damage ranges like "10-20" are not stats
+        return 0
+    return rolled(key, value, roll, fixed=bool(obj.get("fixID")))
 
 
 def sp_requirements(items, bonus_sources=()):

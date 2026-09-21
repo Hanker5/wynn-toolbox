@@ -29,6 +29,11 @@ _BASELINE = {"items": "data/baseline/compressed/compress.json",
              "ingreds": "data/baseline/compressed/ingreds_compress.json",
              "recipes": "data/baseline/compressed/recipes_compress.json"}
 
+# Images used by the web app, fetched from WynnBuilder at run time (not stored in
+# this repo; some are derived from Wynncraft's own art). Credit: WynnBuilder.
+MEDIA = {"items.png": "media/items/new.png",          # 12 item-type icons, 120px each
+         "atree-icons.png": "media/atree/icons.png"}  # 10 node types x 3 states, 32px
+
 WEAPON_CLASS = {"wand": "Mage", "bow": "Archer", "dagger": "Assassin",
                 "spear": "Warrior", "relik": "Shaman"}
 
@@ -53,6 +58,16 @@ def fetch(version=LATEST, refresh=False):
             continue
         with urllib.request.urlopen(_url(kind, version), timeout=120) as r:
             dest.write_bytes(r.read())
+    media = CACHE_DIR / "media"
+    media.mkdir(parents=True, exist_ok=True)
+    for name, rel in MEDIA.items():
+        dest = media / name
+        if not dest.exists() or refresh:
+            try:
+                with urllib.request.urlopen(f"{BASE_URL}/{rel}", timeout=60) as r:
+                    dest.write_bytes(r.read())
+            except OSError:
+                pass      # icons are optional; the app falls back to plain slots
     load.cache_clear()
     return out
 
