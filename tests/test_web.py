@@ -100,3 +100,23 @@ def test_craft_suggest_and_item_lookup(client):
     assert it["craft"]["recipe"] == "Ring-103-105"
     assert client.post("/api/craft-suggest", json={"slot": "weapon", "level": 105,
                                                    "objective": {"eSteal": 1}}).status_code == 422
+
+
+def test_new_link_beats_stale_cookie(tmp_path):
+    """Regression: after a restart the old session's cookie locked the user out
+    even when they opened the new link."""
+    app = create_app(tmp_path, PORT, token=TOKEN)
+    c = TestClient(app, base_url=f"http://127.0.0.1:{PORT}")
+    c.cookies.set("wt_token", "token-from-previous-run")
+    r = c.get(f"/?token={TOKEN}")
+    assert r.status_code == 200
+    assert r.cookies.get("wt_token") == TOKEN             # stale cookie replaced
+    assert c.get("/api/meta").status_code == 200
+
+
+def test_expired_link_gets_a_readable_page(tmp_path):
+    app = create_app(tmp_path, PORT, token=TOKEN)
+    c = TestClient(app, base_url=f"http://127.0.0.1:{PORT}")
+    r = c.get("/?token=old")
+    assert r.status_code == 401 and "expired" in r.text and "wt serve" in r.text
+    assert c.get("/api/meta").json()["detail"].startswith("missing or wrong token")

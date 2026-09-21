@@ -34,6 +34,18 @@ EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
 
 
+UNAUTHORIZED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<title>Wynn Toolbox</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;
+margin:15vh auto;padding:0 16px;color:#1b1e25;background:#f4f5f8}
+@media (prefers-color-scheme:dark){body{color:#e6e8ee;background:#111318}}
+code{background:rgba(127,127,127,.18);padding:1px 5px;border-radius:4px}</style></head>
+<body><h1>This link has expired</h1>
+<p>Each time <code>wt serve</code> starts, it makes a new private link. Open the
+link it printed in the terminal (it ends in <code>?token=&hellip;</code>).</p>
+<p>If you've lost it, stop the server and run <code>uv run wt serve</code> again.</p>
+</body></html>"""
+
+
 class Cancelled(Exception):
     pass
 
@@ -62,9 +74,13 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     async def guard(request: Request, call_next):
         if request.headers.get("host") not in allowed_hosts:
             return JSONResponse({"detail": "forbidden host"}, status_code=403)
-        supplied = request.cookies.get(COOKIE) or request.headers.get("x-wt-token") \
-            or request.query_params.get("token")
+        # The token in the URL wins over the cookie: after `wt serve` restarts
+        # with a new token, the browser still sends the old session's cookie.
+        supplied = request.query_params.get("token") or request.headers.get("x-wt-token") \
+            or request.cookies.get(COOKIE)
         if not supplied or not secrets.compare_digest(supplied, token):
+            if not request.url.path.startswith(("/api/", "/static/")):
+                return HTMLResponse(UNAUTHORIZED_PAGE, status_code=401)
             return JSONResponse({"detail": "missing or wrong token; use the URL printed "
                                  "by `wt serve`"}, status_code=401)
         response = await call_next(request)
