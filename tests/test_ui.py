@@ -169,3 +169,13 @@ def test_ability_tree_uses_wynnbuilder_art_and_toggles(page):
     page.wait_for_function(
         f"document.querySelector('#ed-tree-title').innerText !== {before!r}", timeout=15000)
     assert not page.errors
+
+
+def test_item_icons_glow_in_tier_colour(page):
+    """WynnBuilder's tier glow: Galleon (Mythic) #a0a, Leo (Legendary) #5ff."""
+    open_build(page, "shaman_105_stormdrain")
+    boots = page.locator(".slot:has(input[aria-label='boots']) .sprite")
+    chest = page.locator(".slot:has(input[aria-label='chestplate']) .sprite")
+    assert "Mythic-shadow" in boots.get_attribute("class")
+    assert "rgb(170, 0, 170)" in boots.evaluate("e => getComputedStyle(e).boxShadow")
+    assert "rgb(85, 255, 255)" in chest.evaluate("e => getComputedStyle(e).boxShadow")

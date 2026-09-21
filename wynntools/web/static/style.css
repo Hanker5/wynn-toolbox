@@ -96,9 +96,18 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 .eq-col { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .slot { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; align-items: start; background: var(--panel-2); border-radius: 6px; padding: 6px; }
 .slot > .craft-box { grid-column: 1 / -1; }
-.eq-icon-wrap { width: 52px; height: 52px; border-radius: 6px; background: #181818; border: 1px solid #3c3c3c; display: grid; place-items: center; cursor: help; }
+.eq-icon-wrap { width: 52px; height: 52px; border-radius: 6px; background: #242424; display: grid; place-items: center; cursor: help; }
 .eq-icon { display: grid; place-items: center; }
-.eq-icon .sprite { image-rendering: auto; }
+.eq-icon .sprite { image-rendering: auto; border-radius: 4px; }
+/* Tier glow behind item icons, copied from WynnBuilder's wynnstyles.css */
+.Normal-shadow { box-shadow: 0 0 0.25rem 0.05rem #fff; }
+.Unique-shadow { box-shadow: 0 0 0.25rem 0.05rem #ff5; }
+.Rare-shadow { box-shadow: 0 0 0.25rem 0.05rem #f5f; }
+.Legendary-shadow { box-shadow: 0 0 0.25rem 0.05rem #5ff; }
+.Fabled-shadow { box-shadow: 0 0 0.25rem 0.05rem #f55; }
+.Mythic-shadow { box-shadow: 0 0 0.25rem 0.05rem #a0a; }
+.Crafted-shadow, .Custom-shadow { box-shadow: 0 0 0.25rem 0.05rem #0aa; }
+.Set-shadow { box-shadow: 0 0 0.25rem 0.05rem #5f5; }
 .eq-body { min-width: 0; }
 .eq-top { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
 .eq-label { text-transform: uppercase; letter-spacing: .05em; }

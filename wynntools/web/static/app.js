@@ -106,11 +106,12 @@ function elemTag(key) {
 }
 
 // ------------------------------------------------------------------ icons
-function itemIcon(type, size = 44) {
+/** Item-type icon from WynnBuilder's sprite sheet, with its tier-coloured glow. */
+function itemIcon(type, size = 44, tier = null) {
   const idx = ITEM_SPRITE.indexOf(type);
   const el = h("div", { class: "eq-icon", "aria-hidden": "true" });
   if (idx < 0) return el;
-  const inner = h("div", { class: "sprite" });
+  const inner = h("div", { class: "sprite" + (tier ? ` ${tier}-shadow` : "") });
   inner.style.cssText = `width:${size}px;height:${size}px;background-image:url(/assets/items.png);` +
     `background-size:${12 * size}px ${size}px;background-position:-${idx * size}px 0`;
   el.append(inner);
@@ -218,7 +219,7 @@ function autocomplete(input, fetchOptions, onPick) {
     if (!opts.length) return;
     list = h("div", { class: "ac-list" }, opts.map((o, i) =>
       h("div", { class: "ac-item" + (i === sel ? " sel" : ""), onmousedown: (e) => { e.preventDefault(); pick(i); } },
-        itemIcon(o.type, 28),
+        itemIcon(o.type, 28, o.tier),
         h("div", {}, h("div", { class: `tier-${o.tier}` }, o.name), h("div", { class: "sub" }, itemLine(o))))));
     wrap.append(list);
   };
@@ -342,7 +343,7 @@ function slotView(slot) {
   const cur = () => S.cur.doc.equipment[i];
   const cls = weaponClass(S.cur.doc.equipment[8]);
   const typeNow = () => (slot === "weapon" ? (S.items[cur()]?.type || CLASS_WEAPON[weaponClass(cur())] || "") : SLOT_TYPE[slot]);
-  const icon = h("div", { class: "eq-icon-wrap" }, itemIcon(typeNow()));
+  const icon = h("div", { class: "eq-icon-wrap" }, itemIcon(typeNow(), 44, S.items[cur()]?.tier));
   const input = h("input", { class: "eq-name tier-" + (S.items[cur()]?.tier || "none"), value: displayName(cur()),
     placeholder: `No ${slotLabel(slot).toLowerCase()}`, "aria-label": slot, spellcheck: "false" });
   const meta = h("div", { class: "eq-line" }, itemLine(S.items[cur()]));
@@ -350,7 +351,7 @@ function slotView(slot) {
   const refresh = () => {
     input.value = displayName(cur());
     input.className = "eq-name tier-" + (S.items[cur()]?.tier || "none");
-    icon.replaceChildren(itemIcon(typeNow()));
+    icon.replaceChildren(itemIcon(typeNow(), 44, S.items[cur()]?.tier));
     meta.replaceChildren(...itemLine(S.items[cur()]));
   };
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
