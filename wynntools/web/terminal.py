@@ -13,6 +13,7 @@ import signal
 import struct
 import termios
 import time
+import warnings
 
 SCROLLBACK = 256 * 1024
 
@@ -47,12 +48,22 @@ class TerminalSession:
         return pid == 0
 
     def spawn(self):
-        shell = os.environ.get("SHELL") or "/bin/bash"
-        pid, fd = pty.fork()
+        # Everything the child needs is prepared before forking: the server is
+        # multi-threaded, so the child should only chdir and exec (no allocation
+        # or locking that another thread might have held at fork time).
+        shell = shutil.which(os.environ.get("SHELL") or "bash") or "/bin/sh"
+        argv = [shell]
+        env = {**os.environ, "TERM": "xterm-256color", "WYNN_TOOLBOX": "1"}
+        cwd = self.cwd
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)   # see comment above
+            pid, fd = pty.fork()
         if pid == 0:                                  # child: becomes the shell
-            os.chdir(self.cwd)
-            env = {**os.environ, "TERM": "xterm-256color", "WYNN_TOOLBOX": "1"}
-            os.execvpe(shell, [shell], env)
+            try:
+                os.chdir(cwd)
+                os.execve(shell, argv, env)
+            finally:
+                os._exit(127)
         self.pid, self.fd = pid, fd
         os.set_blocking(fd, False)
         self.started = self.last_output = time.time()

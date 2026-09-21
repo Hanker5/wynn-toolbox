@@ -65,7 +65,9 @@ async function itemInfo(slot, name) {
 function itemLine(it) {
   if (!it) return [];
   if (it.craft) {
-    const ings = it.craft.ingredients.filter((x) => x !== "No Ingredient");
+    const counts = {};
+    for (const x of it.craft.ingredients) if (x !== "No Ingredient") counts[x] = (counts[x] || 0) + 1;
+    const ings = Object.entries(counts).map(([n, c]) => (c > 1 ? `${c}× ${n}` : n));
     const ranges = Object.entries(it.craft.ranges).map(([k, [a, b]]) => `${k} ${a}–${b}`);
     return [
       h("span", { class: "tier-Crafted" }, `Crafted ${it.type} · ${it.craft.recipe}`),
@@ -239,12 +241,18 @@ function renderTomes() {
   d.tomes = d.tomes || Array(14).fill(null);
   S.meta.tome_slots.forEach((slot, k) => {
     const type = slot.replace(/\d+$/, "");
-    const sel = h("select", { "aria-label": slot, onchange: (e) => edit((x) => { x.tomes[k] = e.target.value || null; }) },
+    const tomes = S.tomes[type] || [];
+    const info = h("div", { class: "meta" });
+    const describe = () => {
+      const t = tomes.find((x) => x.name === sel.value);
+      info.textContent = t ? `lvl ${t.lvl} · ` + (Object.entries(t.stats).map(([a, b]) => `${a} ${b}`).join(" · ") || "no stats") : "";
+    };
+    const sel = h("select", { "aria-label": slot, onchange: (e) => { edit((x) => { x.tomes[k] = e.target.value || null; }); describe(); } },
       h("option", { value: "" }, "— none —"),
-      (S.tomes[type] || []).map((t) => h("option", { value: t.name },
-        `${t.name} (lvl ${t.lvl})` + (Object.keys(t.stats).length ? " — " + Object.entries(t.stats).map(([a, b]) => `${a} ${b}`).join(", ") : ""))));
+      tomes.map((t) => h("option", { value: t.name, title: Object.entries(t.stats).map(([a, b]) => `${a} ${b}`).join(", ") }, t.name)));
     sel.value = d.tomes[k] || "";
-    box.append(h("div", { class: "tome" }, h("label", {}, slot.replace(/Tome(\d)/, " tome $1").replace(/Xp/, " XP")), sel));
+    describe();
+    box.append(h("div", { class: "tome" }, h("label", {}, slot.replace(/Tome(\d)/, " tome $1").replace(/Xp/, " XP")), sel, info));
   });
 }
 
@@ -394,7 +402,7 @@ function renderSolver() {
   majorIn.onchange = () => { if (majorIn.value) majors.add(majorIn.value); majorIn.value = ""; drawMajors(); };
   const syncPresets = () => {
     f.preset.replaceChildren(h("option", { value: "" }, "none (gear only)"),
-      m.presets.filter((p) => p.class === f.cls.value).map((p) => h("option", { value: p.name, title: p.about }, p.name)));
+      ...m.presets.filter((p) => p.class === f.cls.value).map((p) => h("option", { value: p.name, title: p.about }, p.name)));
   };
   f.cls.onchange = syncPresets; syncPresets();
   const weaponAc = autocomplete(f.weapon, (q) => api("GET", `/api/items?slot=weapon&cls=${f.cls.value}&level=${f.level.value}&q=${encodeURIComponent(q)}`), () => {});

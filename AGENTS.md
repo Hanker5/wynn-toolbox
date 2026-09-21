@@ -105,6 +105,11 @@ edits. Tell them which file you changed.
 
 - After a Wynncraft patch: `bin/wt-init --refresh`, then run the tests. Add the
   new version name to `VERSIONS` in `wynntools/data.py` if the builder added one.
+- Test suites: `uv run pytest` (fast, default), `-m differential` (compare with
+  WynnBuilder's own JS), `-m ui` (drive the web app in headless Chromium; first
+  run `uv run playwright install chromium`), `-m slow` (long searches). Run
+  `-m ui` after any change under `wynntools/web/`, and look at a screenshot when
+  changing layout: API tests alone missed four real page bugs.
 - Every bug fix gets a regression test in `tests/`. Every link handed out
   should be added to `tests/fixtures/links.json` so it keeps round-tripping.
 - Keep commits small and messages specific.

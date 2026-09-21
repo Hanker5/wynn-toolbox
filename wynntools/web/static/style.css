@@ -19,6 +19,8 @@
   }
 }
 * { box-sizing: border-box; }
+/* Author display rules (e.g. display:flex) would otherwise override [hidden]. */
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); }
 button, input, select, textarea { font: inherit; color: inherit; }
 input, select, textarea {
@@ -101,7 +103,8 @@ a { color: var(--accent); }
 .ac-item:hover, .ac-item.sel { background: var(--panel-2); }
 .ac-item .sub { font-size: 11px; color: var(--muted); }
 
-.tomes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.tomes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.tome .meta { font-size: 12px; color: var(--muted); margin-top: 3px; min-height: 1.3em; }
 
 .tree-arch { margin-bottom: 10px; }
 .tree-arch .t { font-size: 12px; color: var(--muted); margin-bottom: 4px; }

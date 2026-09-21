@@ -19,5 +19,7 @@ Rough priority order.
    crafted hashes; item data for older game versions.
 8. **Crafting**: consumables (potions, scrolls, food); powders as crafting
    ingredients in suggestions; crafted weapon DPS from the damage calculator.
-9. **CI** running the test suite on every push, plus a scheduled run that
+9. **Ability tree view**: draw the real tree layout instead of chips grouped by
+   archetype.
+10. **CI** running the test suite on every push, plus a scheduled run that
    refreshes data and flags breakage after a game patch.

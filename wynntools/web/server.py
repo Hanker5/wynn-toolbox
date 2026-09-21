@@ -79,23 +79,32 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             raise HTTPException(400, "build files must be .json directly inside builds/")
         return p
 
+    def version(p):
+        """File version stamp, as a string: nanosecond times exceed what a
+        JavaScript number can hold exactly, so a numeric stamp would round in
+        the browser and every save would look like a conflict."""
+        return str(p.stat().st_mtime_ns)
+
     def listing():
         out = []
         for p in sorted(builds_dir.glob("*.json")):
             try:
-                doc = buildfile.read(p)
+                doc = buildfile.refresh(buildfile.read(p), gd)
                 st = doc.get("status") or {}
                 weapon = (doc.get("equipment") or [None] * 9)[8]
+                try:
+                    cls = gd.weapon_class(weapon) if weapon else None
+                except (KeyError, ValueError, NotImplementedError):
+                    cls = None
                 out.append({
                     "file": p.name, "name": doc.get("name") or p.stem,
-                    "level": doc.get("level"), "weapon": weapon,
-                    "class": gd.weapon_class(weapon) if weapon in gd.item_by_name else None,
+                    "level": doc.get("level"), "weapon": weapon, "class": cls,
                     "verified": st.get("verified"),
                     "totals": {k: (st.get("totals") or {}).get(k, 0) for k in SUMMARY_STATS},
-                    "mtime": p.stat().st_mtime_ns})
+                    "mtime": version(p)})
             except (ValueError, KeyError, OSError) as e:
                 out.append({"file": p.name, "name": p.stem, "error": str(e),
-                            "mtime": p.stat().st_mtime_ns})
+                            "mtime": version(p)})
         return out
 
     def checked(doc):
@@ -199,7 +208,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         for t in gd.tome_by_name.values():
             out.setdefault(t["type"], []).append(
                 {"name": gd.name(t), "lvl": t.get("lvl"),
-                 "stats": {k: v for k, v in t.items() if isinstance(v, (int, float))
+                 "stats": {k: v for k, v in t.items()
+                           if isinstance(v, (int, float)) and not isinstance(v, bool)
                            and k not in ("id", "lvl", "remapID") and v}})
         for v in out.values():
             v.sort(key=lambda t: (-(t["lvl"] or 0), t["name"]))
@@ -236,8 +246,15 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         p = path_for(name)
         if not p.exists():
             raise HTTPException(404, "no such build")
-        return {**buildfile.read(p), "_mtime": p.stat().st_mtime_ns,
-                "_ap_cap": ability_points(buildfile.read(p).get("level") or 1)}
+        doc = buildfile.read(p)
+        try:
+            # Re-check on every open so a file saved by older code, or edited by
+            # hand without `wt link --write`, never shows stale numbers.
+            doc = buildfile.refresh(doc, gd)
+        except (KeyError, ValueError, NotImplementedError) as e:
+            doc = {**doc, "status": {**(doc.get("status") or {}), "verified": False,
+                                     "problems": [f"can't read this build: {e}"]}}
+        return {**doc, "_mtime": version(p), "_ap_cap": ability_points(doc.get("level") or 1)}
 
     @app.post("/api/check")
     async def check(request: Request):
@@ -249,14 +266,14 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         body = await request.json()
         p = path_for(name)
         base = body.get("_mtime")
-        if p.exists() and base is not None and p.stat().st_mtime_ns != base:
+        if p.exists() and base is not None and version(p) != str(base):
             raise HTTPException(409, "this build changed on disk since you opened it")
         old = buildfile.read(p) if p.exists() else {}
         doc = {**{k: v for k, v in old.items() if k not in buildfile.GENERATED},
                **{k: body[k] for k in EDITABLE if k in body}}
         doc = checked(doc)
         buildfile.write(p, doc)
-        return {**doc, "_mtime": p.stat().st_mtime_ns,
+        return {**doc, "_mtime": version(p),
                 "_ap_cap": ability_points(doc.get("level") or 1)}
 
     @app.post("/api/import")
@@ -282,7 +299,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             seen = {x["file"]: x["mtime"] for x in listing()}
             while not await request.is_disconnected():
                 await asyncio.sleep(1)
-                now = {p.name: p.stat().st_mtime_ns for p in builds_dir.glob("*.json")}
+                now = {p.name: version(p) for p in builds_dir.glob("*.json")}
                 changed = [f for f in now if seen.get(f) != now[f]]
                 removed = [f for f in seen if f not in now]
                 if changed or removed:
