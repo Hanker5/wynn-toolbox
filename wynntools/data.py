@@ -6,8 +6,8 @@ from functools import cache
 from pathlib import Path
 
 BASE_URL = "https://wynnbuilder.github.io"
-CACHE_DIR = Path(os.environ.get("WYNN_TOOLBOX_CACHE",
-                                Path(__file__).resolve().parent.parent / "data"))
+CACHE_DIR = Path(os.environ.get("WYNN_TOOLBOX_CACHE")          # empty counts as unset
+                 or Path(__file__).resolve().parent.parent / "data")
 
 # Mirrors `wynn_version_names` in WynnBuilder's js/load_item.js. A build link stores
 # the index into this list in its 10-bit version field.

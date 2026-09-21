@@ -15,17 +15,38 @@ rules, and hand you a working WynnBuilder link.
 
 ## Getting started
 
-Open an empty folder in an editor with an AI assistant (for example VS Code
-with Claude Code) and paste:
+**Install** (one line; no developer tools needed):
 
-> *"Clone https://github.com/<you>/wynn-toolbox into this folder, run
-> `bin/wt-init`, and then help me make a Wynncraft build."*
+- **Windows** (PowerShell):
+  ```powershell
+  irm https://raw.githubusercontent.com/Hanker5/wynn-toolbox/main/install/install.ps1 | iex
+  ```
+- **macOS / Linux** (Terminal):
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/Hanker5/wynn-toolbox/main/install/install.sh | sh
+  ```
 
-Or by hand:
+The installer sets up Python (through [uv](https://docs.astral.sh/uv/)),
+downloads WynnBuilder's data and adds a **Wynn Toolbox** shortcut (Start menu
+and Desktop on Windows, apps menu or Desktop elsewhere) plus a `wynn-toolbox`
+command. To update, run it again: your builds and settings are kept.
+
+**First run.** Wynn Toolbox opens in your browser and asks which AI assistant
+you want: **Claude Code**, **Codex** or **Gemini CLI** (or none). If it isn't
+installed, "Install for me" runs the official installer in the built-in
+terminal, where you can watch it. Then it starts the AI, which asks you to
+sign in the first time.
+
+From then on, opening Wynn Toolbox also starts your AI in the terminal panel.
+To switch, click the **AI** button in the sidebar (or run
+`wt config ai codex`).
+
+**For developers** (from a clone):
 
 ```bash
-git clone <repo-url> wynn-toolbox && cd wynn-toolbox
+git clone https://github.com/Hanker5/wynn-toolbox && cd wynn-toolbox
 bin/wt-init            # installs uv + dependencies, fetches data, runs tests
+uv run wt serve
 ```
 
 ## What the tools do
@@ -60,9 +81,10 @@ uv run wt serve        # opens http://127.0.0.1:8765 in your browser
   up within a second.
 - **New build from goals**: set what to maximize, your minimums and required
   Major IDs, then watch the search run with a progress bar.
-- **Terminal panel**: a shell in the toolbox folder with one-click buttons for
-  Claude Code, Codex or Gemini CLI (whichever are installed). Log in and use your
-  AI assistant right next to your builds. The shell keeps running if you reload.
+- **Terminal panel**: a shell in the toolbox folder (PowerShell on Windows).
+  Your chosen AI assistant starts in it when the app opens; the setup wizard
+  (the sidebar's AI button) installs or switches it. The shell keeps running if
+  you reload. Starting the app a second time just reopens the running one.
 
 **Security:** the app only accepts connections from this computer, needs the
 one-time token in the link `wt serve` prints, and the terminal only accepts
