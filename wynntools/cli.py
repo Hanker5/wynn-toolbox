@@ -23,7 +23,11 @@ def _print_report(ok, rep, gd):
         pw = ""
         if i in POWDERABLE and b.powders[POWDERABLE.index(i)]:
             pw = "  [" + " ".join(powder_name(p) for p in b.powders[POWDERABLE.index(i)]) + "]"
-        print(f"  {slot:<11}{name or '—'}{pw}")
+        if name and name.startswith("CR-"):
+            it = gd.item(name)
+            print(f"  {slot:<11}crafted {it['type']} ({', '.join(x for x in it['craft'].ingredients if x != 'No Ingredient')}){pw}")
+        else:
+            print(f"  {slot:<11}{name or '—'}{pw}")
     used = [(TOME_SLOTS[k], gd.name(gd.tome(tid))) for k, tid in enumerate(b.tomes) if tid is not None]
     print(f"Tomes: {len(used)}/14")
     for slot, name in used:
@@ -42,8 +46,11 @@ def _print_report(ok, rep, gd):
         print("  " + " · ".join(f"{k} {v:,}" for k, v in extras.items()))
     if t["poison"]:
         print(f"  poison {s['poison_per_second']:,}/sec")
+    tm = s["totals_max"]
+    perfect = [f"HP {tm['hp']:,}"] + [f"{k} {tm[k]:,}" for k in ("eSteal", "poison", "mr", "lb") if tm[k]]
+    print("  perfect rolls (what WynnBuilder shows): " + " · ".join(perfect))
     print(f"Skill points: {s['sp_total']}/{s['sp_available']} needed {s['sp_need']}")
-    print("Note: item stats are 100% rolls (real items roll 30-130%).")
+    print("Note: totals above are 100% rolls; real items roll 30-130%.")
     print("VERIFIED OK" if ok else "PROBLEMS:\n  - " + "\n  - ".join(rep["problems"]))
 
 
@@ -110,7 +117,8 @@ def cmd_gear(a):
                 force=raw.get("force", {}), exclude=set(raw.get("exclude", [])),
                 exclude_tiers=set(raw.get("exclude_tiers", [])),
                 tomes=[gd.tome(t)["id"] for t in raw.get("tomes", []) if t is not None],
-                topn=raw.get("topn", 8))
+                topn=raw.get("topn", 8), crafted=bool(raw.get("crafted")),
+                roll=raw.get("roll", "base"))
     r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
     if r is None:
         print("No build satisfies these constraints.")
@@ -166,6 +174,49 @@ def cmd_link(a):
     return 0 if ok else 1
 
 
+CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
+
+
+def describe_craft(it):
+    """Human-readable lines for a crafted item."""
+    from .verify import stat
+    c = it["craft"]
+    rows = [c.ingredients[i:i + 2] for i in (0, 2, 4)]
+    stats = {k: f"{stat(it, k, 'min')}–{stat(it, k, 'max')}" for k in sorted(it["rolls"])}
+    lines = [f"{c.recipe} · materials tier {c.mat_tiers[0]}/{c.mat_tiers[1]}"
+             + (f" · {c.atk_spd}" if it["category"] == "weapon" else ""),
+             *[("  grid:  " if i == 0 else "         ") + " | ".join(f"{x:<24}" for x in r)
+               for i, r in enumerate(rows)],
+             "  stats: " + ", ".join(f"{k} {v}" for k, v in stats.items() if v != "0–0")]
+    if it["category"] == "armor":
+        lines.append(f"  health {it['hp']}")
+    reqs = {s: it[f"{s}Req"] for s in ("str", "dex", "int", "def", "agi") if it[f"{s}Req"]}
+    lines.append(f"  requirements {reqs or 'none'} · durability {it['durability'][0]}-{it['durability'][1]}")
+    lines.append(f"  {CRAFTER_URL}{it['name'][3:]}")
+    return lines
+
+
+def cmd_craft(a):
+    from .craft_solver import CraftSpec, suggest_crafts
+    gd = GameData()
+    objective = {a.maximize: 1.0}
+    for extra in a.also or []:
+        k, w = extra.split("=")
+        objective[k] = float(w)
+    res = suggest_crafts(CraftSpec(a.type, a.level, objective, roll=a.roll,
+                                   max_total_reqs=a.max_reqs), gd.crafts, top=a.top)
+    if not res:
+        print("No valid craft found (check the item type and level).")
+        return 1
+    print(f"Best crafted {a.type} for {objective} at level {a.level} "
+          f"(IDs at {a.roll} roll; crafted ranges are ingredient min–max)")
+    for rank, (score, it) in enumerate(res, 1):
+        print(f"\n#{rank}  score {score:g}")
+        for line in describe_craft(it):
+            print("  " + line)
+    return 0
+
+
 def cmd_serve(a):
     from .web.server import serve
     serve(a.builds, a.port, open_browser=not a.no_browser)
@@ -205,6 +256,16 @@ def main(argv=None):
     s.add_argument("build")
     s.add_argument("--write", action="store_true", help="update the file's link and status")
     s.set_defaults(fn=cmd_link)
+    s = sub.add_parser("craft", help="suggest the best crafted item for a slot and goal")
+    s.add_argument("--type", required=True, help="helmet, chestplate, ring, relik, ...")
+    s.add_argument("--level", type=int, default=105, help="player level")
+    s.add_argument("--maximize", required=True, help="stat to maximize, e.g. eSteal")
+    s.add_argument("--also", action="append", metavar="STAT=WEIGHT",
+                   help="extra objective terms, e.g. hp=0.002 (repeatable)")
+    s.add_argument("--roll", choices=["min", "base", "max"], default="base")
+    s.add_argument("--max-reqs", type=int, help="cap on total skill requirements")
+    s.add_argument("--top", type=int, default=3)
+    s.set_defaults(fn=cmd_craft)
     s = sub.add_parser("serve", help="start the local web app (this computer only)")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--builds", default="builds", help="folder of build files")

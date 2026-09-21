@@ -34,12 +34,16 @@ bin/wt-init            # installs uv + dependencies, fetches data, runs tests
 uv run wt decode "<wynnbuilder link>"      # read and check any build
 uv run wt gear examples/shaman-105-stealing.json --tree summoner-stealing --confirm
 uv run wt tree mage-poison-riftwalker --level 105
+uv run wt craft --type ring --level 105 --maximize eSteal
 ```
 
 - **Link codec**: decodes and encodes WynnBuilder links, including tomes and the
   ability tree.
 - **Gear solver**: searches the item database under your class, level, required
   Major IDs, minimum HP/mana/regen/speed, and weapon constraints.
+- **Crafting**: exact crafted-item stats (checked against WynnBuilder's own code)
+  and suggestions for the best ingredients and layout for a slot and goal;
+  the gear search can include crafted pieces.
 - **Tree solver**: exact ability-tree optimization with WynnBuilder's activation
   rules.
 - **Verifier**: skill points (negative bonuses included), tree activation order,
@@ -72,7 +76,7 @@ what is proven, what was tested in game, and what is still unknown.
 
 - Item stats are 100% rolls; real items roll 30–130%.
 - Spell damage is not calculated yet.
-- Crafted/custom items and old-format links are not supported yet.
+- Custom items and old-format links are not supported yet.
 
 See `docs/ROADMAP.md`.
 

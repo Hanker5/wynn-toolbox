@@ -29,5 +29,5 @@ build-backend = "hatchling.build"
 packages = ["wynntools"]
 
 [tool.pytest.ini_options]
-markers = ["slow: runs a full gear-solver search (takes minutes)"]
-addopts = "-m 'not slow'"
+markers = ["slow: runs a full gear-solver search (takes minutes)", "differential: compares against WynnBuilder JS in QuickJS (needs network + uv)"]
+addopts = "-m 'not slow and not differential'"

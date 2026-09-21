@@ -4,13 +4,15 @@ The pools are a heuristic (top items per slot under several rankings), so the
 result is the best build *within the pools*, not a proven global optimum. See
 docs/ROADMAP.md for the planned exact (MILP) version.
 """
+import dataclasses
 import time
 from dataclasses import dataclass, field
 from itertools import product
 
 from .codec import SLOTS
 from .rules import SKILLS, base_hp, max_mana, skill_points
-from .verify import REQ, sp_requirements, stat
+from .verify import REQ, sp_requirements
+from .verify import stat as _stat
 
 CLASS_WEAPON = {"Mage": "wand", "Archer": "bow", "Assassin": "dagger",
                 "Warrior": "spear", "Shaman": "relik"}
@@ -27,6 +29,8 @@ class Spec:
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
     tomes: list = field(default_factory=list)    # tome ids; their stats count toward floors
+    roll: str = "base"                           # "base" (100%), "max" (perfect) or "min"
+    crafted: bool = False                        # also consider crafted items (see craft_solver)
     topn: int = 8                                # shortlist size per ranking (8 reproduces all session results)
 
 
@@ -93,7 +97,29 @@ def _force_sets(spec, pools, gd):
             yield force
 
 
-def solve_gear(spec, gd, progress=None):
+def _crafted_candidates(spec, gd):
+    """A few crafted items per slot: best for the objective alone, and best for
+    the objective with HP (and mana regen when there's a floor on it) mixed in."""
+    from .craft_solver import CraftSpec, suggest_crafts
+    kinds = ["helmet", "chestplate", "leggings", "boots", "ring", "bracelet", "necklace",
+             CLASS_WEAPON[spec.cls]]
+    out = {}
+    for kind in kinds:
+        variants = [dict(spec.objective)]
+        base = max(spec.objective.values())
+        variants.append({**spec.objective, "hp": base / 400})
+        if "mr" in spec.floors:
+            variants.append({**spec.objective, "mr": base / 2})
+        found = {}
+        for obj in variants:
+            for _, it in suggest_crafts(CraftSpec(kind, spec.level, obj, roll=spec.roll), gd.crafts, top=2):
+                found[it["name"]] = it
+                gd._craft_cache[it["name"]] = it          # so gd.item() can find it later
+        out[kind] = list(found.values())
+    return out
+
+
+def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
     """Return the best Result under `spec`, or None if nothing satisfies it.
 
     `progress`, if given, is called about ten times a second with a dict:
@@ -103,7 +129,21 @@ def solve_gear(spec, gd, progress=None):
     branches uneven.
     """
     t0 = time.time()
-    pools = _usable(gd, spec)
+
+    memo = {}
+
+    def stat(obj, key):
+        k = (id(obj), key)
+        if k not in memo:
+            memo[k] = _stat(obj, key, spec.roll)
+        return memo[k]
+    pools = _pools if _pools is not None else _usable(gd, spec)
+    if spec.crafted and _pools is None:
+        for kind, items in _crafted_candidates(spec, gd).items():
+            slots = ("ring1", "ring2") if kind == "ring" else \
+                ("weapon",) if kind == CLASS_WEAPON[spec.cls] else (kind,)
+            for s in slots:
+                pools[s].extend(items)
     tomes = [gd.tome(t) for t in spec.tomes]
     obj = lambda i: sum(w * stat(i, k) for k, w in spec.objective.items())
     fl = spec.floors
@@ -139,7 +179,12 @@ def solve_gear(spec, gd, progress=None):
                     out.append(it)
         return out
 
-    best = None
+    # Seed the search with a quick pass over smaller shortlists. Its build is
+    # feasible under the same constraints, and the smaller shortlists are subsets
+    # of the full ones, so this only tightens pruning; it never changes the answer.
+    if _seed is None and spec.topn > 3:
+        _seed = solve_gear(dataclasses.replace(spec, topn=3), gd, None, _pools=pools, _seed=False)
+    best = _seed or None
     forces = list(_force_sets(spec, pools, gd))
     track = {"nodes": 0, "last": 0.0, "force": 0, "pos": [0, 1, 0, 1]}
 
@@ -170,7 +215,14 @@ def solve_gear(spec, gd, progress=None):
                 mb[k][j] = mb[k + 1][j] + max(stat(c, sk) for c in cl[k]) \
                     + (sum(stat(t, sk) for t in tomes) if k == n - 1 else 0)
         ring_sym = "ring1" not in force and "ring2" not in force
-        chosen, names = [], set()
+        # Precompute each candidate once; the search loop only touches these tuples.
+        # (name, item, objective, hp, mr, spd, requirements, is_crafted)
+        pre = [[(gd.name(c), c, obj(c), stat(c, "hp"), stat(c, "mr"), stat(c, "spd"),
+                 tuple(c.get(r) or 0 for r in REQ), gd.name(c).startswith("CR-"))
+                for c in cl[k]] for k in range(n)]
+        is_ring2 = [SLOTS[k] == "ring2" for k in range(n)]
+        is_ring1 = [SLOTS[k] == "ring1" for k in range(n)]
+        chosen, names = [], {}
 
         def dfs(k, val, hp, mr, spd, mreq, ring1_idx):
             nonlocal best
@@ -182,7 +234,8 @@ def solve_gear(spec, gd, progress=None):
             if hp + suf["hp"][k] < hp_floor or mr + suf["mr"][k] < mr_floor \
                     or spd + suf["spd"][k] < spd_floor:
                 return
-            if sum(max(0, mreq[j] - mb[k][j]) for j in range(5)) > budget:
+            mbk = mb[k]
+            if sum(max(0, mreq[j] - mbk[j]) for j in range(5)) > budget:
                 return
             if k == n:
                 need = sp_requirements(chosen, tomes)
@@ -197,26 +250,25 @@ def solve_gear(spec, gd, progress=None):
                         return
                 best = Result(val, [gd.name(c) for c in chosen], need, 0)
                 return
-            for ci, c in enumerate(cl[k]):
+            for ci, (nm, c, o, h, m, sp_, rq, crafted) in enumerate(pre[k]):
                 if k < 2:
-                    track["pos"][2 * k:2 * k + 2] = [ci, len(cl[k])]
+                    track["pos"][2 * k:2 * k + 2] = [ci, len(pre[k])]
                     if k == 0:
                         track["pos"][2:] = [0, 1]
-                nm = gd.name(c)
-                if nm in names:
+                if names.get(nm) and not crafted:
                     continue
-                if ring_sym and SLOTS[k] == "ring2" and ci <= ring1_idx:
-                    continue               # ring pairs are unordered
+                if ring_sym and is_ring2[k] and (ci < ring1_idx or (ci == ring1_idx and not crafted)):
+                    continue               # ring pairs are unordered (a craft may repeat)
                 chosen.append(c)
-                names.add(nm)
-                dfs(k + 1, val + obj(c), hp + stat(c, "hp"), mr + stat(c, "mr"),
-                    spd + stat(c, "spd"),
-                    [max(mreq[j], c.get(REQ[j]) or 0) for j in range(5)],
-                    ci if SLOTS[k] == "ring1" else ring1_idx)
+                names[nm] = names.get(nm, 0) + 1
+                dfs(k + 1, val + o, hp + h, mr + m, spd + sp_,
+                    (max(mreq[0], rq[0]), max(mreq[1], rq[1]), max(mreq[2], rq[2]),
+                     max(mreq[3], rq[3]), max(mreq[4], rq[4])),
+                    ci if is_ring1[k] else ring1_idx)
                 chosen.pop()
-                names.discard(nm)
+                names[nm] -= 1
 
-        dfs(0, 0.0, 0, 0, 0, [0] * 5, -1)
+        dfs(0, 0.0, 0, 0, 0, (0, 0, 0, 0, 0), -1)
     report(final=True)
     if best:
         best.seconds = time.time() - t0

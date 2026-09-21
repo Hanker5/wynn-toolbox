@@ -46,3 +46,14 @@ def test_progress_reports_to_completion(gd):
     fr = [p["fraction"] for p in seen]
     assert fr and fr[-1] == 1.0
     assert all(a <= b + 1e-9 for a, b in zip(fr, fr[1:]))
+
+
+@pytest.mark.slow
+def test_crafted_gear_lifts_stealing(gd):
+    """Session result: crafted helmet/ring/necklace/relik take the 105 Stealing build
+    from 45% to 116% at the same HP floor."""
+    r = solve_gear(Spec(cls="Shaman", level=105, objective={"eSteal": 1, "lb": 0.01},
+                        floors={"hp": 17000, "mr": 20, "spd": 0},
+                        require_major=["GREED", "MAGNET"], crafted=True), gd)
+    assert total(gd, r.equipment, "eSteal") >= 110
+    assert any(n.startswith("CR-") for n in r.equipment)

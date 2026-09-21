@@ -69,7 +69,7 @@ def refresh(doc, gd):
     ok, rep = check_link(link, gd)
     s = rep["summary"]
     status = {"verified": ok, "problems": rep["problems"],
-              "totals": s["totals"], "sp_need": s["sp_need"], "sp_total": s["sp_total"],
+              "totals": s["totals"], "totals_max": s["totals_max"], "sp_need": s["sp_need"], "sp_total": s["sp_total"],
               "sp_available": s["sp_available"],
               "mana_min_int": s["mana_min_int"], "mana_spare_into_int": s["mana_spare_into_int"],
               "poison_per_second": s["poison_per_second"],

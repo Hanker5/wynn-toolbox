@@ -54,3 +54,42 @@ def max_mana(bonus_mana, total_int):
 def poison_per_second(poison):
     """js/display.js shows poison as floor(poison / 3) damage per second."""
     return poison // 3
+
+
+# js/build_utils.js `rolledIDs` / `reversedIDs`. Everything else (hp, skill points,
+# requirements, damage ranges) is static and never rolls.
+ROLLED_IDS = frozenset("""
+hprPct mr sdPct mdPct ls ms xpb lb ref thorns expd spd atkTier poison hpBonus spRegen eSteal
+hprRaw sdRaw mdRaw fDamPct wDamPct aDamPct tDamPct eDamPct fDefPct wDefPct aDefPct tDefPct
+eDefPct spPct1 spRaw1 spPct2 spRaw2 spPct3 spRaw3 spPct4 spRaw4 rSdRaw sprint sprintReg jh lq
+gXp gSpd eMdPct eMdRaw eSdPct eSdRaw eDamRaw eDamAddMin eDamAddMax tMdPct tMdRaw tSdPct tSdRaw
+tDamRaw tDamAddMin tDamAddMax wMdPct wMdRaw wSdPct wSdRaw wDamRaw wDamAddMin wDamAddMax fMdPct
+fMdRaw fSdPct fSdRaw fDamRaw fDamAddMin fDamAddMax aMdPct aMdRaw aSdPct aSdRaw aDamRaw
+aDamAddMin aDamAddMax nMdPct nMdRaw nSdPct nSdRaw nDamPct nDamRaw nDamAddMin nDamAddMax damPct
+damRaw damAddMin damAddMax rMdPct rMdRaw rSdPct rDamPct rDamRaw rDamAddMin rDamAddMax critDamPct
+spPct1Final spPct2Final spPct3Final spPct4Final healPct kb weakenEnemy slowEnemy rDefPct maxMana
+mainAttackRange""".split())
+REVERSED_IDS = frozenset("spPct1 spRaw1 spPct2 spRaw2 spPct3 spRaw3 spPct4 spRaw4".split())
+ROLLS = ("min", "base", "max")
+
+
+def js_round(x):
+    """JavaScript Math.round: halves round up (Python's round() rounds to even)."""
+    return math.floor(x + 0.5)
+
+
+def id_round(x):
+    """js/build_utils.js `idRound`: never rounds a non-zero roll to 0."""
+    r = js_round(x)
+    return r if r != 0 else (x > 0) - (x < 0)
+
+
+def rolled(key, base, roll="base", fixed=False):
+    """Value of an ID at a roll: "base" (100%, the stored value), "max" (a perfect
+    roll: what WynnBuilder's build totals show), or "min" (the worst roll)."""
+    if roll == "base" or fixed or not base or key not in ROLLED_IDS:
+        return base
+    good = (base > 0) != (key in REVERSED_IDS)
+    if roll == "max":
+        return id_round(base * (1.3 if good else 0.7))
+    return id_round(base * (0.3 if good else 1.3))

@@ -4,17 +4,22 @@ Each check here exists because the design session produced a wrong answer
 without it; see knowledge/mechanics.md "Mistakes the verifiers catch".
 """
 from .codec import decode, encode, link_hash
-from .rules import SKILLS, base_hp, max_mana, poison_per_second, skill_points
+from .rules import SKILLS, base_hp, max_mana, poison_per_second, rolled, skill_points
 
 REQ = [s + "Req" for s in SKILLS]
 STAT_KEYS = ["hp", "maxMana", "mr", "ms", "spd", "eSteal", "lb", "poison", "sdPct",
              "mdPct", "hprRaw", "hprPct", "ls", "xpb"]
 
 
-def stat(obj, key):
+def stat(obj, key, roll="base"):
+    """An item's or tome's stat at the given roll. "hp" is base health (static)
+    plus Health Bonus (rolled). Crafted items carry explicit min/max values."""
     if key == "hp":
-        return (obj.get("hp") or 0) + (obj.get("hpBonus") or 0)
-    return obj.get(key) or 0
+        return (obj.get("hp") or 0) + stat(obj, "hpBonus", roll)
+    if "rolls" in obj and key in obj["rolls"]:          # crafted item
+        lo, hi = obj["rolls"][key]
+        return {"min": lo, "max": hi, "base": (lo + hi) // 2}[roll]
+    return rolled(key, obj.get(key) or 0, roll, fixed=bool(obj.get("fixID")))
 
 
 def sp_requirements(items, bonus_sources=()):
@@ -76,18 +81,25 @@ def ap_cost(tree, selected):
     return sum(by_id[i].get("cost") or 0 for i in selected)
 
 
-def summarize(build, gd):
-    """Totals for a build, with gear, tomes and base stats combined."""
+def summarize(build, gd, roll="base"):
+    """Totals for a build, with gear, tomes and base stats combined.
+
+    `totals` use `roll`; `totals_max` are perfect rolls, which is what
+    WynnBuilder's build page displays.
+    """
     items = [gd.item(n) for n in build.equipment if n is not None]
     tomes = [gd.tome(t) for t in build.tomes if t is not None]
     need = sp_requirements(items, tomes)
     spare = skill_points(build.level) - sum(need)
-    totals = {k: sum(stat(o, k) for o in (*items, *tomes)) for k in STAT_KEYS}
+    totals = {k: sum(stat(o, k, roll) for o in (*items, *tomes)) for k in STAT_KEYS}
     totals["hp"] += base_hp(build.level)
+    totals_max = {k: sum(stat(o, k, "max") for o in (*items, *tomes)) for k in STAT_KEYS}
+    totals_max["hp"] += base_hp(build.level)
     bonus_int = sum(stat(o, "int") for o in (*items, *tomes))
     mana_min = max_mana(totals["maxMana"], need[2] + bonus_int)
+    # (skill points never roll, so requirements and Int bonuses are roll-independent)
     mana_spare_int = max_mana(totals["maxMana"], min(100, need[2] + max(spare, 0)) + bonus_int)
-    return {"totals": totals, "sp_need": dict(zip(SKILLS, need)), "sp_total": sum(need),
+    return {"totals": totals, "totals_max": totals_max, "roll": roll, "sp_need": dict(zip(SKILLS, need)), "sp_total": sum(need),
             "sp_available": skill_points(build.level), "spare_sp": spare,
             "mana_min_int": mana_min, "mana_spare_into_int": mana_spare_int,
             "poison_per_second": poison_per_second(totals["poison"])}
@@ -103,6 +115,11 @@ def check_link(link, gd=None):
     if encode(build, gd) != h:
         report["problems"].append("link does not round-trip through the encoder")
     s = report["summary"]
+    for slot, name in zip(("helmet", "chestplate", "leggings", "boots", "ring1", "ring2",
+                           "bracelet", "necklace", "weapon"), build.equipment):
+        if name and name.startswith("CR-"):
+            for p in gd.item(name).get("problems", []):
+                report["problems"].append(f"crafted {slot}: {p}")
     if s["sp_total"] > s["sp_available"]:
         report["problems"].append(f"needs {s['sp_total']} skill points, only {s['sp_available']} available")
     if max(s["sp_need"].values()) > 100:

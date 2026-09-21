@@ -52,8 +52,9 @@ function show(which) {
 async function itemInfo(slot, name) {
   if (!name) return null;
   if (S.items[name]) return S.items[name];
-  const hits = await api("GET", `/api/items?slot=${slot}&q=${encodeURIComponent(name)}`);
-  const it = hits.find((x) => x.name === name);
+  const it = name.startsWith("CR-")
+    ? await api("GET", `/api/item?name=${encodeURIComponent(name)}`).catch(() => null)
+    : (await api("GET", `/api/items?slot=${slot}&q=${encodeURIComponent(name)}`)).find((x) => x.name === name);
   if (it) {
     const cls = { wand: "Mage", bow: "Archer", dagger: "Assassin", spear: "Warrior", relik: "Shaman" }[it.type];
     S.items[name] = { ...it, cls };
@@ -63,6 +64,18 @@ async function itemInfo(slot, name) {
 
 function itemLine(it) {
   if (!it) return [];
+  if (it.craft) {
+    const ings = it.craft.ingredients.filter((x) => x !== "No Ingredient");
+    const ranges = Object.entries(it.craft.ranges).map(([k, [a, b]]) => `${k} ${a}–${b}`);
+    return [
+      h("span", { class: "tier-Crafted" }, `Crafted ${it.type} · ${it.craft.recipe}`),
+      ranges.length ? "  " + ranges.join(" · ") : "",
+      it.stats.hp ? `  hp ${fmt(it.stats.hp)}` : "",
+      h("div", {}, "Ingredients: " + (ings.join(", ") || "none") + "  ",
+        h("a", { href: it.craft.crafter, target: "_blank", rel: "noopener" }, "open in crafter")),
+      it.craft.problems.length ? h("div", { class: "tier-Fabled" }, "⚠ " + it.craft.problems.join("; ")) : "",
+    ];
+  }
   const bits = Object.entries(it.stats).map(([k, v]) => `${k} ${fmt(v)}`);
   const req = it.reqs.map((v, i) => (v ? `${SKILLS[i]} ${v}` : null)).filter(Boolean);
   return [
@@ -152,6 +165,7 @@ async function renderEditor() {
       h("button", { id: "ed-save", class: "primary", onclick: save }, "Save")),
     h("div", { id: "ed-banners" }),
     h("div", { id: "ed-tiles", class: "tiles" }),
+    h("p", { class: "hint" }, "Big numbers are typical (100%) rolls. \"Perfect\" is a 130% roll, which is what WynnBuilder shows."),
     h("div", { class: "card" }, h("h3", {}, "Skill points needed"), h("div", { id: "ed-sp", class: "sp" })),
     h("div", { class: "card" }, h("h3", {}, "Equipment"), h("div", { id: "ed-equip", class: "equip" })),
     h("div", { class: "card" }, h("h3", {}, "Tomes"), h("div", { id: "ed-tomes", class: "tomes" })),
@@ -166,8 +180,12 @@ async function renderEditor() {
 function renderEquipment() {
   const d = S.cur.doc, box = $("#ed-equip"); box.replaceChildren();
   S.meta.slots.forEach((slot, i) => {
-    const input = h("input", { value: d.equipment[i] || "", placeholder: "empty", "aria-label": slot });
+    const shown = (n) => (n && n.startsWith("CR-") ? `Crafted ${S.items[n]?.type || "item"}` : n || "");
+    const input = h("input", { value: shown(d.equipment[i]), placeholder: "empty", "aria-label": slot });
     const meta = h("div", { class: "meta" }, itemLine(S.items[d.equipment[i]]));
+    const craftBox = h("div", { class: "craft-box", hidden: true });
+    const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
+      onclick: () => openCraft(slot, i, craftBox, input, meta) }, "Craft…");
     const cls = weaponClass(d.equipment[8]);
     const ac = autocomplete(input,
       // Weapons are not class-filtered so picking one can switch the class.
@@ -183,8 +201,37 @@ function renderEquipment() {
     input.addEventListener("change", () => {
       if (!input.value.trim()) { edit((x) => { x.equipment[i] = null; }); meta.replaceChildren(); }
     });
-    box.append(h("div", { class: "slot" }, h("label", {}, slot.replace(/(\d)/, " $1")), ac, meta));
+    box.append(h("div", { class: "slot" },
+      h("label", { class: "slot-label" }, slot.replace(/(\d)/, " $1"), craftBtn), ac, meta, craftBox));
   });
+}
+
+async function openCraft(slot, i, box, input, meta) {
+  if (!box.hidden) { box.hidden = true; return; }
+  const d = S.cur.doc, cls = weaponClass(d.equipment[8]);
+  const goal = Object.keys(d.spec?.objective || {})[0] || "eSteal";
+  const statSel = h("select", {}, S.meta.stats.map((s) => h("option", { value: s }, s)));
+  statSel.value = goal;
+  const out = h("div");
+  const find = async () => {
+    out.replaceChildren(h("div", { class: "hint" }, "Searching ingredient layouts…"));
+    try {
+      const res = await api("POST", "/api/craft-suggest", { slot, level: d.level, cls, objective: { [statSel.value]: 1 }, top: 3 });
+      if (!res.length) { out.replaceChildren(h("div", { class: "hint" }, "No valid craft for this slot at this level.")); return; }
+      out.replaceChildren(...res.map((r) => h("div", { class: "craft-opt" },
+        h("div", { class: "meta" }, itemLine(r)),
+        h("button", { class: "mini primary", onclick: () => {
+          S.items[r.name] = r;
+          edit((x) => { x.equipment[i] = r.name; });
+          input.value = `Crafted ${r.type}`; meta.replaceChildren(...itemLine(r)); box.hidden = true;
+        } }, "Use this craft"))));
+    } catch (e) { out.replaceChildren(h("div", { class: "hint" }, e.message)); }
+  };
+  box.replaceChildren(h("div", { class: "row" }, "Best crafted", h("strong", {}, ` ${slot.replace(/\d/, "")} `), "for", statSel,
+    h("button", { class: "mini", onclick: find }, "Find")), out,
+    h("div", { class: "hint" }, "Crafted stats are ranges from the ingredients; the middle of the range counts as typical."));
+  box.hidden = false;
+  find();
 }
 
 function renderTomes() {
@@ -257,17 +304,19 @@ function renderDerived() {
     h("div", {}, h("strong", {}, "Problems"), h("ul", {}, st.problems.map((p) => h("li", {}, p))))));
 
   const tile = (k, v, s) => h("div", { class: "tile" }, h("div", { class: "k" }, k), h("div", { class: "v" }, v), s ? h("div", { class: "s" }, s) : null);
+  const tm = st.totals_max || {};
+  const perfect = (key, suffix = "") => (tm[key] !== undefined && tm[key] !== t[key] ? `perfect: ${fmt(tm[key])}${suffix}` : null);
   const tiles = [
-    tile("Health", fmt(t.hp)),
+    tile("Health", fmt(t.hp), perfect("hp")),
     tile("Max mana", fmt(st.mana_spare_into_int), `${fmt(st.mana_min_int)} with minimum Int`),
-    tile("Mana regen", fmt(t.mr)),
+    tile("Mana regen", fmt(t.mr), perfect("mr")),
     tile("Walk speed", `${fmt(t.spd)}%`),
     tile("Skill points", `${fmt(st.sp_total)}/${fmt(st.sp_available)}`),
     tile("Ability points", st.ap ? `${st.ap[0]}/${st.ap[1]}` : "—"),
   ];
-  if (t.eSteal) tiles.push(tile("Stealing", `${t.eSteal}%`));
-  if (t.lb) tiles.push(tile("Loot bonus", `${t.lb}%`));
-  if (t.poison) tiles.push(tile("Poison", fmt(t.poison), `${fmt(st.poison_per_second)}/sec`));
+  if (t.eSteal) tiles.push(tile("Stealing", `${t.eSteal}%`, perfect("eSteal", "%")));
+  if (t.lb) tiles.push(tile("Loot bonus", `${t.lb}%`, perfect("lb", "%")));
+  if (t.poison) tiles.push(tile("Poison", fmt(t.poison), `${fmt(st.poison_per_second)}/sec · perfect: ${fmt(tm.poison)}`));
   if (t.sdPct) tiles.push(tile("Spell damage", `${t.sdPct}%`));
   if (t.mdPct) tiles.push(tile("Main attack", `${t.mdPct}%`));
   $("#ed-tiles").replaceChildren(...tiles);
@@ -332,6 +381,7 @@ function renderSolver() {
   f.tie = h("select", {}, h("option", { value: "" }, "none"), m.stats.map((s) => h("option", { value: s }, s)));
   f.weapon = h("input", { placeholder: "any" });
   f.mythic = h("input", { type: "checkbox" });
+  f.crafted = h("input", { type: "checkbox" });
   f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
   f.preset = h("select", {});
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
@@ -363,7 +413,8 @@ function renderSolver() {
     while (S.builds.some((b) => b.file === file)) file = `${slug(name)}-${n++}.json`;
     const spec = { class: f.cls.value, level: +f.level.value, objective, floors,
       require_major: [...majors], force: f.weapon.value ? { weapon: f.weapon.value } : {},
-      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8 };
+      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
+      crafted: f.crafted.checked };
     try {
       const { job } = await api("POST", "/api/solve", { spec, file, name, tree_preset: f.preset.value || null });
       runBtn.disabled = true; cancelBtn.hidden = false;
@@ -398,7 +449,8 @@ function renderSolver() {
     h("div", { class: "card" }, h("h3", {}, "Requirements"),
       h("div", { class: "form" }, field("Required major IDs", majorIn), field("Weapon (optional)", weaponAc),
         field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),
-        h("label", { class: "check" }, f.mythic, "No mythics")),
+        h("label", { class: "check" }, f.mythic, "No mythics"),
+        h("label", { class: "check" }, f.crafted, "Include crafted items")),
       majorChips),
     h("div", { class: "card" }, h("h3", {}, "Run"), h("div", { class: "progress" }, bar), status,
       h("div", { class: "row", style: "margin-top:10px" }, runBtn, cancelBtn),

@@ -27,7 +27,12 @@ entries may be stated as fact.
 - Max build level is 121; items go up to level 120.
 - Base HP = 5 × level + 5.
 - Database values are **base (100%) rolls**. Positive IDs roll 30–130% of base
-  (`maxRolls`/`minRolls` in `build_utils.js`).
+  (`maxRolls`/`minRolls` in `build_utils.js`); negative IDs roll 70–130%; spell
+  cost IDs are reversed. Health (`hp`), skill points and requirements never roll;
+  Health Bonus (`hpBonus`) does.
+- **WynnBuilder's build page adds up perfect (130%) rolls** (`build.js` sums
+  `maxRolls`). The tools report 100% rolls and also show the perfect-roll totals,
+  labelled as what WynnBuilder shows, so the numbers can be matched up.
 
 ### Mana
 - Max mana = 100 + Max Mana from gear/tomes + an Intelligence bonus
@@ -56,6 +61,23 @@ entries may be stated as fact.
   Abomination 0.8/s. Invigorating Wave adds +1.2 puppet attacks/s and +0.75 totem
   ticks/s while active; Commander adds +0.5 puppet attacks/s.
 
+### Crafting (`craft.js`, checked against WynnBuilder's JS on 400 random crafts)
+- Six ingredients in a 3×2 grid. Each ingredient can raise or lower the
+  effectiveness of other slots (`above`, `under`, `left`, `right`, `touching`,
+  `notTouching`), so layout matters as much as ingredient choice.
+- An ingredient's IDs are scaled by its slot's effectiveness (rounded down) and
+  summed. Its skill requirements are scaled too (rounded); durability is not.
+- An ingredient only works for professions in its `skills` list, and only in
+  recipes at or above its level. Example: **Filched Purse** (Stealing) is
+  Alchemism/Scribing only, so it can't go in gear.
+- Durability below 1 makes the craft impossible; material tiers 3/3 give the most
+  durability and base health/damage.
+- A crafted item's level is its recipe's top level (a 103–105 recipe makes a
+  level-105 item). Skill points on crafts use the top of their range.
+- Crafted gear can beat drops by a lot for niche stats: at level 105 a crafted
+  ring reaches 12–32% Stealing (4 Stolen Pearls + 2 Doom Stones) vs 8% for the
+  best normal ring.
+
 ## Tested (in game)
 
 - **Puppet hits trigger Stealing.** Tested by Hank, 2026-09-20.
@@ -72,6 +94,10 @@ entries may be stated as fact.
 - Whether Stealing has a **cap**, or whether emeralds per proc scale with mob level.
 - Whether **sigil and tornado ticks re-apply poison** on every hit. The poison
   Mage presets assume they do.
+- Whether a **crafted item's IDs roll randomly** within the ingredient range when
+  crafted. The tools treat the middle of the range as typical.
+- **How obtainable ingredients are** (drop rates, trading). The suggester only
+  knows what is legal, not what is easy to get.
 - Whether two copies of the same tome can sit in paired slots (both mobXp slots,
   for example). WynnBuilder allows it.
 
@@ -86,3 +112,5 @@ Each has a regression test.
 | Unrequested stat in the objective | A 154% Loot Bonus, 0-HP chest dominated a Stealing build | AGENTS.md rule 5 |
 | `averageDps` used to rank summon/spell weapons | Steered away from the best per-hit relik | mechanics note above |
 | Base values treated as perfect rolls | Wand comparison overstated by ~40% vs. real items | AGENTS.md rule 3 |
+| Tool totals compared to WynnBuilder's page | WynnBuilder shows 130% rolls, the tools 100% | `test_wynnbuilder_shows_perfect_rolls` |
+| Crafting math drifting from WynnBuilder | Wrong stats for crafted gear | `tests/test_differential.py` |

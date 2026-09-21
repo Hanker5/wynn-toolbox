@@ -25,7 +25,9 @@ LATEST = len(VERSIONS) - 1
 _VERSIONED = {"encoding": "encoding_consts.json", "atree": "atree.json",
               "majid": "majid.json", "aspects": "aspects.json"}
 _BASELINE = {"items": "data/baseline/compressed/compress.json",
-             "tomes": "data/baseline/tomes.json"}
+             "tomes": "data/baseline/tomes.json",
+             "ingreds": "data/baseline/compressed/ingreds_compress.json",
+             "recipes": "data/baseline/compressed/recipes_compress.json"}
 
 WEAPON_CLASS = {"wand": "Mage", "bow": "Archer", "dagger": "Assassin",
                 "spear": "Warrior", "relik": "Shaman"}
@@ -83,7 +85,23 @@ class GameData:
     def name(obj):
         return obj.get("displayName") or obj["name"]
 
+    @property
+    def crafts(self):
+        """Ingredient and recipe tables, loaded on first use."""
+        if not hasattr(self, "_crafts"):
+            from .crafting import CraftData
+            self._crafts = CraftData(self.version)
+            self._craft_cache = {}
+        return self._crafts
+
     def item(self, name):
+        """A normal item by name, or a crafted item by its "CR-" hash."""
+        if name.startswith("CR-"):
+            cd = self.crafts
+            if name not in self._craft_cache:
+                from .crafting import craft_item, decode_craft_hash
+                self._craft_cache[name] = craft_item(decode_craft_hash(name, cd), cd)
+            return self._craft_cache[name]
         try:
             return self.item_by_name[name]
         except KeyError:

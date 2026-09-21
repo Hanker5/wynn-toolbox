@@ -37,6 +37,12 @@ Create `builds/specs/<name>.json`. Start from `examples/`. Fields:
 Tome slot order: weapon ×2, armor ×4, guild, lootrun, gatherXp ×2, dungeonXp ×2,
 mobXp ×2. Floors include tome stats and base HP.
 
+Set `"crafted": true` to let the search use crafted gear. It often wins for
+niche stats (Stealing, for one) and costs little search time. Ask first if the
+player doesn't craft, since crafts need ingredients they must collect. For one
+slot, `uv run wt craft --type <slot> --level N --maximize <stat>` shows the best
+crafts with their ingredient grid and a WynnBuilder crafter link.
+
 Use one objective stat unless the player asked for more. A tiny tiebreaker
 weight (0.01) on a second stat is fine.
 

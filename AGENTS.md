@@ -41,6 +41,9 @@ questions; you run the commands.
      points going into Intelligence, say so; WynnBuilder won't do that itself.
    - **Aspects are empty.**
    - Tomes are **goals to collect** unless the player said they own them.
+   - WynnBuilder's page shows **perfect (130%) rolls**; say which one you quote.
+   - Crafted items are **ranges**; the middle counts as typical. Mention that
+     ingredients have to be collected.
 
 4. **Keep facts apart by where they came from** (`knowledge/mechanics.md`):
    proven by WynnBuilder's data/code, tested in game by a player, or unknown.
@@ -76,6 +79,7 @@ All commands run through `uv run wt ...` from the repo root.
 | `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
+| `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
 | `wt serve` | Start the local web app (this computer only) with the build editor and a terminal panel. |
 
 ## Build files are the shared record

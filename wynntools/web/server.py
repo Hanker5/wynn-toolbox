@@ -150,6 +150,49 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                                                    "defReq", "agiReq")]}
                 for i in hits[:40]]
 
+    def item_summary(it):
+        out = {"name": gd.name(it), "tier": it.get("tier"), "lvl": it.get("lvl"),
+               "type": it.get("type"), "majors": it.get("majorIds") or [],
+               "stats": {k: stat(it, k) for k in ("hp", "eSteal", "poison", "lb", "mr",
+                                                   "maxMana", "spd") if stat(it, k)},
+               "reqs": [it.get(r) or 0 for r in ("strReq", "dexReq", "intReq",
+                                                  "defReq", "agiReq")]}
+        if gd.name(it).startswith("CR-"):
+            c = it["craft"]
+            out["craft"] = {"recipe": c.recipe, "ingredients": c.ingredients,
+                            "mat_tiers": list(c.mat_tiers), "durability": it["durability"],
+                            "problems": it["problems"],
+                            "ranges": {k: list(v) for k, v in it["rolls"].items() if any(v)},
+                            "crafter": "https://wynnbuilder.github.io/crafter/#" + gd.name(it)[3:]}
+        return out
+
+    @app.get("/api/item")
+    def item(name: str):
+        try:
+            return item_summary(gd.item(name))
+        except (KeyError, ValueError, NotImplementedError) as e:
+            raise HTTPException(404, str(e).strip('"'))
+
+    @app.post("/api/craft-suggest")
+    async def craft_suggest(request: Request):
+        from ..craft_solver import CraftSpec, suggest_crafts
+        body = await request.json()
+        kind = {"ring1": "ring", "ring2": "ring"}.get(body["slot"], body["slot"])
+        if kind == "weapon":
+            if not body.get("cls"):
+                raise HTTPException(422, "pick a weapon first so the class is known")
+            kind = CLASS_WEAPON[body["cls"]]
+        try:
+            res = await asyncio.to_thread(
+                suggest_crafts, CraftSpec(kind, int(body["level"]), body["objective"],
+                                          roll=body.get("roll", "base")), gd.crafts,
+                int(body.get("top", 3)))
+        except (KeyError, ValueError) as e:
+            raise HTTPException(422, str(e))
+        for _, it in res:
+            gd._craft_cache[it["name"]] = it
+        return [{"score": sc, **item_summary(it)} for sc, it in res]
+
     @app.get("/api/tomes")
     def tomes():
         out = {}
@@ -263,7 +306,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                         exclude=set(raw.get("exclude") or []),
                         exclude_tiers=set(raw.get("exclude_tiers") or []),
                         tomes=[gd.tome(t)["id"] for t in raw.get("tomes") or [] if t],
-                        topn=int(raw.get("topn") or 8))
+                        topn=int(raw.get("topn") or 8), crafted=bool(raw.get("crafted")),
+                        roll=raw.get("roll") or "base")
         except (KeyError, ValueError, TypeError) as e:
             raise HTTPException(422, f"bad spec: {e}")
         preset = body.get("tree_preset") or None
