@@ -1,13 +1,80 @@
 {
   "_note": "Links produced during the design session (2026-09-20/21). Each must round-trip exactly and decode to the recorded summary.",
-  "original_user_build": {"hash": "CY0p11q40+1BG0Y9G0XW3QkGT86D", "weapon": "Procrastination", "level": 104, "tree_nodes": 1, "tomes": 0},
-  "shaman_105_stormdrain": {"hash": "CY0tA0O6OI3dQ028Wy0l7aJXMCZMqQNxQNx+o6tssUtxoMsEj+XkUxBFH0", "weapon": "Stormdrain", "level": 105, "tree_nodes": 31, "tomes": 14},
-  "shaman_105_cryoseism": {"hash": "CY0Ax0O6OI3dQ028Wy0l78ymh2ZMqQNxQNxoo6tssUtxoMsEj+XkUxBFH0", "weapon": "Cryoseism", "level": 105, "tree_nodes": 31, "tomes": 14},
-  "shaman_105_infused_hive": {"hash": "CY0lU0O6OI3dQ028Ud0l7OmW-4ZMqQNxQNxQp6tssUtxoMsEj+XkUxBFH0", "weapon": "Infused Hive Relik", "level": 105, "tree_nodes": 31, "tomes": 14},
-  "shaman_105_resonance": {"hash": "CY0tA0O6OI3dQ028gy0l7QdW8FZMqQNxQNxwo6tssUtxoMsEj+1hUxR5K0", "weapon": "Resonance", "level": 105, "tree_nodes": 29, "tomes": 14},
-  "shaman_121_absolution": {"hash": "CY06EHELOD106128Wy0l78yma6ZMqgQLhQL-o6pQMdwKpMsI-Glt+sJ5", "weapon": "Absolution", "level": 121, "tree_nodes": 33, "tomes": 14},
-  "mage_105_gaia_lightbender": {"hash": "CY0i0XRG8V0gxmx4C00q2QdGf67smQNxQNx+o6tssUtxgMrEjttZByMr23", "weapon": "Gaia", "level": 105, "tree_nodes": 32, "tomes": 14},
-  "mage_105_gaia_riftwalker": {"hash": "CY0i0XRG8V0gxmx4C00q2QdGf67smQNxQNx+o6tssUtxgMrEjtxxALHFe2", "weapon": "Gaia", "level": 105, "tree_nodes": 31, "tomes": 14},
-  "mage_105_gaia_mana": {"hash": "CY0yzWRG8V0gxmx4C00q2myGf67smQNxQNx+o6tssUtxgMrEjttZByMr23", "weapon": "Gaia", "level": 105, "tree_nodes": 32, "tomes": 14},
-  "mage_105_sequoia": {"hash": "CY0i0XRG8V0gx0B0mSnQ2QdGfB7smQNxQNx+o6tssUtxgMrEjttZByMr23", "weapon": "Sequoia", "level": 105, "tree_nodes": 32, "tomes": 14}
+  "original_user_build": {
+    "hash": "CY0p11q40+1BG0Y9G0XW3QkGT86D",
+    "weapon": "Procrastination",
+    "level": 104,
+    "tree_nodes": 1,
+    "tomes": 0
+  },
+  "shaman_105_stormdrain": {
+    "hash": "CY0tA0O6OI3dQ028Wy0l7aJXMCZMqQNxQNx+o6tssUtxoMsEj+XkUxBFH0",
+    "weapon": "Stormdrain",
+    "level": 105,
+    "tree_nodes": 31,
+    "tomes": 14
+  },
+  "shaman_105_cryoseism": {
+    "hash": "CY0Ax0O6OI3dQ028Wy0l78ymh2ZMqQNxQNxoo6tssUtxoMsEj+XkUxBFH0",
+    "weapon": "Cryoseism",
+    "level": 105,
+    "tree_nodes": 31,
+    "tomes": 14
+  },
+  "shaman_105_infused_hive": {
+    "hash": "CY0lU0O6OI3dQ028Ud0l7OmW-4ZMqQNxQNxQp6tssUtxoMsEj+XkUxBFH0",
+    "weapon": "Infused Hive Relik",
+    "level": 105,
+    "tree_nodes": 31,
+    "tomes": 14
+  },
+  "shaman_105_resonance": {
+    "hash": "CY0tA0O6OI3dQ028gy0l7QdW8FZMqQNxQNxwo6tssUtxoMsEj+1hUxR5K0",
+    "weapon": "Resonance",
+    "level": 105,
+    "tree_nodes": 29,
+    "tomes": 14
+  },
+  "shaman_121_absolution": {
+    "hash": "CY06EHELOD106128Wy0l78yma6ZMqgQLhQL-o6pQMdwKpMsI-Glt+sJ5",
+    "weapon": "Absolution",
+    "level": 121,
+    "tree_nodes": 33,
+    "tomes": 14
+  },
+  "mage_105_gaia_lightbender": {
+    "hash": "CY0i0XRG8V0gxmx4C00q2QdGf67smQNxQNx+o6tssUtxgMrEjttZByMr23",
+    "weapon": "Gaia",
+    "level": 105,
+    "tree_nodes": 32,
+    "tomes": 14
+  },
+  "mage_105_gaia_riftwalker": {
+    "hash": "CY0i0XRG8V0gxmx4C00q2QdGf67smQNxQNx+o6tssUtxgMrEjtxxALHFe2",
+    "weapon": "Gaia",
+    "level": 105,
+    "tree_nodes": 31,
+    "tomes": 14
+  },
+  "mage_105_gaia_mana": {
+    "hash": "CY0yzWRG8V0gxmx4C00q2myGf67smQNxQNx+o6tssUtxgMrEjttZByMr23",
+    "weapon": "Gaia",
+    "level": 105,
+    "tree_nodes": 32,
+    "tomes": 14
+  },
+  "mage_105_sequoia": {
+    "hash": "CY0i0XRG8V0gx0B0mSnQ2QdGfB7smQNxQNx+o6tssUtxgMrEjttZByMr23",
+    "weapon": "Sequoia",
+    "level": 105,
+    "tree_nodes": 32,
+    "tomes": 14
+  },
+  "shaman_105_crafted": {
+    "hash": "CYG4CHCHCHCH8g8gec81YW9Y9Y9Y92H5Hbp490hImMHW0A2A9A9A9A9A9A9WJa0uz41b4b4b4b4b4b4n9IG4aqWdiaaqaqWduc8106jerksrkszbDkjjzktbjiTQz3TzsNUY0",
+    "weapon": "CR-4aqWdiaaqaqWduc810",
+    "level": 105,
+    "tree_nodes": 31,
+    "tomes": 14
+  }
 }
