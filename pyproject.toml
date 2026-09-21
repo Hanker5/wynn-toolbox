@@ -5,13 +5,21 @@ description = "AI-assisted Wynncraft build toolkit: decode and encode WynnBuilde
 readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.11"
-dependencies = ["numpy>=2", "scipy>=1.11"]
+dependencies = [
+    "fastapi>=0.141.1",
+    "numpy>=2",
+    "scipy>=1.11",
+    "uvicorn[standard]>=0.53.0",
+]
 
 [project.scripts]
 wt = "wynntools.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8",
+]
 
 [build-system]
 requires = ["hatchling"]

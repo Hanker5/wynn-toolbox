@@ -166,6 +166,11 @@ def cmd_link(a):
     return 0 if ok else 1
 
 
+def cmd_serve(a):
+    from .web.server import serve
+    serve(a.builds, a.port, open_browser=not a.no_browser)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="wt", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -200,5 +205,10 @@ def main(argv=None):
     s.add_argument("build")
     s.add_argument("--write", action="store_true", help="update the file's link and status")
     s.set_defaults(fn=cmd_link)
+    s = sub.add_parser("serve", help="start the local web app (this computer only)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--builds", default="builds", help="folder of build files")
+    s.add_argument("--no-browser", action="store_true")
+    s.set_defaults(fn=cmd_serve)
     a = p.parse_args(argv)
     sys.exit(a.fn(a) or 0)

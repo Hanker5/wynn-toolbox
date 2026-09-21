@@ -112,9 +112,10 @@ def check_link(link, gd=None):
         tree = gd.tree(gd.weapon_class(build.weapon))
         _, failed = tree_activation(tree, build.atree)
         names = {n["id"]: n["display_name"] for n in tree}
+        report["tree_failed"] = sorted(names[i] for i in failed)
         if failed:
             report["problems"].append("ability nodes cannot activate: " +
-                                      ", ".join(sorted(names[i] for i in failed)))
+                                      ", ".join(report["tree_failed"]))
         cost, cap = ap_cost(tree, build.atree), ability_points(build.level)
         if cost > cap:
             report["problems"].append(f"ability tree costs {cost} AP, cap is {cap}")

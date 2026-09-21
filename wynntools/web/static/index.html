@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wynn Toolbox</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="brand">Wynn Toolbox <span id="version" class="muted"></span></div>
+    <button id="new-build" class="primary wide">New build from goals</button>
+    <details class="import">
+      <summary>Import a WynnBuilder link</summary>
+      <input id="import-link" placeholder="https://wynnbuilder.github.io/builder/#…">
+      <input id="import-name" placeholder="Name (optional)">
+      <button id="import-go" class="wide">Import</button>
+      <div id="import-msg" class="msg"></div>
+    </details>
+    <div class="section-label">Builds</div>
+    <ul id="build-list"></ul>
+  </aside>
+
+  <main id="main">
+    <div id="empty" class="empty">
+      <h2>No build open</h2>
+      <p>Pick a build on the left, import a WynnBuilder link, or make a new one from your goals.</p>
+    </div>
+    <section id="editor" hidden></section>
+    <section id="solver" hidden></section>
+  </main>
+
+  <aside id="terminal-panel" hidden></aside>
+</div>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
