@@ -1306,6 +1306,7 @@ async function renderCompare() {
 // ------------------------------------------------------------------ live updates
 function watch() {
   const es = new EventSource("/api/events");
+  es.addEventListener("tools", (ev) => window.wtTerminal?.showTools(JSON.parse(ev.data)));
   es.onmessage = async (ev) => {
     const { changed, removed, open } = JSON.parse(ev.data);
     if (changed.includes("inventory.json") || removed.includes("inventory.json")) {

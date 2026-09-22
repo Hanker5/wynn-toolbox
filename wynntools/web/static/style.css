@@ -221,6 +221,15 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 /* Padding goes on .xterm, not #term: xterm's fit addon measures #term's CSS size (which
    includes padding under border-box) and subtracts only .xterm's padding. */
 #term { flex: 1; min-height: 0; }
+/* Long-running `wt` commands, above the terminal; hidden when none run. */
+#term-tools { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #22262f; }
+#term-tools[hidden] { display: none; }
+.tool-run .tool-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 4px; font-size: 12px; }
+.tool-run .tool-label { font-weight: 600; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-run .tool-stat { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.tool-run .tool-cmd { color: var(--muted); font: 11px ui-monospace, Menlo, Consolas, monospace; margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tool-run .progress { height: 8px; }
 #term .xterm { padding: 6px 4px 6px 8px; }
 
 /* ------------------------------------------------------------------ narrow screens */

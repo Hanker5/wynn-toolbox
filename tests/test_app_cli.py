@@ -5,6 +5,7 @@ never appeared in the app's list, and it had no way to know which build the
 player meant by "this build".
 """
 import json
+import time
 import urllib.request
 from pathlib import Path
 
@@ -203,3 +204,74 @@ def test_merge_drops_what_no_longer_fits(gd, links):
     assert out["powders"] == [[], [], [], [], []]
     assert out["tree"] == [] and out["skillpoints"] is None and out["notes"] == "n"
     assert any("class changed" in x for x in lines)
+
+
+# ------------------------------------------------------------ progress bars for long commands
+def test_tool_progress_file_appears_late_updates_and_goes(builds):
+    from wynntools.web import client
+    (builds / ".server.json").write_text("{}")             # the app is running
+    tp = client.ToolProgress(builds, "Searching for gear", "wt gear x.json", delay=0.2, beat=0.5)
+    f = builds / ".progress" / f"{tp.path.name}"
+    with tp:
+        assert not f.exists()                              # quick commands never show
+        time.sleep(0.4)
+        assert json.loads(f.read_text())["label"] == "Searching for gear"
+        client.report(0.5, "1,000 checked")
+        time.sleep(0.4)
+        [t] = client.running_tools(builds)
+        assert (t["label"], t["command"], t["fraction"], t["detail"]) == \
+            ("Searching for gear", "wt gear x.json", 0.5, "1,000 checked")
+    assert not f.exists() and client.running_tools(builds) == []
+    client.report(0.9)                                     # nothing open: ignored
+
+
+def test_tool_progress_does_nothing_without_the_app(builds):
+    from wynntools.web import client
+    with client.ToolProgress(builds, "x", delay=0):
+        time.sleep(0.3)
+    assert not (builds / ".progress").exists()
+
+
+def test_a_killed_command_stops_showing(builds):
+    from wynntools.web import client
+    (builds / ".progress").mkdir()
+    old = {"label": "gone", "command": "wt gear", "started": time.time() - 100, "at": time.time() - 60}
+    (builds / ".progress" / "123.json").write_text(json.dumps(old))
+    (builds / ".progress" / "124.json").write_text(json.dumps({**old, "at": time.time()}))
+    assert [t["id"] for t in client.running_tools(builds)] == ["124"]
+    assert not (builds / ".progress" / "123.json").exists()
+
+
+def test_wt_commands_report_what_they_do(builds, capsys, monkeypatch):
+    from wynntools.web import client
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_fetch", lambda a: seen.update(label=client._active.state["label"],
+                                                               command=client._active.state["command"]))
+    run(capsys, "fetch")
+    assert seen == {"label": "Downloading WynnBuilder data", "command": "wt fetch"}
+    assert client._active is None
+    monkeypatch.setattr(cli, "cmd_serve", lambda a: seen.update(serve=client._active))
+    run(capsys, "serve")
+    assert seen["serve"] is None                           # the app itself gets no bar
+
+
+def test_events_stream_sends_running_tools(app, builds):
+    (builds / ".progress").mkdir()
+    (builds / ".progress" / "7.json").write_text(json.dumps(
+        {"label": "Ranking upgrades", "command": "wt upgrades s.json", "fraction": 0.25,
+         "detail": None, "started": time.time() - 3, "at": time.time()}))
+    req = urllib.request.Request(f"http://127.0.0.1:{app.port}/api/events", headers={"x-wt-token": TOKEN})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        assert r.readline() == b"event: tools\n"
+        [t] = json.loads(r.readline().decode().removeprefix("data: "))
+    assert (t["id"], t["label"], t["fraction"]) == ("7", "Ranking upgrades", 0.25)
+    assert t["elapsed"] >= 3
+
+
+def test_search_progress_feeds_the_bar(builds):
+    import io
+    from wynntools.progress import ProgressBar
+    from wynntools.web import client
+    with client.ToolProgress(builds, "Searching for gear") as tp:
+        ProgressBar(stream=io.StringIO())({"fraction": 0.37, "nodes": 38000, "best": 44.77, "elapsed": 3})
+        assert (tp.state["fraction"], tp.state["detail"]) == (0.37, "38,000 checked · best 44.77")

@@ -33,7 +33,8 @@ from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
 from . import terminal as term_mod
-from .client import HEARTBEAT, SHOW_FILE, SHOW_TTL, STATE_FILE, VIEW_FILE, cleanup, read_json, write_json
+from .client import (HEARTBEAT, SHOW_FILE, SHOW_TTL, STATE_FILE, VIEW_FILE, cleanup, read_json,
+                     running_tools, write_json)
 from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
@@ -479,12 +480,19 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
     @app.get("/api/events")
     async def events(request: Request):
-        """Server-sent events whenever a build file is added, changed or removed."""
+        """Server-sent events whenever a build file is added, changed or removed,
+        and a `tools` event with the `wt` commands running (the terminal
+        panel's progress bars) whenever that list changes."""
         async def stream():
             seen = {x["file"]: x["mtime"] for x in listing()}
             seen_show = show_req["seq"]
+            seen_tools = []
             while not await request.is_disconnected():
                 await asyncio.sleep(1)
+                tools = running_tools(builds_dir)
+                if tools != seen_tools:
+                    seen_tools = tools
+                    yield f"event: tools\ndata: {json.dumps(tools)}\n\n"
                 poll_show_file()
                 now = {p.name: version(p) for p in builds_dir.glob("*.json")
                        if p.name not in RESERVED}

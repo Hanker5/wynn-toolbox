@@ -1,6 +1,8 @@
 """Progress display for long searches."""
 import sys
 
+from .web import client
+
 
 class ProgressBar:
     """Callable for `solve_gear(progress=...)`.
@@ -19,6 +21,7 @@ class ProgressBar:
         best = "—" if p["best"] is None else f"{p['best']:g}"
         m, s = divmod(int(p["elapsed"]), 60)
         info = f"{pct:5.1f}%  {p['nodes']:,} checked  best {best}  {m}:{s:02d}"
+        client.report(p["fraction"], f"{p['nodes']:,} checked · best {best}")
         if self.tty:
             fill = int(self.width * p["fraction"])
             self.stream.write(f"\r{self.label} [{'#' * fill}{'.' * (self.width - fill)}] {info}")

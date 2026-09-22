@@ -169,6 +169,9 @@ variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
   want to keep the original. If you edit the JSON by hand, run
   `wt link <file> --write` afterwards. The page reloads within a second.
 - Tell the player which file you changed or created.
+- Any `wt` command that runs longer than a second shows a progress bar above
+  the terminal (with a percentage where the search knows one), so the player
+  can see a long search is still working.
 
 ## Skills
 

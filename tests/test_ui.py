@@ -247,6 +247,40 @@ def test_terminal_runs_commands(page):
     assert not page.errors
 
 
+def test_long_wt_commands_show_a_progress_bar_above_the_terminal(app, page):
+    """A `wt` command that runs a while shows its label and a bar above the
+    terminal; the section is hidden when nothing runs."""
+    import time
+    from wynntools.web import client
+    page.click("#toggle-terminal")
+    page.wait_for_selector("#terminal-panel:not([hidden]) .xterm", timeout=10000)
+    assert page.locator("#term-tools").is_hidden()
+    term_h = page.locator("#term").bounding_box()["height"]
+    (Path(app.builds_dir) / ".server.json").write_text("{}")
+    gear = client.ToolProgress(app.builds_dir, "Searching for gear", "wt gear spec.json", delay=0, beat=0.5)
+    with gear:
+        client.report(0.4, "12,000 checked · best 310")
+        page.wait_for_selector("#term-tools:not([hidden]) .tool-run", timeout=10000)
+        page.wait_for_function("document.querySelector('#term-tools .tool-stat').textContent.startsWith('40%')",
+                               timeout=10000)
+        assert page.inner_text("#term-tools .tool-label") == "Searching for gear"
+        assert "wt gear spec.json" in page.inner_text("#term-tools .tool-cmd")
+        bar = page.locator("#term-tools .progress")
+        assert "busy" not in bar.get_attribute("class") and bar.get_attribute("aria-valuenow") == "40"
+        fetch = client.ToolProgress(app.builds_dir, "Downloading WynnBuilder data", "wt fetch", delay=0, beat=0.5)
+        fetch.path = fetch.path.with_name("other-process.json")   # two commands at once
+        with fetch:
+            page.wait_for_function("document.querySelectorAll('#term-tools .tool-run').length === 2",
+                                   timeout=10000)
+            assert "busy" in page.locator("#term-tools .progress").nth(1).get_attribute("class")
+            assert page.locator("#term").bounding_box()["height"] < term_h   # the terminal made room
+            page.locator("#terminal-panel").screenshot(
+                path="/tmp/claude-1000/-var-home-hhays-wynn-toolbox/"
+                     "a1a639fd-bb84-4486-afbd-a4a1b66cd05f/scratchpad/tools.png")
+    page.wait_for_selector("#term-tools", state="hidden", timeout=10000)
+    assert not page.errors
+
+
 def test_perfect_roll_toggle_matches_wynnbuilder_numbers(page, gd, links):
     """Typical shows 100% rolls; Perfect shows WynnBuilder's 130% numbers."""
     from wynntools.verify import summarize

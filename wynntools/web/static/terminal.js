@@ -108,8 +108,46 @@
   document.getElementById("term-restart").addEventListener("click", () => {
     if (confirm("Close this shell (and anything running in it) and start a new one?")) send({ type: "restart" });
   });
+  // Progress bars for long-running `wt` commands (the server's `tools` event).
+  const toolsBox = document.getElementById("term-tools");
+  function clock(sec) {
+    const s = Math.floor(sec);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+  const toolRows = new Map();      // id -> row, kept so the busy animation runs on
+  function toolRow() {
+    const el = (tag, cls) => { const e = document.createElement(tag); e.className = cls; return e; };
+    const row = el("div", "tool-run"), head = el("div", "tool-head");
+    const label = el("span", "tool-label"), stat = el("span", "tool-stat");
+    const bar = el("div", "progress"), fill = document.createElement("i"), cmd = el("div", "tool-cmd");
+    bar.setAttribute("role", "progressbar");
+    head.append(label, stat); bar.append(fill); row.append(head, bar, cmd);
+    return Object.assign(row, { parts: { label, stat, bar, fill, cmd } });
+  }
+  function showTools(tools) {
+    const ids = new Set(tools.map((t) => t.id));
+    for (const [id, row] of toolRows) if (!ids.has(id)) { row.remove(); toolRows.delete(id); }
+    for (const t of tools) {
+      let row = toolRows.get(t.id);
+      if (!row) { row = toolRow(); toolRows.set(t.id, row); }
+      const { label, stat, bar, fill, cmd } = row.parts;
+      const known = t.fraction != null;
+      label.textContent = t.label;
+      stat.textContent = (known ? `${Math.floor(t.fraction * 100)}% · ` : "") + clock(t.elapsed);
+      bar.classList.toggle("busy", !known);
+      bar.setAttribute("aria-label", t.label);
+      if (known) bar.setAttribute("aria-valuenow", String(Math.round(t.fraction * 100)));
+      else bar.removeAttribute("aria-valuenow");
+      fill.style.width = known ? `${t.fraction * 100}%` : "";
+      cmd.textContent = t.detail ? `${t.command} · ${t.detail}` : t.command;
+      row.title = cmd.textContent;
+      toolsBox.append(row);            // keeps the server's order (oldest first)
+    }
+    toolsBox.hidden = tools.length === 0;
+  }
+
   // The setup wizard (setup.js) opens the panel when an AI is chosen.
   window.wtTerminal = { open, send, refresh: () => (opened ? drawClis() : null),
-                        focus: () => term?.focus() };
+                        focus: () => term?.focus(), showTools };
   if (store.get("wt-term-open") === "1") open();
 })();

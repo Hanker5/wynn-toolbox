@@ -324,8 +324,10 @@ def cmd_gear(a):
         print("(damage floors use the shortlist search; the exact search can't check them)")
     if exact:
         from .gear_milp import solve_gear_exact
+        from .web import client
 
         def rounds(p):
+            client.report(None, f"round {p['round']} · best bound {p['best']:g}")
             if not a.quiet:
                 print(f"\r  exact search: round {p['round']}, best bound {p['best']:g}, "
                       f"{p['elapsed']:.0f}s", end="", file=sys.stderr, flush=True)
@@ -433,6 +435,17 @@ BUILDS = Path("builds")
 VIEW_NAMES = {"empty": "the start page", "editor": "the build editor",
               "solver": "the \"New build from goals\" form", "inventory": "the Inventory page",
               "compare": "the Compare builds page"}
+
+
+# What the terminal panel's progress bars call each command while it runs.
+ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build",
+            "verify": "Checking a build", "damage": "Calculating damage",
+            "tree": "Solving the ability tree", "gear": "Searching for gear",
+            "upgrades": "Ranking upgrades", "import": "Importing a build",
+            "link": "Checking a build", "edit": "Editing a build",
+            "craft": "Finding crafted items", "compare": "Comparing builds",
+            "ingredient": "Looking up an ingredient"}
+NO_PROGRESS = {"serve", "update"}      # the app itself, and replacing it
 
 
 def _in_builds(path):
@@ -1052,4 +1065,10 @@ def main(argv=None):
     s.add_argument("--builds", default="builds", help="folder of build files")
     s.set_defaults(fn=cmd_update)
     a = p.parse_args(argv)
-    sys.exit(a.fn(a) or 0)
+    if a.cmd in NO_PROGRESS:
+        sys.exit(a.fn(a) or 0)
+    from .web import client
+    shown = " ".join(argv if argv is not None else sys.argv[1:])
+    with client.ToolProgress(BUILDS, ACTIVITY.get(a.cmd, f"Running wt {a.cmd}"), f"wt {shown}"):
+        code = a.fn(a) or 0
+    sys.exit(code)
