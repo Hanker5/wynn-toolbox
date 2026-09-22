@@ -146,6 +146,72 @@ def test_no_stray_null_text_anywhere(page):
     assert not found, sorted(set(found))
 
 
+FITS_JS = """() => {
+  const b = (s) => document.querySelector(s).getBoundingClientRect().bottom;
+  const main = document.querySelector('#main');
+  main.scrollTop = main.scrollHeight;                  // scroll the page to its end
+  const last = [...document.querySelectorAll('#editor > *')].pop();
+  return {vh: innerHeight, main: b('#main'), panel: b('#terminal-panel'),
+          screen: b('#term .xterm-screen'), term: b('#term'), last: last.getBoundingClientRect().bottom,
+          doc: document.documentElement.scrollHeight};
+}"""
+
+
+def check_fits(pg, where):
+    pg.wait_for_timeout(400)                            # the terminal refits after a resize
+    m = pg.evaluate(FITS_JS)
+    vh = m["vh"]
+    assert m["main"] <= vh + 0.5 and m["panel"] <= vh + 0.5, (where, m)   # nothing below the window
+    assert m["screen"] <= m["term"] + 0.5, (where, m)                    # last terminal row visible
+    assert m["last"] <= m["main"] + 0.5, (where, m)                      # page scrolls to its end
+    assert m["doc"] <= vh + 0.5, (where, m)                              # no stray page scrollbar
+
+
+def _resize_and_check(pg):
+    for w, hgt in [(1400, 1000), (1400, 600), (1100, 480), (1400, 900)]:   # shrink, then grow back
+        pg.set_viewport_size({"width": w, "height": hgt})
+        check_fits(pg, f"{w}x{hgt}")
+    # every line of a long terminal output is reachable, the prompt last
+    pg.click("#term")
+    pg.keyboard.type("for i in $(seq 200); do echo line-$i; done; echo END-MARK\n")
+    pg.wait_for_function("document.querySelector('#term .xterm-rows').innerText.includes('END-MARK')")
+    rows = pg.locator("#term .xterm-rows > div")
+    last_row = rows.nth(rows.count() - 1).bounding_box()
+    assert last_row["y"] + last_row["height"] <= pg.evaluate("innerHeight") + 0.5
+
+
+def test_page_and_terminal_fit_the_window_after_resizing(page):
+    """Found by the player: after shrinking the window, the bottom of the page
+    and of the terminal could no longer be scrolled to. The grid row grew to the
+    terminal's old size, and the terminal was fitted 12px too tall (its padding
+    was counted as room)."""
+    open_build(page, "shaman_105_stormdrain")
+    page.click("#toggle-terminal")
+    page.wait_for_selector("#term .xterm-screen")
+    _resize_and_check(page)
+    assert not page.errors
+
+
+def test_app_window_fits_after_resizing(tmp_path, gd, links):
+    doc = buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    buildfile.write(tmp_path / "storm.json", buildfile.refresh({"name": "storm", **doc}, gd))
+    with AppServer(str(tmp_path), terminal_cwd=str(tmp_path)) as srv, playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            pytest.skip(f"headless Chromium unavailable: {e}")
+        pg = browser.new_page(viewport={"width": 1400, "height": 1000})
+        pg.add_init_script(FAKE_PYWEBVIEW)
+        pg.goto(srv.url)
+        pg.wait_for_selector("#titlebar:not([hidden])")
+        pg.click("#build-list li")
+        pg.wait_for_selector("#ed-badge .badge.ok", timeout=20000)
+        pg.click("#toggle-terminal")
+        pg.wait_for_selector("#term .xterm-screen")
+        _resize_and_check(pg)
+        browser.close()
+
+
 def test_outside_edit_appears_in_page(page, app):
     open_build(page, "shaman_105_stormdrain")
     f = Path(app.builds_dir) / "stormdrain.json"

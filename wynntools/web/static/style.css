@@ -44,7 +44,9 @@ a { color: var(--accent); }
 .major { font-size: 11px; padding: 0 5px; border-radius: 3px; background: #3b2a55; color: #d9b8ff; }
 
 /* ------------------------------------------------------------------ shell */
-#app { display: grid; grid-template-columns: 250px 1fr auto; height: 100vh; }
+/* One row exactly as tall as #app: an implicit auto row grows to its tallest item, and the
+   terminal (sized for the old window) then held the page taller than the window after a shrink. */
+#app { display: grid; grid-template-columns: 250px 1fr auto; grid-template-rows: minmax(0, 1fr); height: 100vh; }
 #sidebar { background: #1a1a1a; border-right: 1px solid var(--line); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .brand { font-weight: 700; font-size: 16px; }
 .section-label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-top: 6px; }
@@ -208,7 +210,7 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 #toast.show.has-action { pointer-events: auto; }
 
 /* ------------------------------------------------------------------ terminal */
-#terminal-panel { position: relative; width: var(--term-width, 520px); min-width: 320px; max-width: 70vw;
+#terminal-panel { position: relative; width: var(--term-width, 520px); min-width: 320px; max-width: 70vw; min-height: 0; overflow: hidden;
   background: #0b0d11; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
 #term-resize { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 5; }
 .term-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 8px 10px; border-bottom: 1px solid #22262f; }
@@ -216,7 +218,10 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 .term-head button { padding: 3px 9px; font-size: 12px; }
 .term-head a { font-size: 12px; }
 #term-note { padding: 0 10px; }
-#term { flex: 1; min-height: 0; padding: 6px 4px 6px 8px; }
+/* Padding goes on .xterm, not #term: xterm's fit addon measures #term's CSS size (which
+   includes padding under border-box) and subtracts only .xterm's padding. */
+#term { flex: 1; min-height: 0; }
+#term .xterm { padding: 6px 4px 6px 8px; }
 
 /* ------------------------------------------------------------------ narrow screens */
 @media (max-width: 1250px) {
@@ -224,7 +229,7 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
   .ed-side { position: static; }
 }
 @media (max-width: 900px) {
-  #app { grid-template-columns: 1fr; height: auto; }
+  #app { grid-template-columns: 1fr; grid-template-rows: none; height: auto; }
   #sidebar { border-right: 0; border-bottom: 1px solid var(--line); }
   #main { padding: 12px 16px 40px; }
   .equip { grid-template-columns: 1fr; }
