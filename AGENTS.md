@@ -83,7 +83,12 @@ questions; you run the commands.
 
 ## Commands
 
-All commands run through `uv run wt ...` from the repo root.
+Run commands from the repo root. In the web app's terminal, plain `wt ...`
+works (the toolbox's `wt` is first on PATH there) and is the fastest. Elsewhere,
+use `uv run wt ...`. **Sandboxed agents** (Codex): `uv run` fails inside the
+sandbox ("Read-only file system" on uv's cache), so use `wt`, or `.venv/bin/wt`
+(Windows: `.venv\Scripts\wt.exe`) outside the app. All `wt` commands work in
+the sandbox, including the ones that talk to the web app.
 
 | Command | What it does |
 |---|---|
@@ -134,6 +139,9 @@ numbers WynnBuilder shows.
 You are probably running in the web app's terminal panel (the environment
 variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
 
+- Claude Code, Codex and Gemini CLI get a one-line note with each message
+  naming the build the player has open (a prompt hook: `.claude/settings.json`,
+  `.codex/hooks.json`, `.gemini/settings.json`). It names the file only.
 - **"This build", "the current build", "my build"** means the one open in the
   page. Run `uv run wt current` to find out which file it is and what's in it,
   before answering or editing. Don't guess from the file list. Run it again when
@@ -154,6 +162,10 @@ variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
 | Skill | Use it when |
 |---|---|
 | `build` | A player wants a new build, a weapon comparison, or a change to one. |
+
+The skill lives in `.claude/skills/build/` (Claude Code) and
+`.agents/skills/build/` (Codex, Gemini CLI). The two files must stay identical;
+a test checks it.
 
 ## Maintenance
 

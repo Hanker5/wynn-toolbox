@@ -1,0 +1,23 @@
+{
+  "tools": {
+    "allowed": [
+      "run_shell_command(wt)",
+      "run_shell_command(uv run wt)"
+    ]
+  },
+  "hooks": {
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "wynn-toolbox-open-build",
+            "description": "Tells Gemini which build the player has open in the web app",
+            "command": "uv run --quiet wt current --hook BeforeAgent",
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  }
+}

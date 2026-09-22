@@ -127,6 +127,7 @@
       ...header(`${c.label} is ready`),
       h("ul", { class: "setup-list" },
         h("li", {}, c.login),
+        c.first_run ? h("li", {}, c.first_run) : null,
         h("li", {}, c.account),
         h("li", {}, "Then tell it what you want, e.g. “make me a Stealing Shaman build with at least 12,000 HP”."),
         h("li", {}, `${c.label} will start by itself whenever you open Wynn Toolbox. To change that, use the AI button in the sidebar.`)),

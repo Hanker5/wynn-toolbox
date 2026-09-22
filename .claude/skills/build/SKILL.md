@@ -1,19 +1,25 @@
 ---
 name: build
-description: Make, compare or adjust a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants an existing build changed. Produces verified WynnBuilder links.
+description: Make, compare or adjust a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants their current build changed ("this build"). Produces verified WynnBuilder links saved to the player's build list.
 ---
 
 # Build
 
-Follow AGENTS.md throughout. The steps below are the procedure.
+Follow AGENTS.md throughout: its rules and assumptions bind every step. The
+steps below are the procedure.
+
+Commands are written as `wt ...`, which works in the web app's terminal (the
+toolbox's `wt` is first on PATH there). Elsewhere, run `uv run wt ...` from the
+repo root. In a sandbox where `uv run` fails with a read-only file system
+error (Codex's), use `wt` or `.venv/bin/wt` (Windows: `.venv\Scripts\wt.exe`).
 
 ## 1. Find out what they want
 
 If they mean the build open in the web app ("this build", "my current build"),
-run `uv run wt current` first. If they have a WynnBuilder link, decode it. Either
+run `wt current` first. If they have a WynnBuilder link, decode it. Either
 tells you class, level and gear without asking:
 
-    uv run wt decode "<link>"
+    wt decode "<link>"
 
 Then collect only what is still missing:
 
@@ -41,38 +47,43 @@ mobXp ×2. Floors include tome stats and base HP.
 Set `"crafted": true` to let the search use crafted gear. It often wins for
 niche stats (Stealing, for one) and costs little search time. Ask first if the
 player doesn't craft, since crafts need ingredients they must collect. For one
-slot, `uv run wt craft --type <slot> --level N --maximize <stat>` shows the best
+slot, `wt craft --type <slot> --level N --maximize <stat>` shows the best
 crafts with their ingredient grid, a WynnBuilder crafter link, and which mobs
-drop each ingredient and where (`uv run wt ingredient <name>` for all spots).
+drop each ingredient and where (`wt ingredient <name>` for all spots).
 Mention when an ingredient has no listed mob.
 
 Use one objective stat unless the player asked for more. A tiny tiebreaker
-weight (0.01) on a second stat is fine.
+weight (0.01) on a second stat is fine. Put hard requirements in floors,
+`require_major`, `force`, `exclude` or `exclude_tiers`; never trade them away
+silently.
 
 ## 3. Pick a tree preset
 
-`uv run wt tree <preset> --level N` lists what a preset selects. Current presets:
+`wt tree <preset> --level N` lists what a preset selects. Current presets:
 `summoner-stealing`, `mage-poison-lightbender`, `mage-poison-riftwalker`.
 
-If none fits, add one to `wynntools/presets.py` with an `about` string that says
+Say what the preset's weights favor, especially an archetype it ignores. If
+none fits, add one to `wynntools/presets.py` with an `about` string that says
 what it rewards and why, and tell the player it is a judgment call.
 
-## 4. Run and verify
+## 4. Run, save and verify
 
-    uv run wt gear builds/specs/<name>.json --tree <preset> \
+    wt gear builds/specs/<name>.json --tree <preset> \
         --save builds/<name>.json --name "<readable name>"
 
 Always pass `--save`: it puts the build in the app's list and opens it there.
 The search is exact over every usable item (it says so). With a damage floor it
-falls back to per-slot shortlists; add `--confirm` then. It prints the build, totals and a link, says
-`VERIFIED OK` or lists problems, and saves a build file the player can open in
-the web app. Never pass on a link without `VERIFIED OK`.
+falls back to per-slot shortlists; add `--confirm` then, and call the result
+best within the shortlists. It prints the build, totals and a link, and says
+`VERIFIED OK` or lists problems. Never pass on a link without `VERIFIED OK`
+(`wt verify <link>` checks any link). Never work out totals yourself.
 
 To change a saved build (swap an item, add a tome), use
-`uv run wt edit builds/<name>.json --item helmet="Name"` (add
-`--save-as builds/<new>.json` to keep the original). For fields `wt edit`
-doesn't cover, edit the file's editable fields by hand, then
-`uv run wt link builds/<name>.json --write` to re-check it.
+`wt edit builds/<name>.json --item helmet="Name"` (add
+`--save-as builds/<new>.json` to keep the original). If `wt current` reports
+unsaved edits in the page, ask the player to Save or Revert first. For fields
+`wt edit` doesn't cover, edit the file's editable fields by hand, then
+`wt link builds/<name>.json --write` to re-check it.
 
 ## 5. When goals compete, show the trade-off
 
@@ -81,16 +92,20 @@ present a short table: floor, goal stat, HP, mana regen, skill points. Point
 out cliffs where one step costs much more than the last.
 
 For weapon comparisons, force each candidate weapon with the same spec and
-compare with `uv run wt damage <link>` (spell and melee damage, effective HP).
-When a player wants to keep a spell's damage up while maximizing something else,
-add `"floors": {"damage": {"<spell name>": N}}` and pass `--tree PRESET`. Quote
+compare with `wt damage <link>` (spell and melee damage, effective HP), or
+`wt compare <a> <b>` for two saved builds. When a player wants to keep a
+spell's damage up while maximizing something else, add
+`"floors": {"damage": {"<spell name>": N}}` and pass `--tree PRESET`. Quote
 damage at typical rolls unless comparing with the WynnBuilder page (`--perfect`).
 Poison is per second (`floor(poison / 3)`), not per hit.
 
 ## 6. Present
 
 - The link, a table of the 9 items, and the key totals.
-- The assumptions from AGENTS.md rule 3, in two or three lines.
+- Which file you saved, so the player can find it in the list.
+- The objective you used, and the assumptions from AGENTS.md rule 3, in two or
+  three lines.
 - Anything the result depends on that is only tested or unknown per
   `knowledge/mechanics.md`.
-- Add the link to `tests/fixtures/links.json` if it is a keeper.
+- When developing the toolbox (not for players): add keeper links to
+  `tests/fixtures/links.json`.

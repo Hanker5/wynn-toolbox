@@ -41,6 +41,12 @@ From then on, opening Wynn Toolbox also starts your AI in the terminal panel.
 To switch, click the **AI** button in the sidebar (or run
 `wt config ai codex`).
 
+Each AI comes set up for the toolbox: a shared `build` skill, a prompt hook
+that tells it which build you have open, and (Claude Code, Gemini CLI)
+permission to run `wt` without asking. Say yes when it asks whether to trust
+the folder. Codex also asks you to approve new hooks once: type `/hooks` and
+trust the Wynn Toolbox one.
+
 **For developers** (from a clone):
 
 ```bash

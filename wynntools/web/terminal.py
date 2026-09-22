@@ -26,18 +26,24 @@ AI_CLIS = [
     {"key": "claude", "cmd": "claude", "label": "Claude Code", "vendor": "Anthropic",
      "account": "Needs a Claude Pro, Max, Team or Console account (the free plan doesn't include it).",
      "login": "The first time it starts, it opens a sign-in page in your browser.",
+     "first_run": "When it asks whether you trust this folder, choose Yes. That lets it see "
+                  "which build you have open and run the toolbox's commands without asking each time.",
      "install": {"posix": "curl -fsSL https://claude.ai/install.sh | bash",
                  "windows": "irm https://claude.ai/install.ps1 | iex"},
      "needs_node": False, "docs": "https://code.claude.com/docs/en/setup"},
     {"key": "codex", "cmd": "codex", "label": "Codex", "vendor": "OpenAI",
      "account": "Needs a ChatGPT Plus, Pro, Business, Edu or Enterprise plan, or an OpenAI API key.",
      "login": "The first time it starts, choose \u201cSign in with ChatGPT\u201d.",
+     "first_run": "Once signed in, type /hooks and trust the Wynn Toolbox hook. It tells Codex "
+                  "which build you have open each time you send a message.",
      "install": {"posix": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
                  "windows": "irm https://chatgpt.com/codex/install.ps1 | iex"},
      "needs_node": False, "docs": "https://developers.openai.com/codex/cli"},
     {"key": "gemini", "cmd": "gemini", "label": "Gemini CLI", "vendor": "Google",
      "account": "Sign in with a Google account, or use a Gemini API key.",
      "login": "The first time it starts, choose \u201cSign in with Google\u201d.",
+     "first_run": "If it asks whether you trust this folder, choose Trust. That lets it see "
+                  "which build you have open and run the toolbox's commands without asking each time.",
      # --prefix keeps it in ~/.local, so no sudo is needed for a system Node.
      "install": {"posix": "npm install -g --prefix ~/.local @google/gemini-cli",
                  "windows": "npm install -g @google/gemini-cli"},
@@ -59,9 +65,20 @@ def _extra_dirs():
             Path("/home/linuxbrew/.linuxbrew/bin"), Path("/usr/local/bin")]
 
 
+def toolbox_bin():
+    """The folder holding this toolbox's own `wt` (the virtualenv's scripts)."""
+    d = Path(sys.executable).parent
+    return d if (d / ("wt.exe" if WINDOWS else "wt")).exists() else None
+
+
 def shell_path():
-    """The PATH the terminal's shell gets: the server's own, then the install dirs."""
+    """The PATH the terminal's shell gets: the toolbox's `wt` first, then the
+    server's own PATH, then the install dirs. With `wt` on PATH, an AI can run it
+    without `uv run`, which Codex's sandbox blocks (uv can't write its cache
+    there); on Windows it also wins over Windows Terminal's `wt` alias."""
     parts = (os.environ.get("PATH") or "").split(os.pathsep)
+    if toolbox_bin():
+        parts = [str(toolbox_bin())] + [p for p in parts if p != str(toolbox_bin())]
     parts += [str(d) for d in _extra_dirs() if str(d) not in parts]
     return os.pathsep.join(p for p in parts if p)
 
@@ -104,7 +121,7 @@ def available_clis():
     return {
         "os": "windows" if WINDOWS else ("macos" if sys.platform == "darwin" else "linux"),
         "clis": [{k: c[k] for k in ("key", "cmd", "label", "vendor", "account", "login",
-                                    "needs_node", "docs")}
+                                    "first_run", "needs_node", "docs")}
                  | {"installed": find_cli(c["cmd"]) is not None,
                     "install": install_command(c["key"])}
                  for c in AI_CLIS],
