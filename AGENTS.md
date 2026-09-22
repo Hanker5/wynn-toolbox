@@ -134,6 +134,13 @@ update) and `builds/.server.json` (the running server's address) are not builds
 either; change settings with `wt config`. `builds/.update.json`,
 `builds/update.log` and `builds/app.log` belong to the app too.
 
+**Never write a `wt gear`/`wt upgrades` spec.json into `builds/`.** It's a
+search input, not a build — the web app's sidebar globs every `builds/*.json`
+and shows anything it can't parse as a build as "can't read file". Write spec
+files to your scratchpad/temp directory (or wherever you're already running
+commands from) and pass that path to `wt gear`; only pass `builds/...` for
+`--save`, `--save-as` and the build file itself.
+
 Deleting a build in the app (the editor's Delete button) moves it into
 `builds/.trash/` with a timestamp; it isn't listed any more but can be
 restored. Don't delete a player's build unless they ask; if they do, move it
