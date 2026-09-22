@@ -8,7 +8,7 @@ from wynntools.codec import decode
 from wynntools.damage import (damage_report, merge_stat, spell_values, summary,
                               weapon_powder_damage)
 from wynntools.gear_solver import Spec, solve_gear
-from wynntools.presets import PRESETS
+from wynntools.presets import PRESETS, preset_weights
 from wynntools.rules import ability_points
 from wynntools.tree_solver import solve_tree
 
@@ -82,7 +82,7 @@ def test_damage_floor_needs_a_tree(gd):
 
 
 def test_damage_floor_is_respected(gd):
-    tree = set(solve_tree(gd.tree("Mage"), PRESETS["mage-poison-lightbender"]["weights"],
+    tree = set(solve_tree(gd.tree("Mage"), preset_weights("mage-poison-lightbender", gd),
                           ability_points(105)))
     base = solve_gear(_mage_spec(atree=tree), gd)
     from wynntools.codec import Build

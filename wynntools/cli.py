@@ -10,7 +10,7 @@ from . import buildfile
 from . import inventory as inv_mod
 from .gear_solver import Spec, solve_gear, upgrades
 from .progress import ProgressBar
-from .presets import PRESETS, summoner_hits_per_sec
+from .presets import PRESETS, preset_weights, summoner_hits_per_sec
 from .rules import ability_points
 from .tree_solver import solve_tree
 from .verify import check_link
@@ -104,7 +104,7 @@ def _tree_for(build_level, weapon, preset, gd):
     P = PRESETS[preset]
     if P["class"] != cls:
         raise SystemExit(f"preset {preset} is for {P['class']}, weapon {weapon} is {cls}")
-    return solve_tree(gd.tree(cls), P["weights"], ability_points(build_level))
+    return solve_tree(gd.tree(cls), preset_weights(preset, gd), ability_points(build_level))
 
 
 def _resolve_tomes(entries, gd):
@@ -162,7 +162,7 @@ def cmd_tree(a):
     P = PRESETS[a.preset]
     tree = gd.tree(P["class"])
     ap = a.ap or ability_points(a.level)
-    sel = solve_tree(tree, P["weights"], ap)
+    sel = solve_tree(tree, preset_weights(a.preset, gd), ap)
     print(f"{a.preset}: {P['about']}")
     by_id = {n["id"]: n for n in tree}
     print(f"{len(sel)} nodes, {sum(by_id[i].get('cost') or 0 for i in sel)}/{ap} AP")
@@ -186,7 +186,7 @@ def _damage_tree(spec, preset, gd):
         raise SystemExit("damage floors need a tree: add --tree PRESET")
     if PRESETS[preset]["class"] != spec.cls:
         raise SystemExit(f"preset {preset} is for {PRESETS[preset]['class']}")
-    spec.atree = set(solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
+    spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
                                 ability_points(spec.level)))
 
 

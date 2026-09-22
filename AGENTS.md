@@ -103,7 +103,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--save-as` makes a variant and leaves the original alone. |
 | `wt damage <link or build file> [--perfect] [--parts]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP. Typical rolls by default; `--perfect` matches the WynnBuilder page. |
 | `wt compare <a> <b> [--perfect]` | Two builds (links or files) side by side: gear, totals, skill points, spell damage, effective HP. The web app's "Compare builds" page shows the same. |
-| `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
+| `wt tree <preset> [--level N]` | Solve an ability tree from a preset. Every class has a generic preset per archetype (`archer-boltslinger`, `warrior-paladin`, ...); a few are tuned for a goal (`summoner-stealing`, `mage-poison-*`). |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
 | `wt ingredient "Stolen Pearls"` | Which mobs drop an ingredient and where (x, y, z). `wt craft` lists this for every suggested ingredient. |
 | `wt own add\|remove\|list [NAME] [--tome] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes and real roll values. |

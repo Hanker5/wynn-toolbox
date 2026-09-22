@@ -25,7 +25,7 @@ from .. import settings as settings_mod
 from ..codec import SLOTS, TOME_SLOTS
 from ..data import VERSIONS, GameData
 from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
-from ..presets import PRESETS
+from ..presets import PRESETS, preset_weights
 from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
@@ -338,7 +338,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         if not P:
             raise HTTPException(422, "unknown preset")
         tree = gd.tree(P["class"])
-        sel = solve_tree(tree, P["weights"], ability_points(int(body["level"])))
+        sel = solve_tree(tree, preset_weights(body.get("preset"), gd), ability_points(int(body["level"])))
         return sorted(n["display_name"] for n in tree if n["id"] in sel)
 
     # ------------------------------------------------------------ builds
@@ -524,7 +524,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                        "spec": raw, "tree_preset": preset}
                 if preset:
                     b = buildfile.to_build({**doc, "tree": []}, gd)
-                    b.atree = solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
+                    b.atree = solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
                                          ability_points(spec.level))
                     doc["tree"] = buildfile.from_build(b, gd)["tree"]
                 buildfile.write(p, buildfile.refresh(doc, gd, owned))
@@ -589,7 +589,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             raise HTTPException(422, "damage minimums need a tree preset")
         if PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
-        spec.atree = set(solve_tree(gd.tree(spec.cls), PRESETS[preset]["weights"],
+        spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
                                     ability_points(spec.level)))
 
     @app.get("/api/spells")
@@ -600,7 +600,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             raise HTTPException(404, "unknown class")
         active = set()
         if preset in PRESETS and PRESETS[preset]["class"] == cls:
-            active = set(solve_tree(gd.tree(cls), PRESETS[preset]["weights"], ability_points(level)))
+            active = set(solve_tree(gd.tree(cls), preset_weights(preset, gd), ability_points(level)))
         spells = collect_spells(merge_tree(cls, active, gd))
         return [{"name": sp["name"], "base_spell": b, "melee": b == 0} for b, sp in sorted(spells.items())]
 

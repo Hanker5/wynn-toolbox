@@ -59,12 +59,22 @@ silently.
 
 ## 3. Pick a tree preset
 
-`wt tree <preset> --level N` lists what a preset selects. Current presets:
-`summoner-stealing`, `mage-poison-lightbender`, `mage-poison-riftwalker`.
+`wt tree <preset> --level N` lists what a preset selects. Presets:
+
+- **Goal-tuned**: `summoner-stealing` (Shaman), `mage-poison-lightbender`,
+  `mage-poison-riftwalker`.
+- **Generic, one per archetype for every class**: `<class>-<archetype>`, e.g.
+  `archer-boltslinger`, `assassin-shadestepper`, `warrior-battle-monk`,
+  `mage-arcanist`, `shaman-ritualist` (`wt tree --help` lists all). Each takes
+  the class's four spells, then as many nodes of that archetype as fit, all
+  valued the same. They ignore damage, utility and the other archetypes, and
+  may leave points unspent; say so, and suggest the player finish the tree in
+  the editor.
 
 Say what the preset's weights favor, especially an archetype it ignores. If
-none fits, add one to `wynntools/presets.py` with an `about` string that says
-what it rewards and why, and tell the player it is a judgment call.
+the player's goal needs a tuned tree, add a preset to `wynntools/presets.py`
+with an `about` string that says what it rewards and why, and tell the player
+it is a judgment call.
 
 ## 4. Run, save and verify
 
