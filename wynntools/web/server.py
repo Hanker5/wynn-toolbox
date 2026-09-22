@@ -122,7 +122,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     # ------------------------------------------------------------ helpers
     inv_path = builds_dir / "inventory.json"
     settings_path = builds_dir / "settings.json"
-    RESERVED = {inv_path.name, settings_path.name, STATE_FILE, VIEW_FILE, SHOW_FILE}
+    RESERVED = {inv_path.name, settings_path.name, STATE_FILE, VIEW_FILE, SHOW_FILE,
+                updates.CACHE_FILE, updates.RESULT_FILE}
 
     def inv():
         return inv_mod.load(inv_path)

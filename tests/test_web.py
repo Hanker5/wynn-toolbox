@@ -3,6 +3,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from wynntools import updates
 from wynntools.web.server import create_app
 
 PORT = 8765
@@ -130,6 +131,15 @@ def test_inventory_api_and_reserved_file(client):
     assert client.post("/api/inventory", json={"action": "add", "name": "Not An Item"}).status_code == 422
     assert client.get("/api/builds").json() == []                 # inventory.json is not a build
     assert client.put("/api/builds/inventory.json", json={}).status_code == 400
+
+
+def test_update_check_cache_is_not_a_build(client, tmp_path):
+    """Regression: the update checker's own cache files (not build-shaped JSON)
+    showed up in the builds list as unreadable builds."""
+    (tmp_path / updates.CACHE_FILE).write_text('{"key": "x", "result": {}}')
+    (tmp_path / updates.RESULT_FILE).write_text('{"ok": true, "to": "abc", "at": 1}')
+    assert client.get("/api/builds").json() == []
+    assert client.put(f"/api/builds/{updates.CACHE_FILE}", json={}).status_code == 400
 
 
 def test_upgrades_job(client):
