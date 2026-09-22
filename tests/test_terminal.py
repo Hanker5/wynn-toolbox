@@ -175,6 +175,23 @@ def test_codex_keeps_its_conversation_in_terminal_scrollback(monkeypatch):
     assert terminal.launch_command("gemini") == "gemini"
 
 
+def test_codex_installs_via_npm_on_windows_only(monkeypatch):
+    """Regression: OpenAI's own install.ps1 can crash on Windows PowerShell 5.1 with
+    "The property 'OSArchitecture' cannot be found on this object" (openai/codex#20782).
+    Windows installs Codex through npm instead, which needs Node; POSIX's installer is
+    self-contained and unaffected, so it shouldn't need Node."""
+    from wynntools.web import terminal
+    monkeypatch.setattr(terminal, "WINDOWS", True)
+    info = terminal.available_clis()
+    codex = next(c for c in info["clis"] if c["key"] == "codex")
+    assert codex["install"] == "npm install -g @openai/codex" and codex["needs_node"] is True
+
+    monkeypatch.setattr(terminal, "WINDOWS", False)
+    info = terminal.available_clis()
+    codex = next(c for c in info["clis"] if c["key"] == "codex")
+    assert "install.sh" in codex["install"] and codex["needs_node"] is False
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ConPTY backend")
 def test_powershell_round_trip(app):
     with TestClient(app, base_url=GOOD_ORIGIN) as c:

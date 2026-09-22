@@ -36,8 +36,13 @@ AI_CLIS = [
      "login": "The first time it starts, choose \u201cSign in with ChatGPT\u201d.",
      "first_run": "Once signed in, type /hooks and trust the Wynn Toolbox hook. It tells Codex "
                   "which build you have open each time you send a message.",
+     # Windows installs via npm, not OpenAI's own install.ps1: that script can crash on
+     # Windows PowerShell 5.1 with "The property 'OSArchitecture' cannot be found on this
+     # object" (github.com/openai/codex#20782, open and unfixed as of 2026-09). npm is
+     # OpenAI's own documented alternative and sidesteps that script entirely; see
+     # _needs_node() below, which makes this platform's Codex need Node as a result.
      "install": {"posix": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-                 "windows": "irm https://chatgpt.com/codex/install.ps1 | iex"},
+                 "windows": "npm install -g @openai/codex"},
      "needs_node": False, "docs": "https://developers.openai.com/codex/cli"},
     {"key": "gemini", "cmd": "gemini", "label": "Gemini CLI", "vendor": "Google",
      "account": "Sign in with a Google account, or use a Gemini API key.",
@@ -117,12 +122,21 @@ def node_install_command():
     return None                                   # distro packages vary; link to the docs
 
 
+def _needs_node(c):
+    """Whether `c`'s install command on this platform needs Node.js. Usually just
+    c["needs_node"], but Codex's Windows install is npm-only (see AI_CLIS above)
+    while its POSIX one is a self-contained script, so that one depends on WINDOWS."""
+    if c["key"] == "codex":
+        return WINDOWS
+    return c["needs_node"]
+
+
 def available_clis():
     return {
         "os": "windows" if WINDOWS else ("macos" if sys.platform == "darwin" else "linux"),
         "clis": [{k: c[k] for k in ("key", "cmd", "label", "vendor", "account", "login",
-                                    "first_run", "needs_node", "docs")}
-                 | {"installed": find_cli(c["cmd"]) is not None,
+                                    "first_run", "docs")}
+                 | {"needs_node": _needs_node(c), "installed": find_cli(c["cmd"]) is not None,
                     "install": install_command(c["key"])}
                  for c in AI_CLIS],
         "node": {"installed": find_cli("npm") is not None, "install": node_install_command(),
