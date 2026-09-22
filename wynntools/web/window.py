@@ -175,6 +175,22 @@ class WindowApi:
         self._window.destroy()
 
 
+def _on_a_screen(x, y, width, height, min_visible=80):
+    """True if at least an min_visible x min_visible corner of the window
+    would land on a currently connected screen."""
+    try:
+        import webview
+        screens = webview.screens
+    except Exception:          # can't tell (e.g. no backend yet) - trust it
+        return True
+    for s in screens:
+        overlap_w = min(x + width, s.x + s.width) - max(x, s.x)
+        overlap_h = min(y + height, s.y + s.height) - max(y, s.y)
+        if overlap_w >= min_visible and overlap_h >= min_visible:
+            return True
+    return not screens         # no screen info at all - trust it
+
+
 def _saved_geometry(settings_path):
     g = settings_mod.load(settings_path).get("window") or {}
     try:
@@ -185,6 +201,12 @@ def _saved_geometry(settings_path):
     except (TypeError, ValueError):
         return {"width": DEFAULT_SIZE[0], "height": DEFAULT_SIZE[1], "x": None, "y": None,
                 "maximized": False}
+    if x is not None and y is not None and not _on_a_screen(x, y, width, height):
+        # The screen this window was on (e.g. a second monitor) isn't
+        # connected any more - open centered instead of off-screen, where
+        # the player can't see or reach it at all.
+        log.warning("saved window position (%d, %d) is off every connected screen; centering instead", x, y)
+        x = y = None
     return {"width": width, "height": height, "x": x, "y": y,
             "maximized": bool(g.get("maximized"))}
 

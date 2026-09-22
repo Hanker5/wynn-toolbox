@@ -55,3 +55,67 @@ def test_window_storage_path_is_absolute(tmp_path, monkeypatch):
     window.run("http://x", Path("builds") / "settings.json", on_close=lambda: None)
     assert Path(seen["storage_path"]).is_absolute()
     assert Path(seen["storage_path"]) == (tmp_path / "builds" / ".webview").resolve()
+
+
+def test_offscreen_saved_position_is_recentered(tmp_path, monkeypatch):
+    """A saved window position from a monitor that's since been disconnected
+    (e.g. -1920, 0 from an unplugged second display) must not be reused: the
+    window would open where nothing can see or reach it. Fall back to
+    pywebview's own centering (x=y=None) instead."""
+    import json
+    import sys
+    import types
+    from pathlib import Path
+    from wynntools.web import window
+    created = {}
+
+    class Events:
+        def __getattr__(self, name):
+            return self
+
+        def __iadd__(self, fn):
+            return self
+
+    fake = types.SimpleNamespace(
+        screens=[types.SimpleNamespace(x=0, y=0, width=1707, height=1067)],
+        create_window=lambda *a, **k: created.update(k) or
+            types.SimpleNamespace(events=Events(), width=1, height=1, x=0, y=0),
+        start=lambda **k: None)
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    (tmp_path / "builds").mkdir()
+    (tmp_path / "builds" / "settings.json").write_text(json.dumps(
+        {"window": {"width": 1694, "height": 1004, "x": -1920, "y": 0, "maximized": False}}))
+    monkeypatch.chdir(tmp_path)
+    window.run("http://x", Path("builds") / "settings.json", on_close=lambda: None)
+    assert created["x"] is None and created["y"] is None
+    assert created["width"] == 1694 and created["height"] == 1004
+
+
+def test_onscreen_saved_position_is_kept(tmp_path, monkeypatch):
+    """A saved position that's still on a connected screen must be reused as-is."""
+    import json
+    import sys
+    import types
+    from pathlib import Path
+    from wynntools.web import window
+    created = {}
+
+    class Events:
+        def __getattr__(self, name):
+            return self
+
+        def __iadd__(self, fn):
+            return self
+
+    fake = types.SimpleNamespace(
+        screens=[types.SimpleNamespace(x=0, y=0, width=1707, height=1067)],
+        create_window=lambda *a, **k: created.update(k) or
+            types.SimpleNamespace(events=Events(), width=1, height=1, x=0, y=0),
+        start=lambda **k: None)
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    (tmp_path / "builds").mkdir()
+    (tmp_path / "builds" / "settings.json").write_text(json.dumps(
+        {"window": {"width": 1200, "height": 800, "x": 100, "y": 50, "maximized": False}}))
+    monkeypatch.chdir(tmp_path)
+    window.run("http://x", Path("builds") / "settings.json", on_close=lambda: None)
+    assert created["x"] == 100 and created["y"] == 50
