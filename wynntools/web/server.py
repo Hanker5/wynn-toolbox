@@ -896,8 +896,10 @@ def serve(builds_dir="builds", port=8765, mode=None):
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump({"port": port, "token": app.state.token, "pid": os.getpid()}, f)
 
+    # A bounded shutdown: an open connection must never keep the app alive
+    # after its window closes (the updater waits for this process to exit).
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
+                                           log_level="warning", timeout_graceful_shutdown=3))
     app.state.mode = mode
     app.state.shutdown = lambda: setattr(server, "should_exit", True)
     how = {"window": "Close the Wynn Toolbox window (or press Ctrl+C here) to quit.",

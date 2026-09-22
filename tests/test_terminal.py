@@ -71,6 +71,29 @@ def test_shell_survives_page_reload(app):
         assert app.state.terminal.pid == pid
 
 
+@posix_only
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="reads /proc")
+def test_shell_does_not_inherit_the_apps_files(app):
+    """Found by the player: updating closed the app but never installed. The
+    shell inherited the app window's connection to the server (Chromium opens
+    it without close-on-exec), so the server never finished shutting down and
+    the updater waited forever for the app to exit."""
+    import os
+    r, w = os.pipe()
+    os.set_inheritable(w, True)                 # like Chromium's sockets
+    try:
+        with TestClient(app, base_url=GOOD_ORIGIN) as c:
+            with c.websocket_connect(WS_URL, headers={**AUTH, "origin": GOOD_ORIGIN}) as ws:
+                ws.receive_bytes()
+                ws.send_json({"type": "input", "data": "ls /proc/$$/fd; echo fds-$((1+1))-done\r"})
+                out = read_until(ws, "fds-2-done")
+                fds = {int(x) for x in os.listdir(f"/proc/{app.state.terminal.pid}/fd")}
+        assert w not in fds, out
+        assert fds <= {0, 1, 2, 255}                # 255: bash's own copy of the tty
+    finally:
+        os.close(r); os.close(w)
+
+
 # ------------------------------------------------------------ chosen AI
 @pytest.fixture()
 def fake_ai(tmp_path, monkeypatch):

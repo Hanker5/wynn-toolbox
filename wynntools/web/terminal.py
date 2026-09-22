@@ -157,11 +157,17 @@ class _PosixPty:
         # or locking that another thread might have held at fork time).
         shell = shutil.which(os.environ.get("SHELL") or "bash") or "/bin/sh"
         argv = [shell]
+        maxfd = os.sysconf("SC_OPEN_MAX")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)   # see comment above
             pid, fd = pty.fork()
         if pid == 0:                                  # child: becomes the shell
             try:
+                # pty.fork keeps every open file: the server's listening socket
+                # and the app window's own connections to it. A shell holding
+                # those kept the server from ever shutting down (so the updater,
+                # which waits for the app to exit, never ran).
+                os.closerange(3, maxfd)
                 os.chdir(cwd)
                 os.execve(shell, argv, env)
             finally:
