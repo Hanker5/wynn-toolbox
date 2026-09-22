@@ -173,7 +173,16 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             if p.name in RESERVED:
                 continue
             try:
-                doc = buildfile.refresh(buildfile.read(p), gd, inv())
+                raw = buildfile.read(p)
+            except (ValueError, OSError) as e:
+                out.append({"file": p.name, "name": p.stem, "error": str(e), "mtime": version(p)})
+                continue
+            if not isinstance(raw, dict) or "equipment" not in raw:
+                # Not a build file (e.g. a `wt gear` search spec left in builds/
+                # by mistake) — leave it off the list instead of calling it broken.
+                continue
+            try:
+                doc = buildfile.refresh(raw, gd, inv())
                 st = doc.get("status") or {}
                 weapon = (doc.get("equipment") or [None] * 9)[8]
                 try:

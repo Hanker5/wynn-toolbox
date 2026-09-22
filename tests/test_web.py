@@ -142,6 +142,14 @@ def test_update_check_cache_is_not_a_build(client, tmp_path):
     assert client.put(f"/api/builds/{updates.CACHE_FILE}", json={}).status_code == 400
 
 
+def test_gear_search_spec_is_not_a_build(client, tmp_path):
+    """Regression: a `wt gear`/`wt upgrades` spec.json left in builds/ by mistake
+    (no `equipment` key) showed up in the builds list as unreadable."""
+    (tmp_path / "poison-mage-spec.json").write_text(
+        '{"class": "Mage", "level": 105, "objective": {"poison": 1}}')
+    assert client.get("/api/builds").json() == []
+
+
 def test_upgrades_job(client):
     for n in ["Slimy Shako", "Contagion", "Caterpillar", "Cytotoxic Striders", "Coral Ring",
               "Summa", "Contrast", "Gaia"]:
