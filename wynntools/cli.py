@@ -118,7 +118,11 @@ def _resolve_tomes(entries, gd):
 
 
 def cmd_fetch(a):
-    print("cached in", fetch(refresh=a.refresh))
+    from .web import client
+
+    def downloaded(done, total, name):
+        client.report(done / total, f"{done}/{total} files · {name}")
+    print("cached in", fetch(refresh=a.refresh, progress=downloaded))
 
 
 def _link_arg(arg, gd):
@@ -1069,6 +1073,7 @@ def main(argv=None):
         sys.exit(a.fn(a) or 0)
     from .web import client
     shown = " ".join(argv if argv is not None else sys.argv[1:])
-    with client.ToolProgress(BUILDS, ACTIVITY.get(a.cmd, f"Running wt {a.cmd}"), f"wt {shown}"):
+    with client.ToolProgress(BUILDS, ACTIVITY.get(a.cmd, f"Running wt {a.cmd}"), f"wt {shown}",
+                             key=a.cmd):
         code = a.fn(a) or 0
     sys.exit(code)

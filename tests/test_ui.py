@@ -266,13 +266,21 @@ def test_long_wt_commands_show_a_progress_bar_above_the_terminal(app, page):
         assert page.inner_text("#term-tools .tool-label") == "Searching for gear"
         assert "wt gear spec.json" in page.inner_text("#term-tools .tool-cmd")
         bar = page.locator("#term-tools .progress")
-        assert "busy" not in bar.get_attribute("class") and bar.get_attribute("aria-valuenow") == "40"
+        assert bar.get_attribute("aria-valuenow") == "40"
+        assert page.evaluate("getComputedStyle(document.querySelector('#term-tools .progress i')).width")\
+            .startswith("19")                             # 40% of the 490px-wide bar
         fetch = client.ToolProgress(app.builds_dir, "Downloading WynnBuilder data", "wt fetch", delay=0, beat=0.5)
-        fetch.path = fetch.path.with_name("other-process.json")   # two commands at once
+        fetch.path = fetch.path.with_name("run-other-process.json")   # two commands at once
         with fetch:
             page.wait_for_function("document.querySelectorAll('#term-tools .tool-run').length === 2",
                                    timeout=10000)
-            assert "busy" in page.locator("#term-tools .progress").nth(1).get_attribute("class")
+            # the second command can't measure itself: its bar is estimated, and moves
+            stat = page.locator("#term-tools .tool-stat").nth(1)
+            assert stat.inner_text().startswith("~")
+            first = page.locator("#term-tools .progress").nth(1).get_attribute("aria-valuenow")
+            page.wait_for_function(
+                f"document.querySelectorAll('#term-tools .progress')[1].getAttribute('aria-valuenow')"
+                f" > {first}", timeout=15000)
             assert page.locator("#term").bounding_box()["height"] < term_h   # the terminal made room
             page.locator("#terminal-panel").screenshot(
                 path="/tmp/claude-1000/-var-home-hhays-wynn-toolbox/"

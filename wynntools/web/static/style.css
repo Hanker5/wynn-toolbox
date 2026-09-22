@@ -229,7 +229,10 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 .tool-run .tool-stat { color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
 .tool-run .tool-cmd { color: var(--muted); font: 11px ui-monospace, Menlo, Consolas, monospace; margin-top: 3px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The page hears from a running command once a second, so the fill takes a
+   second to move: it slides on instead of stepping. */
 .tool-run .progress { height: 8px; }
+.tool-run .progress i { transition: width 1s linear; }
 #term .xterm { padding: 6px 4px 6px 8px; }
 
 /* ------------------------------------------------------------------ narrow screens */

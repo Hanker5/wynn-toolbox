@@ -210,8 +210,9 @@ def test_merge_drops_what_no_longer_fits(gd, links):
 def test_tool_progress_file_appears_late_updates_and_goes(builds):
     from wynntools.web import client
     (builds / ".server.json").write_text("{}")             # the app is running
-    tp = client.ToolProgress(builds, "Searching for gear", "wt gear x.json", delay=0.2, beat=0.5)
-    f = builds / ".progress" / f"{tp.path.name}"
+    tp = client.ToolProgress(builds, "Searching for gear", "wt gear x.json", key="gear",
+                             delay=0.2, beat=0.5)
+    f = tp.path
     with tp:
         assert not f.exists()                              # quick commands never show
         time.sleep(0.4)
@@ -225,21 +226,26 @@ def test_tool_progress_file_appears_late_updates_and_goes(builds):
     client.report(0.9)                                     # nothing open: ignored
 
 
-def test_tool_progress_does_nothing_without_the_app(builds):
+def test_without_the_app_nothing_is_reported_but_the_time_is_remembered(builds):
+    """No page to draw a bar, so no run file; the time still goes into the
+    history, so the first bar after the app opens is already a good guess."""
     from wynntools.web import client
-    with client.ToolProgress(builds, "x", delay=0):
+    with client.ToolProgress(builds, "x", key="gear", delay=0):
         time.sleep(0.3)
-    assert not (builds / ".progress").exists()
+    assert list((builds / ".progress").glob(client.RUN_GLOB)) == []
+    assert client.expected(builds, "gear") == pytest.approx(0.3, abs=0.2)
 
 
 def test_a_killed_command_stops_showing(builds):
     from wynntools.web import client
     (builds / ".progress").mkdir()
     old = {"label": "gone", "command": "wt gear", "started": time.time() - 100, "at": time.time() - 60}
-    (builds / ".progress" / "123.json").write_text(json.dumps(old))
-    (builds / ".progress" / "124.json").write_text(json.dumps({**old, "at": time.time()}))
-    assert [t["id"] for t in client.running_tools(builds)] == ["124"]
-    assert not (builds / ".progress" / "123.json").exists()
+    (builds / ".progress" / "run-123.json").write_text(json.dumps(old))
+    (builds / ".progress" / "run-124.json").write_text(json.dumps({**old, "at": time.time()}))
+    client.remember(builds, "gear", 12)
+    assert [t["id"] for t in client.running_tools(builds)] == ["run-124"]
+    assert not (builds / ".progress" / "run-123.json").exists()
+    assert client.expected(builds, "gear") == 12      # the history is not a run: left alone
 
 
 def test_wt_commands_report_what_they_do(builds, capsys, monkeypatch):
@@ -257,15 +263,49 @@ def test_wt_commands_report_what_they_do(builds, capsys, monkeypatch):
 
 def test_events_stream_sends_running_tools(app, builds):
     (builds / ".progress").mkdir()
-    (builds / ".progress" / "7.json").write_text(json.dumps(
+    (builds / ".progress" / "run-7.json").write_text(json.dumps(
         {"label": "Ranking upgrades", "command": "wt upgrades s.json", "fraction": 0.25,
          "detail": None, "started": time.time() - 3, "at": time.time()}))
     req = urllib.request.Request(f"http://127.0.0.1:{app.port}/api/events", headers={"x-wt-token": TOKEN})
     with urllib.request.urlopen(req, timeout=10) as r:
         assert r.readline() == b"event: tools\n"
         [t] = json.loads(r.readline().decode().removeprefix("data: "))
-    assert (t["id"], t["label"], t["fraction"]) == ("7", "Ranking upgrades", 0.25)
+    assert (t["id"], t["label"], t["fraction"], t["estimated"]) == \
+        ("run-7", "Ranking upgrades", 0.25, False)
     assert t["elapsed"] >= 3
+
+
+def test_a_command_that_cannot_measure_itself_is_estimated_from_past_runs(builds):
+    """The exact gear search has no percentage of its own, so the bar is worked
+    out from how long the last few runs took: 90% at that time, then creeping."""
+    from wynntools.web import client
+    assert client.expected(builds, "gear") == client.EXPECT["gear"]       # no history yet
+    for _ in range(3):
+        client.remember(builds, "gear", 40)
+    assert client.expected(builds, "gear") == 40
+    (builds / ".server.json").write_text("{}")
+    with client.ToolProgress(builds, "Searching for gear", key="gear", delay=0, beat=0.5):
+        client.report(None, "round 3")
+        time.sleep(0.3)
+        [t] = client.running_tools(builds)
+    assert t["estimated"] and 0 < t["fraction"] < 0.05
+    steps = [client.estimate(s, 40) for s in (0, 10, 20, 40, 80, 400)]
+    assert steps == sorted(steps) and steps[3] == pytest.approx(0.9) and steps[-1] < 0.99
+    assert client.estimate(1e6, 40) < 1                  # never says it is finished
+
+
+def test_a_command_that_measures_itself_is_not_estimated(builds):
+    """`wt fetch` counts its files, so its own numbers are used and its time is
+    not remembered (it would be an estimate for nothing)."""
+    from wynntools.web import client
+    (builds / ".server.json").write_text("{}")
+    with client.ToolProgress(builds, "Downloading WynnBuilder data", key="fetch",
+                             delay=0, beat=0.5) as tp:
+        client.report(3 / 12, "3/12 files")
+        time.sleep(0.3)
+        [t] = client.running_tools(builds)
+    assert (t["fraction"], t["estimated"]) == (0.25, False)
+    assert tp.measured and client.history(builds) == {}
 
 
 def test_search_progress_feeds_the_bar(builds):

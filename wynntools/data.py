@@ -49,26 +49,26 @@ def _url(kind, version):
     return f"{BASE_URL}/data/{VERSIONS[version]}/{_VERSIONED[kind]}"
 
 
-def fetch(version=LATEST, refresh=False):
-    """Download every data file for `version` into the cache. Returns the cache dir."""
+def fetch(version=LATEST, refresh=False, progress=None):
+    """Download every data file for `version` into the cache. Returns the cache
+    dir. `progress` is called with (done, total, name) after each file."""
     out = CACHE_DIR / VERSIONS[version]
     out.mkdir(parents=True, exist_ok=True)
-    for kind in [*_BASELINE, *_VERSIONED]:
-        dest = out / f"{kind}.json"
-        if dest.exists() and not refresh:
-            continue
-        with urllib.request.urlopen(_url(kind, version), timeout=120) as r:
-            dest.write_bytes(r.read())
     media = CACHE_DIR / "media"
     media.mkdir(parents=True, exist_ok=True)
-    for name, rel in MEDIA.items():
-        dest = media / name
-        if not dest.exists() or refresh:
-            try:
-                with urllib.request.urlopen(f"{BASE_URL}/{rel}", timeout=60) as r:
-                    dest.write_bytes(r.read())
-            except OSError:
-                pass      # icons are optional; the app falls back to plain slots
+    todo = [(out / f"{kind}.json", _url(kind, version), 120, False)
+            for kind in [*_BASELINE, *_VERSIONED]] + \
+           [(media / name, f"{BASE_URL}/{rel}", 60, True) for name, rel in MEDIA.items()]
+    todo = [t for t in todo if refresh or not t[0].exists()]
+    for done, (dest, url, timeout, optional) in enumerate(todo, 1):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r:
+                dest.write_bytes(r.read())
+        except OSError:
+            if not optional:      # icons are optional; the app falls back to plain slots
+                raise
+        if progress:
+            progress(done, len(todo), dest.name)
     load.cache_clear()
     return out
 
