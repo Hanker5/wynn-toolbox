@@ -97,3 +97,31 @@ def test_edit_checks_items_and_slots(builds, capsys):
     doc = buildfile.read(f)
     assert doc["equipment"][5] is None and doc["level"] == 106 and doc["status"]
     assert "updated" in out
+
+
+def test_a_crashed_server_is_not_running(builds, capsys):
+    """Liveness is the heartbeat on .server.json, not a process id: Codex's
+    sandbox has its own process namespace and can't see the server."""
+    import os
+    import time
+
+    from wynntools.web import client
+    state = builds / ".server.json"
+    state.write_text("{}")
+    (builds / ".view.json").write_text(json.dumps({"view": "editor", "file": "storm.json",
+                                                   "dirty": False, "doc": None, "at": 1}))
+    assert client.running(builds)
+    old = time.time() - client.STALE - 1
+    os.utime(state, (old, old))
+    assert not client.running(builds)
+    assert "isn't running" in run(capsys, "current")[1]
+    assert run(capsys, "current", "--hook", "UserPromptSubmit")[1].strip() == "{}"
+
+
+def test_hook_output_names_the_open_build(app, builds, capsys):
+    api(app, "PUT", "/api/view", {"view": "editor", "file": "storm.json", "dirty": True,
+                                  "doc": buildfile.read(builds / "storm.json")})
+    code, out = run(capsys, "current", "--hook", "UserPromptSubmit")
+    ctx = json.loads(out)["hookSpecificOutput"]
+    assert code == 0 and ctx["hookEventName"] == "UserPromptSubmit"
+    assert "storm.json" in ctx["additionalContext"] and "UNSAVED" in ctx["additionalContext"]

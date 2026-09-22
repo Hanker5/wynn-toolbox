@@ -8,6 +8,7 @@ an HttpOnly cookie.
 import asyncio
 import contextlib
 import json
+import os
 import secrets
 import threading
 import time
@@ -29,7 +30,7 @@ from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
 from . import terminal as term_mod
-from .client import STATE_FILE    # in builds/: how `wt` finds the running app
+from .client import HEARTBEAT, SHOW_FILE, SHOW_TTL, STATE_FILE, VIEW_FILE, cleanup, read_json, write_json
 from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
@@ -68,9 +69,20 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     view = {"view": "empty", "file": None, "dirty": False, "doc": None, "at": None}
     show_req = {"seq": 0, "file": None}
 
+    async def heartbeat():
+        """Keep builds/.server.json fresh, so `wt` knows the app is running."""
+        state = builds_dir / STATE_FILE
+        while True:
+            with contextlib.suppress(OSError):
+                if state.exists():
+                    os.utime(state)
+            await asyncio.sleep(HEARTBEAT)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app):
+        beat = asyncio.create_task(heartbeat())
         yield
+        beat.cancel()
         term.close()                      # don't leave the shell running after exit
 
     app = FastAPI(title="Wynn Toolbox", docs_url=None, redoc_url=None, openapi_url=None,
@@ -100,7 +112,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     # ------------------------------------------------------------ helpers
     inv_path = builds_dir / "inventory.json"
     settings_path = builds_dir / "settings.json"
-    RESERVED = {inv_path.name, settings_path.name, STATE_FILE}
+    RESERVED = {inv_path.name, settings_path.name, STATE_FILE, VIEW_FILE, SHOW_FILE}
 
     def inv():
         return inv_mod.load(inv_path)
@@ -393,6 +405,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
             seen_show = show_req["seq"]
             while not await request.is_disconnected():
                 await asyncio.sleep(1)
+                poll_show_file()
                 now = {p.name: version(p) for p in builds_dir.glob("*.json")
                        if p.name not in RESERVED}
                 changed = [f for f in now if seen.get(f) != now[f]]
@@ -424,11 +437,27 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         view.update({"view": body["view"], "file": file, "dirty": bool(body.get("dirty")),
                      "doc": {k: doc[k] for k in EDITABLE if k in doc} if isinstance(doc, dict) else None,
                      "at": time.time()})
+        write_json(builds_dir / VIEW_FILE, view)          # for `wt current`
         return {"ok": True}
 
     @app.get("/api/view")
     def get_view():
         return {**view, "age": None if view["at"] is None else round(time.time() - view["at"], 1)}
+
+    def poll_show_file():
+        """`wt show` (and `wt gear --save`) leave a request in builds/.show.json."""
+        r = read_json(builds_dir / SHOW_FILE)
+        if not isinstance(r, dict) or r.get("seq") == show_req.get("file_seq"):
+            return
+        show_req["file_seq"] = r.get("seq")
+        if time.time() - (r.get("at") or 0) > SHOW_TTL:
+            return
+        try:
+            p = path_for(str(r.get("file") or ""))
+        except HTTPException:
+            return
+        if p.exists():
+            show_req.update(seq=show_req["seq"] + 1, file=p.name)
 
     @app.post("/api/show")
     async def show_build(request: Request):
@@ -763,7 +792,6 @@ def free_port(start, tries=20):
 
 
 def serve(builds_dir="builds", port=8765, open_browser=True):
-    import os
     import webbrowser
 
     import uvicorn
@@ -778,6 +806,7 @@ def serve(builds_dir="builds", port=8765, open_browser=True):
     app = create_app(builds_dir, port)
     url = f"http://127.0.0.1:{port}/?token={app.state.token}"
     state = builds_dir / STATE_FILE
+    cleanup(builds_dir)                  # a crashed run's view and requests
     # Readable only by this user: the token is the session's password.
     fd = os.open(state, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
@@ -791,4 +820,4 @@ def serve(builds_dir="builds", port=8765, open_browser=True):
     try:
         uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
     finally:
-        state.unlink(missing_ok=True)
+        cleanup(builds_dir)

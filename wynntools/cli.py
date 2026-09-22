@@ -302,12 +302,6 @@ VIEW_NAMES = {"empty": "the start page", "editor": "the build editor",
               "compare": "the Compare builds page"}
 
 
-def _app(method, path, body=None):
-    """JSON from the running web app; raises web.client.NotRunning if there is none."""
-    from .web.client import call
-    return call(BUILDS, method, path, body)
-
-
 def _in_builds(path):
     return Path(path).resolve().parent == BUILDS.resolve()
 
@@ -315,23 +309,35 @@ def _in_builds(path):
 def _show_in_app(path):
     """Open a build file in the running web app. Does nothing if the app isn't
     running or the file isn't one the app lists (directly inside builds/)."""
-    from .web.client import NotRunning
-    if not _in_builds(path):
+    from .web import client
+    if not _in_builds(path) or not client.running(BUILDS):
         return False
-    try:
-        _app("POST", "/api/show", {"file": Path(path).name})
-    except (NotRunning, ValueError):
-        return False
+    client.request_show(BUILDS, Path(path).name)
     print(f"opened {Path(path).name} in the web app")
     return True
 
 
 def _view():
-    from .web.client import NotRunning
-    try:
-        return _app("GET", "/api/view")
-    except (NotRunning, ValueError):
+    from .web import client
+    return client.view(BUILDS)
+
+
+def _hook_context(v):
+    """One or two lines for an AI's per-prompt hook: what the player has open."""
+    if not v or v.get("at") is None:
         return None
+    where = VIEW_NAMES.get(v.get("view"), "the app")
+    if not v.get("file"):
+        return f"[Wynn Toolbox] The player is on {where} in the web app, with no build open."
+    path = BUILDS / v["file"]
+    doc = v.get("doc") if v.get("dirty") and v.get("doc") else (buildfile.read(path) if path.exists() else {})
+    name = doc.get("name") or path.stem
+    first = (f"[Wynn Toolbox] The player has {path} (\"{name}\", level {doc.get('level')}) open in the build editor"
+             if v.get("view") == "editor" else
+             f"[Wynn Toolbox] The player is on {where}; the last build they opened is {path} (\"{name}\")")
+    if v.get("dirty"):
+        first += ", with UNSAVED edits (ask them to Save before you change the file)"
+    return first + ". \"This build\" means that one; run `wt current` for its details before answering about it."
 
 
 def _refuse_if_unsaved(path, force):
@@ -348,6 +354,11 @@ def cmd_current(a):
     """What the player is looking at in the web app, with the build's full report."""
     from .damage import summary
     v = _view()
+    if a.hook:                    # for Claude/Codex/Gemini prompt hooks: fast, always exit 0
+        text = _hook_context(v)
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": a.hook, "additionalContext": text}}
+                         if text else {}))
+        return 0
     if v is None:
         print("The web app isn't running, so there is no current build. "
               "List the build files with `uv run wt builds`.")
@@ -400,7 +411,7 @@ def cmd_current(a):
 
 def cmd_show(a):
     """Open a build file in the web app, for the player to look at."""
-    from .web.client import NotRunning
+    from .web import client
     path = Path(a.build)
     if not path.exists() and not path.parent.parts:
         path = BUILDS / path
@@ -408,12 +419,9 @@ def cmd_show(a):
         raise SystemExit(f"no build file {a.build}")
     if not _in_builds(path):
         raise SystemExit("the web app only lists build files directly inside builds/")
-    try:
-        _app("POST", "/api/show", {"file": path.name})
-    except NotRunning:
+    if not client.running(BUILDS):
         raise SystemExit("The web app isn't running. The player can start it with `uv run wt serve`.")
-    except ValueError as e:
-        raise SystemExit(str(e))
+    client.request_show(BUILDS, path.name)
     print(f"opened {path.name} in the web app (if the player has unsaved edits to another "
           f"build, it is only pointed out to them)")
     return 0
@@ -424,7 +432,7 @@ def cmd_builds(a):
     gd = GameData()
     v = _view() or {}
     files = [p for p in sorted(BUILDS.glob("*.json"))
-             if p.name not in ("inventory.json", "settings.json", ".server.json")]
+             if p.name not in ("inventory.json", "settings.json") and not p.name.startswith(".")]
     if not files:
         print("No build files yet in builds/.")
         return 0
@@ -793,6 +801,8 @@ def main(argv=None):
     s.set_defaults(fn=cmd_link)
     s = sub.add_parser("current", help="the build the player is looking at in the web app")
     s.add_argument("--json", action="store_true", help="just what the page reported")
+    s.add_argument("--hook", metavar="EVENT",
+                   help="print a one-line summary as hook JSON for an AI CLI (UserPromptSubmit, BeforeAgent)")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_current)
     s = sub.add_parser("show", help="open a build file in the web app")

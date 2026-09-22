@@ -453,7 +453,8 @@ def test_page_tells_the_ai_what_it_shows_and_opens_what_it_asks(page, app):
     assert page.input_value("#editor textarea") == "typed, not saved"
     page.click("#ed-revert")
     settle(page)
-    call("POST", "/api/show", {"file": "gaia.json"})
+    from wynntools.web import client          # the way `wt show` asks: a file, not HTTP
+    client.request_show(app.builds_dir, "gaia.json")
     page.wait_for_function("document.querySelector('#editor .name').value === 'mage_105_gaia_lightbender'",
                            timeout=15000)
     view_is(lambda v: v["file"] == "gaia.json" and not v["dirty"])
