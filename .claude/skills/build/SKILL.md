@@ -9,8 +9,9 @@ Follow AGENTS.md throughout. The steps below are the procedure.
 
 ## 1. Find out what they want
 
-If they have a current WynnBuilder link, decode it first. It tells you class,
-level and gear without asking:
+If they mean the build open in the web app ("this build", "my current build"),
+run `uv run wt current` first. If they have a WynnBuilder link, decode it. Either
+tells you class, level and gear without asking:
 
     uv run wt decode "<link>"
 
@@ -61,13 +62,17 @@ what it rewards and why, and tell the player it is a judgment call.
     uv run wt gear builds/specs/<name>.json --tree <preset> \
         --save builds/<name>.json --name "<readable name>"
 
+Always pass `--save`: it puts the build in the app's list and opens it there.
 The search is exact over every usable item (it says so). With a damage floor it
 falls back to per-slot shortlists; add `--confirm` then. It prints the build, totals and a link, says
 `VERIFIED OK` or lists problems, and saves a build file the player can open in
 the web app. Never pass on a link without `VERIFIED OK`.
 
-To change a saved build (swap an item, add a tome), edit the file's editable
-fields, then `uv run wt link builds/<name>.json --write` to re-check it.
+To change a saved build (swap an item, add a tome), use
+`uv run wt edit builds/<name>.json --item helmet="Name"` (add
+`--save-as builds/<new>.json` to keep the original). For fields `wt edit`
+doesn't cover, edit the file's editable fields by hand, then
+`uv run wt link builds/<name>.json --write` to re-check it.
 
 ## 5. When goals compete, show the trade-off
 

@@ -257,6 +257,10 @@ def cmd_gear(a):
                "tree_preset": a.tree}
         buildfile.write(a.save, buildfile.refresh(doc, gd))
         print(f"saved {a.save}")
+        if not a.no_show:
+            _show_in_app(a.save)
+    else:
+        print("(not saved: add --save builds/<name>.json to put it in the player's build list)")
     return 0 if ok else 1
 
 
@@ -268,11 +272,15 @@ def cmd_import(a):
                              **buildfile.from_build(b, gd)}, gd)
     buildfile.write(a.path, doc)
     print(f"saved {a.path} ({'verified' if doc['status']['verified'] else 'HAS PROBLEMS'})")
+    if not a.no_show:
+        _show_in_app(a.path)
     return 0 if doc["status"]["verified"] else 1
 
 
 def cmd_link(a):
     gd = GameData()
+    if a.write:
+        _refuse_if_unsaved(a.build, a.force)
     doc = buildfile.read(a.build)
     if not doc.get("tree") and doc.get("tree_preset"):
         b = _build_from(doc, doc["equipment"], doc["tree_preset"], gd)
@@ -284,6 +292,234 @@ def cmd_link(a):
     if a.write:
         buildfile.write(a.build, buildfile.refresh(doc, gd))
         print(f"updated {a.build}")
+    return 0 if ok else 1
+
+
+# ---------------------------------------------------------------- the web app
+BUILDS = Path("builds")
+VIEW_NAMES = {"empty": "the start page", "editor": "the build editor",
+              "solver": "the \"New build from goals\" form", "inventory": "the Inventory page",
+              "compare": "the Compare builds page"}
+
+
+def _app(method, path, body=None):
+    """JSON from the running web app; raises web.client.NotRunning if there is none."""
+    from .web.client import call
+    return call(BUILDS, method, path, body)
+
+
+def _in_builds(path):
+    return Path(path).resolve().parent == BUILDS.resolve()
+
+
+def _show_in_app(path):
+    """Open a build file in the running web app. Does nothing if the app isn't
+    running or the file isn't one the app lists (directly inside builds/)."""
+    from .web.client import NotRunning
+    if not _in_builds(path):
+        return False
+    try:
+        _app("POST", "/api/show", {"file": Path(path).name})
+    except (NotRunning, ValueError):
+        return False
+    print(f"opened {Path(path).name} in the web app")
+    return True
+
+
+def _view():
+    from .web.client import NotRunning
+    try:
+        return _app("GET", "/api/view")
+    except (NotRunning, ValueError):
+        return None
+
+
+def _refuse_if_unsaved(path, force):
+    """Don't write over a build the player is editing in the page without saving."""
+    v = _view()
+    if force or not v or not v.get("dirty") or not _in_builds(path) or v.get("file") != Path(path).name:
+        return
+    raise SystemExit(f"The player has unsaved edits to {path} in the web app. Ask them to Save "
+                     f"(or Revert) first. --force writes anyway; the page then asks them which "
+                     f"version to keep.")
+
+
+def cmd_current(a):
+    """What the player is looking at in the web app, with the build's full report."""
+    from .damage import summary
+    v = _view()
+    if v is None:
+        print("The web app isn't running, so there is no current build. "
+              "List the build files with `uv run wt builds`.")
+        return 1
+    if v.get("at") is None:
+        print("The web app is running, but no page has opened it yet.")
+        return 1
+    if a.json:
+        print(json.dumps({**v, "path": str(BUILDS / v["file"]) if v.get("file") else None}, indent=2))
+        return 0
+    where = VIEW_NAMES.get(v["view"], v["view"])
+    if not v.get("file"):
+        print(f"The player is on {where}, with no build open.")
+        return 0
+    path = BUILDS / v["file"]
+    if v["view"] == "editor":
+        print(f"The player is looking at {path}")
+    else:
+        print(f"The player is on {where}. The last build they opened is {path}")
+    if not path.exists():
+        print("(that file no longer exists)")
+        return 1
+    on_disk = buildfile.read(path)
+    doc = v["doc"] if v.get("dirty") and v.get("doc") else on_disk
+    if v.get("dirty"):
+        print("It has UNSAVED edits in the page. Everything below includes them; the file on disk "
+              "doesn't yet. Ask the player to Save before you change the file.")
+    print(f"Name: {doc.get('name') or path.stem}")
+    if doc.get("notes"):
+        print(f"Notes: {doc['notes']}")
+    if on_disk.get("spec"):
+        print(f"Made by `wt gear` from: {json.dumps(on_disk['spec'])}"
+              + (f" with tree preset {on_disk['tree_preset']}" if on_disk.get("tree_preset") else ""))
+    gd = GameData()
+    inventory = inv_mod.load(a.inventory)
+    try:
+        b = buildfile.to_build(doc, gd)
+    except (KeyError, ValueError, NotImplementedError) as e:
+        print(f"PROBLEMS:\n  - can't read this build: {e}")
+        return 1
+    link = to_link(b, gd)
+    ok, rep = check_link(link, gd, inventory=inventory)
+    _print_report(ok, rep, gd)
+    dmg = summary(rep["build"], gd, inventory)
+    if dmg:
+        _print_damage(dmg.get("typical", dmg))
+    print(link)
+    return 0 if ok else 1
+
+
+def cmd_show(a):
+    """Open a build file in the web app, for the player to look at."""
+    from .web.client import NotRunning
+    path = Path(a.build)
+    if not path.exists() and not path.parent.parts:
+        path = BUILDS / path
+    if not path.exists():
+        raise SystemExit(f"no build file {a.build}")
+    if not _in_builds(path):
+        raise SystemExit("the web app only lists build files directly inside builds/")
+    try:
+        _app("POST", "/api/show", {"file": path.name})
+    except NotRunning:
+        raise SystemExit("The web app isn't running. The player can start it with `uv run wt serve`.")
+    except ValueError as e:
+        raise SystemExit(str(e))
+    print(f"opened {path.name} in the web app (if the player has unsaved edits to another "
+          f"build, it is only pointed out to them)")
+    return 0
+
+
+def cmd_builds(a):
+    """The player's build files, like the web app's sidebar."""
+    gd = GameData()
+    v = _view() or {}
+    files = [p for p in sorted(BUILDS.glob("*.json"))
+             if p.name not in ("inventory.json", "settings.json", ".server.json")]
+    if not files:
+        print("No build files yet in builds/.")
+        return 0
+    for p in files:
+        mark = "▶" if p.name == v.get("file") else " "
+        try:
+            doc = buildfile.read(p)
+            st = doc.get("status") or {}
+            t = st.get("totals") or {}
+            weapon = (doc.get("equipment") or [None] * 9)[8]
+            cls = gd.weapon_class(weapon) if weapon else "?"
+            key = " · ".join(f"{k} {t[k]:,}" for k in ("hp", "eSteal", "poison", "lb") if t.get(k))
+            state = "verified" if st.get("verified") else "HAS PROBLEMS" if st else "not checked"
+            print(f"{mark} {str(p):<36} {doc.get('name') or p.stem} · {cls} Lv. {doc.get('level')} "
+                  f"· {state}" + (f" · {key}" if key else ""))
+        except (ValueError, KeyError, OSError, NotImplementedError) as e:
+            print(f"{mark} {str(p):<36} can't read: {e}")
+    if v.get("file"):
+        print("▶ = open in the web app" + (" (with unsaved edits)" if v.get("dirty") else ""))
+    return 0
+
+
+SLOT_KIND = {"ring1": "ring", "ring2": "ring"}
+
+
+def cmd_edit(a):
+    """Change a build file's items, tomes, level, name or tree, then re-check it."""
+    from .gear_solver import CLASS_WEAPON
+    gd = GameData()
+    _refuse_if_unsaved(a.build, a.force or bool(a.save_as))
+    doc = buildfile.read(a.build)
+    doc["equipment"] = list(doc.get("equipment") or [None] * len(SLOTS))
+    doc["tomes"] = list(doc.get("tomes") or []) + [None] * (len(TOME_SLOTS) - len(doc.get("tomes") or []))
+    for entry in a.item or []:
+        slot, _, name = entry.partition("=")
+        if slot not in SLOTS:
+            raise SystemExit(f"unknown slot {slot!r}; slots are {', '.join(SLOTS)}")
+        name = name.strip() or None
+        if name:
+            try:
+                it = gd.item(name)
+            except (KeyError, ValueError, NotImplementedError):
+                raise SystemExit(f"no item named {name!r}")
+            kinds = set(CLASS_WEAPON.values()) if slot == "weapon" else {SLOT_KIND.get(slot, slot)}
+            if it.get("type") not in kinds:
+                raise SystemExit(f"{name} is a {it.get('type')}, not a {SLOT_KIND.get(slot, slot)}")
+            name = gd.name(it)
+        doc["equipment"][SLOTS.index(slot)] = name
+    for entry in a.tome or []:
+        slot, _, name = entry.partition("=")
+        if slot not in TOME_SLOTS:
+            raise SystemExit(f"unknown tome slot {slot!r}; slots are {', '.join(TOME_SLOTS)}")
+        name = name.strip() or None
+        if name:
+            try:
+                name = gd.name(gd.tome(name))
+            except (KeyError, ValueError):
+                raise SystemExit(f"no tome named {name!r}")
+        doc["tomes"][TOME_SLOTS.index(slot)] = name
+    if a.level is not None:
+        doc["level"] = a.level
+    if a.name is not None:
+        doc["name"] = a.name
+    elif a.save_as:
+        doc["name"] = Path(a.save_as).stem
+    if a.notes is not None:
+        doc["notes"] = a.notes
+    if a.tree_preset:
+        if not doc["equipment"][8]:
+            raise SystemExit("a tree preset needs a weapon (it decides the class)")
+        b = buildfile.to_build({**doc, "tree": []}, gd)
+        b.atree = _tree_for(b.level, b.weapon, a.tree_preset, gd)
+        doc["tree"] = buildfile.from_build(b, gd)["tree"]
+        doc["tree_preset"] = a.tree_preset
+    elif doc["equipment"][8] and doc.get("tree"):
+        try:                                   # a weapon of another class keeps no nodes
+            buildfile.to_build(doc, gd)
+        except KeyError:
+            print("(the weapon's class changed, so the ability tree was cleared; "
+                  "add --tree-preset to pick one)")
+            doc["tree"] = []
+    try:
+        doc = buildfile.refresh(doc, gd)
+    except (KeyError, ValueError, NotImplementedError) as e:
+        raise SystemExit(f"can't make that build: {e}")
+    out = a.save_as or a.build
+    if a.save_as and Path(out).exists() and not a.force:
+        raise SystemExit(f"{out} already exists; pick another name or pass --force")
+    link = doc["link"]
+    ok, rep = check_link(link, gd)
+    _print_report(ok, rep, gd)
+    print(link)
+    buildfile.write(out, doc)
+    print(f"{'saved' if a.save_as else 'updated'} {out}")
+    _show_in_app(out)
     return 0 if ok else 1
 
 
@@ -523,6 +759,7 @@ def main(argv=None):
                    help="use the older shortlist search instead of the exact one (automatic with damage floors)")
     s.add_argument("--confirm", action="store_true", help="with shortlists: re-run with larger ones")
     s.add_argument("--save", metavar="PATH", help="write the result as a build file")
+    s.add_argument("--no-show", action="store_true", help="don't open the saved build in the web app")
     s.add_argument("--name", help="display name for the saved build")
     s.add_argument("--quiet", action="store_true", help="no progress output")
     s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls")
@@ -547,11 +784,36 @@ def main(argv=None):
     s.add_argument("link")
     s.add_argument("path")
     s.add_argument("--name")
+    s.add_argument("--no-show", action="store_true", help="don't open it in the web app")
     s.set_defaults(fn=cmd_import)
     s = sub.add_parser("link", help="verify a build file and print its link")
     s.add_argument("build")
     s.add_argument("--write", action="store_true", help="update the file's link and status")
+    s.add_argument("--force", action="store_true", help="write even if the player has unsaved edits to it")
     s.set_defaults(fn=cmd_link)
+    s = sub.add_parser("current", help="the build the player is looking at in the web app")
+    s.add_argument("--json", action="store_true", help="just what the page reported")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_current)
+    s = sub.add_parser("show", help="open a build file in the web app")
+    s.add_argument("build")
+    s.set_defaults(fn=cmd_show)
+    s = sub.add_parser("builds", help="list build files (the web app's sidebar)")
+    s.set_defaults(fn=cmd_builds)
+    s = sub.add_parser("edit", help="change items, tomes, level, name or tree in a build file, then re-check it")
+    s.add_argument("build")
+    s.add_argument("--item", action="append", metavar="SLOT=NAME",
+                   help=f"put an item in a slot ({', '.join(SLOTS)}); empty NAME clears it (repeatable)")
+    s.add_argument("--tome", action="append", metavar="SLOT=NAME",
+                   help="put a tome in a slot (weaponTome1, armorTome1, ...); empty NAME clears it")
+    s.add_argument("--level", type=int)
+    s.add_argument("--name")
+    s.add_argument("--notes")
+    s.add_argument("--tree-preset", choices=sorted(PRESETS), help="re-solve the ability tree")
+    s.add_argument("--save-as", metavar="PATH", help="write a new build file instead of changing this one")
+    s.add_argument("--force", action="store_true",
+                   help="write even if the player has unsaved edits, or --save-as exists")
+    s.set_defaults(fn=cmd_edit)
     s = sub.add_parser("craft", help="suggest the best crafted item for a slot and goal")
     s.add_argument("--type", required=True, help="helmet, chestplate, ring, relik, ...")
     s.add_argument("--level", type=int, default=105, help="player level")

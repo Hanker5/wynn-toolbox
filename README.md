@@ -85,6 +85,10 @@ uv run wt serve        # opens http://127.0.0.1:8765 in your browser
   Your chosen AI assistant starts in it when the app opens; the setup wizard
   (the sidebar's AI button) installs or switches it. The shell keeps running if
   you reload. Starting the app a second time just reopens the running one.
+- **The AI sees what you see**: ask it about "this build" and it checks which
+  build you have open (including edits you haven't saved). Builds it makes or
+  changes appear in your list and open on screen, and it never overwrites a
+  build you're in the middle of editing.
 
 **Security:** the app only accepts connections from this computer, needs the
 one-time token in the link `wt serve` prints, and the terminal only accepts

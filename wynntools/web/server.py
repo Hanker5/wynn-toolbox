@@ -29,10 +29,10 @@ from ..rules import ability_points
 from ..tree_solver import solve_tree
 from ..verify import stat
 from . import terminal as term_mod
+from .client import STATE_FILE    # in builds/: how `wt` finds the running app
 from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
-STATE_FILE = ".server.json"       # in builds/: how a second `wt serve` finds the first
 COOKIE = "wt_token"
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
             "skillpoints")
@@ -63,6 +63,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     gd = GameData()
     jobs = {}
     term = TerminalSession(terminal_cwd or builds_dir.parent)
+    # What the page shows, so the AI can resolve "this build" (`wt current`),
+    # and the last build the AI asked the page to open (`wt show`).
+    view = {"view": "empty", "file": None, "dirty": False, "doc": None, "at": None}
+    show_req = {"seq": 0, "file": None}
 
     @contextlib.asynccontextmanager
     async def lifespan(_app):
@@ -386,18 +390,55 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         """Server-sent events whenever a build file is added, changed or removed."""
         async def stream():
             seen = {x["file"]: x["mtime"] for x in listing()}
+            seen_show = show_req["seq"]
             while not await request.is_disconnected():
                 await asyncio.sleep(1)
                 now = {p.name: version(p) for p in builds_dir.glob("*.json")
                        if p.name not in RESERVED}
                 changed = [f for f in now if seen.get(f) != now[f]]
                 removed = [f for f in seen if f not in now]
+                msg = {}
                 if changed or removed:
                     seen = now
-                    yield f"data: {json.dumps({'changed': changed, 'removed': removed})}\n\n"
-                else:
-                    yield ": keep-alive\n\n"
+                    msg = {"changed": changed, "removed": removed}
+                if show_req["seq"] != seen_show:
+                    seen_show = show_req["seq"]
+                    msg = {"changed": [], "removed": [], **msg, "open": show_req["file"]}
+                yield f"data: {json.dumps(msg)}\n\n" if msg else ": keep-alive\n\n"
         return StreamingResponse(stream(), media_type="text/event-stream")
+
+    # ------------------------------------------------------------ what the page shows
+    VIEWS = ("empty", "editor", "solver", "inventory", "compare")
+
+    @app.put("/api/view")
+    async def put_view(request: Request):
+        """The page reports what it shows: {view, file, dirty, doc}. `doc` is the
+        editor's copy of the build's editable fields, sent only when unsaved."""
+        body = await request.json()
+        if body.get("view") not in VIEWS:
+            raise HTTPException(422, f"view must be one of {', '.join(VIEWS)}")
+        file = body.get("file")
+        if file is not None:
+            path_for(file)
+        doc = body.get("doc") if body.get("dirty") else None
+        view.update({"view": body["view"], "file": file, "dirty": bool(body.get("dirty")),
+                     "doc": {k: doc[k] for k in EDITABLE if k in doc} if isinstance(doc, dict) else None,
+                     "at": time.time()})
+        return {"ok": True}
+
+    @app.get("/api/view")
+    def get_view():
+        return {**view, "age": None if view["at"] is None else round(time.time() - view["at"], 1)}
+
+    @app.post("/api/show")
+    async def show_build(request: Request):
+        """Ask every open page to open a build (the AI just made or changed it)."""
+        body = await request.json()
+        p = path_for(body.get("file") or "")
+        if not p.exists():
+            raise HTTPException(404, f"no build {p.name}")
+        show_req.update(seq=show_req["seq"] + 1, file=p.name)
+        return {"ok": True, "file": p.name}
 
     # ------------------------------------------------------------ solver jobs
     @app.post("/api/solve")

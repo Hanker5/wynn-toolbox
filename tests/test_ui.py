@@ -418,3 +418,45 @@ def test_saved_ai_autostarts_on_open(fresh, tmp_path, monkeypatch):
     pg.wait_for_function("document.querySelector('#term').innerText.includes('UI-AUTO-42')", timeout=15000)
     assert not pg.locator("#setup").is_visible()
     assert not pg.errors
+
+
+def test_page_tells_the_ai_what_it_shows_and_opens_what_it_asks(page, app):
+    """The AI resolves "this build" from the page's report (`wt current`), and
+    builds it saves open in the page (`wt show`) without losing unsaved edits."""
+    import urllib.request
+
+    from tests.ui.harness import TOKEN
+
+    def call(method, path, body=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{app.port}{path}", method=method,
+                                     data=None if body is None else json.dumps(body).encode(),
+                                     headers={"x-wt-token": TOKEN, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as r:
+            return json.loads(r.read())
+
+    def view_is(pred):
+        for _ in range(50):
+            v = call("GET", "/api/view")
+            if pred(v):
+                return v
+            page.wait_for_timeout(100)
+        raise AssertionError(v)
+
+    open_build(page, "shaman_105_stormdrain")
+    view_is(lambda v: v["view"] == "editor" and v["file"] == "stormdrain.json" and not v["dirty"])
+    page.fill("#editor textarea", "typed, not saved")
+    v = view_is(lambda v: v["dirty"])
+    assert v["doc"]["notes"] == "typed, not saved"
+    # the AI saves another build: pointed out, but the player's edits stay
+    call("POST", "/api/show", {"file": "gaia.json"})
+    page.wait_for_function("document.querySelector('#toast').textContent.includes('gaia.json')", timeout=10000)
+    assert page.input_value("#editor textarea") == "typed, not saved"
+    page.click("#ed-revert")
+    settle(page)
+    call("POST", "/api/show", {"file": "gaia.json"})
+    page.wait_for_function("document.querySelector('#editor .name').value === 'mage_105_gaia_lightbender'",
+                           timeout=15000)
+    view_is(lambda v: v["file"] == "gaia.json" and not v["dirty"])
+    page.click("#open-inventory")
+    view_is(lambda v: v["view"] == "inventory")
+    assert not page.errors

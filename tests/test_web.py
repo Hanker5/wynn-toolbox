@@ -205,3 +205,27 @@ def test_exact_solve_job(client):
                                         "file": "x.json", "tree_preset": "mage-poison-lightbender"})
     assert r.status_code == 200
     client.post(f"/api/jobs/{r.json()['job']}/cancel")
+
+
+def test_page_reports_its_view_for_the_ai(client, links):
+    """`wt current` resolves "this build" from what the page last reported."""
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "h.json"})
+    assert client.get("/api/view").json()["at"] is None           # no page yet
+    doc = client.get("/api/builds/h.json").json()
+    doc["notes"] = "unsaved"
+    assert client.put("/api/view", json={"view": "editor", "file": "h.json", "dirty": True,
+                                         "doc": {**doc, "status": "junk"}}).status_code == 200
+    v = client.get("/api/view").json()
+    assert v["file"] == "h.json" and v["dirty"] and v["doc"]["notes"] == "unsaved"
+    assert "status" not in v["doc"]                                # only editable fields kept
+    client.put("/api/view", json={"view": "editor", "file": "h.json", "dirty": False, "doc": doc})
+    assert client.get("/api/view").json()["doc"] is None           # saved: the file is the truth
+    assert client.put("/api/view", json={"view": "nope"}).status_code == 422
+    assert client.put("/api/view", json={"view": "editor", "file": "../x.json"}).status_code == 400
+
+
+def test_show_request_needs_an_existing_build(client, links):
+    assert client.post("/api/show", json={"file": "missing.json"}).status_code == 404
+    assert client.post("/api/show", json={"file": "inventory.json"}).status_code == 400
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "h.json"})
+    assert client.post("/api/show", json={"file": "h.json"}).json() == {"ok": True, "file": "h.json"}

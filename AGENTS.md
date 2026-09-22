@@ -67,7 +67,13 @@ questions; you run the commands.
    Stealing, poison vs. mana), run a few floors and present a small table rather
    than one answer.
 
-8. **Know which search ran.** `wt gear` is exact by default: the best build over
+8. **Save every build you present.** Pass `--save builds/<name>.json` to
+   `wt gear` (and use `wt import` or `wt edit --save-as` for links and variants).
+   A build that only exists in your terminal output never reaches the player's
+   build list. For trade-off tables, save the option the player picks, or each
+   row if they want to compare them in the app.
+
+9. **Know which search ran.** `wt gear` is exact by default: the best build over
    every usable item, under the spec and the stated assumptions (100% rolls,
    automatic skill points). With damage floors, or `--shortlists`, it searches
    per-slot shortlists instead, which can miss the best build; then run
@@ -83,9 +89,13 @@ All commands run through `uv run wt ...` from the repo root.
 |---|---|
 | `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
 | `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
-| `wt gear <spec.json> [--tree PRESET] [--save builds/x.json]` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, optionally save a build file. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
+| `wt gear <spec.json> [--tree PRESET] --save builds/x.json` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, save a build file and open it in the app. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
 | `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
+| `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
+| `wt builds` | List the build files (the app's sidebar); `▶` marks the one open in the app. |
+| `wt show builds/x.json` | Open a build in the player's web app. |
+| `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--save-as` makes a variant and leaves the original alone. |
 | `wt damage <link or build file> [--perfect] [--parts]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP. Typical rolls by default; `--perfect` matches the WynnBuilder page. |
 | `wt compare <a> <b> [--perfect]` | Two builds (links or files) side by side: gear, totals, skill points, spell damage, effective HP. The web app's "Compare builds" page shows the same. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. |
@@ -119,10 +129,25 @@ colours, a drawn ability tree), so players can read it the way they read
 WynnBuilder. Its Summary has a Typical/Perfect toggle; "Perfect" matches the
 numbers WynnBuilder shows.
 
-You may be running inside the web app's terminal panel, with the player
-watching the same build on screen. The page reloads a build within a second of
-your write, and warns the player instead of overwriting if they have unsaved
-edits. Tell them which file you changed.
+## Inside the web app
+
+You are probably running in the web app's terminal panel (the environment
+variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
+
+- **"This build", "the current build", "my build"** means the one open in the
+  page. Run `uv run wt current` to find out which file it is and what's in it,
+  before answering or editing. Don't guess from the file list. Run it again when
+  the player may have switched builds since you last looked.
+- If `wt current` says the build has **unsaved edits**, its numbers include
+  them, but the file doesn't. Ask the player to press Save (or Revert) before
+  you change the file; `wt edit` and `wt link --write` refuse until they do.
+- **Builds you make belong in the list on the left.** `wt gear --save`,
+  `wt import` and `wt edit` write to `builds/` and open the build in the page
+  automatically; `wt show` opens any other one. The page
+  never throws away the player's unsaved edits for this: it tells them instead.
+- To change a build, prefer `wt edit`. If you edit the JSON by hand, run
+  `wt link <file> --write` afterwards. The page reloads within a second.
+- Tell the player which file you changed or created.
 
 ## Skills
 

@@ -46,7 +46,19 @@ const weaponClass = (name) => S.items[name]?.cls;
 
 function show(which) {
   for (const id of ["empty", "editor", "solver", "inventory", "compare"]) $("#" + id).hidden = id !== which;
+  reportView();
 }
+
+// Tell the server what this page shows, so the AI in the terminal can act on
+// "this build" (`wt current`), including edits the player hasn't saved yet.
+const VIEWS = ["empty", "editor", "solver", "inventory", "compare"];
+const reportView = debounce(() => {
+  if (document.hidden) return;                     // the tab the player is looking at wins
+  const view = VIEWS.find((id) => !$("#" + id).hidden) || "empty";
+  const c = S.cur;
+  api("PUT", "/api/view", { view, file: c?.file ?? null, dirty: !!c?.dirty,
+    doc: c?.dirty ? editable(c.doc) : null }).catch(() => {});
+}, 300);
 
 // ------------------------------------------------------------------ game display constants
 // Symbols, colours and naming follow WynnBuilder so builds read the same in both.
@@ -348,7 +360,7 @@ async function openBuild(file, { quiet } = {}) {
   await Promise.all(doc.equipment.map((n, i) => itemInfo(S.meta.slots[i], n)));
   await renderEditor();
   loadList();
-  if (!quiet) show("editor");
+  if (!quiet) show("editor"); else reportView();
 }
 
 async function treeFor(cls) {
@@ -1007,7 +1019,7 @@ function edit(mutate, recheck = true) {
   const c = S.cur; if (!c) return;
   mutate(c.doc); c.dirty = true;
   if (recheck) { c.checking = true; runCheck(); }
-  renderDerived();
+  renderDerived(); reportView();
 }
 
 async function save() {
@@ -1018,7 +1030,7 @@ async function save() {
     const out = await api("PUT", `/api/builds/${encodeURIComponent(c.file)}`, { ...editable(c.doc), _mtime: mtime });
     Object.assign(c, { doc: out, mtime: out._mtime, dirty: false, conflict: false, overwrite: false, checkError: null });
     toast(out.status.verified ? "Saved · verified" : "Saved, but the build has problems");
-    renderDerived(); loadList();
+    renderDerived(); loadList(); reportView();
   } catch (e) {
     if (e.status === 409) { c.conflict = true; renderDerived(); }
     else { c.checkError = e.message; renderDerived(); }
@@ -1246,7 +1258,7 @@ async function renderCompare() {
 function watch() {
   const es = new EventSource("/api/events");
   es.onmessage = async (ev) => {
-    const { changed, removed } = JSON.parse(ev.data);
+    const { changed, removed, open } = JSON.parse(ev.data);
     if (changed.includes("inventory.json") || removed.includes("inventory.json")) {
       await loadInventory();
       if (!$("#inventory").hidden) renderInventory();
@@ -1260,7 +1272,17 @@ function watch() {
       if (!c.dirty) { await openBuild(c.file, { quiet: $("#editor").hidden }); toast("Updated from disk"); }
       else { c.conflict = true; renderDerived(); }
     }
+    if (open) await showRequested(open);
   };
+}
+
+// The AI asked to show a build (`wt show`, or after `wt gear --save`). Never
+// throw away the player's unsaved edits for it: point at the list instead.
+async function showRequested(file) {
+  const c = S.cur;
+  if (c?.dirty && c.file !== file) { toast(`The AI saved ${file}. It's in the list on the left.`); return; }
+  await openBuild(file);
+  toast(`Opened ${file}`);
 }
 
 // ------------------------------------------------------------------ boot
@@ -1283,7 +1305,10 @@ async function boot() {
     } catch (e) { $("#import-msg").textContent = e.message; }
   };
   window.addEventListener("beforeunload", (e) => { if (S.cur?.dirty) e.preventDefault(); });
+  document.addEventListener("visibilitychange", reportView);
+  window.addEventListener("focus", reportView);
   await Promise.all([loadList(), loadInventory()]);
   watch();
+  reportView();
 }
 boot().catch((e) => { document.body.textContent = "Could not start: " + e.message; });
