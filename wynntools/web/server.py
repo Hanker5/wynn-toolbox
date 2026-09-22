@@ -7,8 +7,10 @@ an HttpOnly cookie.
 """
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -56,6 +58,27 @@ link it printed in the terminal (it ends in <code>?token=&hellip;</code>).</p>
 
 class Cancelled(Exception):
     pass
+
+
+STATIC_REF = re.compile(r'((?:src|href)="/static/)([^"?]+)"')
+
+
+def fingerprinted(html):
+    """index.html with ?v=<content hash> on every /static/ script and stylesheet."""
+    def ref(m):
+        f = STATIC / m.group(2)
+        if not f.is_file():
+            return m.group(0)
+        return f'{m.group(1)}{m.group(2)}?v={hashlib.sha256(f.read_bytes()).hexdigest()[:12]}"'
+    return STATIC_REF.sub(ref, html)
+
+
+class NoCacheStatic(StaticFiles):
+    """Static files the browser must re-check (a cheap 304) before reusing."""
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, update_check=None):
@@ -176,9 +199,13 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     # ------------------------------------------------------------ pages
     @app.get("/", response_class=HTMLResponse)
     def index():
-        return (STATIC / "index.html").read_text(encoding="utf-8")
+        # no-store, and every script and stylesheet URL carries a hash of its
+        # file: after an update the app window's disk cache otherwise kept
+        # serving the old app.js (no Cache-Control lets it guess it's fresh).
+        return HTMLResponse(fingerprinted((STATIC / "index.html").read_text(encoding="utf-8")),
+                            headers={"Cache-Control": "no-store"})
 
-    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.mount("/static", NoCacheStatic(directory=STATIC), name="static")
 
     @app.get("/assets/{name}")
     def asset(name: str):

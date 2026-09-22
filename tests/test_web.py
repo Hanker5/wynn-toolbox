@@ -271,3 +271,22 @@ def test_delete_moves_a_build_to_the_trash_and_undo_restores_it(client, links, t
     assert client.get("/api/builds/hank.json").json()["status"]["verified"]
     assert client.post("/api/trash/restore", json={"trash": trash, "file": "hank.json"}).status_code == 404
     assert client.post("/api/trash/restore", json={"trash": "../hank.json", "file": "x.json"}).status_code == 404
+
+
+def test_page_never_runs_a_cached_old_script(client):
+    """Found by the player: after an update the app window kept running the old
+    app.js from its disk cache (no Delete button), because nothing told it to
+    re-check. Script URLs now carry a content hash and the page isn't cached."""
+    import hashlib
+    import re
+
+    from wynntools.web.server import STATIC
+    r = client.get("/")
+    assert r.headers["cache-control"] == "no-store"
+    refs = re.findall(r'(?:src|href)="/static/([^"]+)"', r.text)
+    assert refs and all("?v=" in x for x in refs)
+    for ref in refs:
+        name, v = ref.split("?v=")
+        assert v == hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:12]
+    s = client.get("/static/" + refs[0])
+    assert s.status_code == 200 and s.headers["cache-control"] == "no-cache"
