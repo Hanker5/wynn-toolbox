@@ -202,15 +202,123 @@ def _spec_from(raw, gd):
                 roll=raw.get("roll", "base"))
 
 
+def _slot_list(text):
+    slots = [x.strip() for x in (text or "").split(",") if x.strip()]
+    bad = [x for x in slots if x not in SLOTS]
+    if bad:
+        raise SystemExit(f"unknown slot {bad[0]!r}; slots are {', '.join(SLOTS)}")
+    return slots
+
+
+def _edit_spec(a, doc, gd):
+    """The spec for re-searching an existing build: the spec file if given, else the
+    one the build was made with. Class, level and tomes default to the build's, and
+    the slots the player keeps are forced to the build's items."""
+    if a.spec:
+        raw = json.load(open(a.spec, encoding="utf-8"))
+    elif doc.get("spec"):
+        raw = dict(doc["spec"])
+    else:
+        raise SystemExit(f"{a.edit} wasn't made by `wt gear`, so it has no spec to reuse: "
+                         f"write one (class, level, objective, floors, ...) and pass it")
+    equipment = list(doc.get("equipment") or [None] * len(SLOTS))
+    if equipment[8]:
+        raw.setdefault("class", gd.weapon_class(equipment[8]))
+    raw.setdefault("level", doc["level"])
+    if "tomes" not in raw and any(doc.get("tomes") or []):
+        raw["tomes"] = doc["tomes"]
+    if a.keep and a.change:
+        raise SystemExit("pass --keep or --change, not both")
+    keep = _slot_list(a.keep) if a.keep else \
+        [s for s in SLOTS if s not in _slot_list(a.change)] if a.change else []
+    force = dict(raw.get("force") or {})
+    for slot in keep:
+        item = equipment[SLOTS.index(slot)]
+        if not item:
+            raise SystemExit(f"can't keep {slot}: it's empty in {a.edit}; let the search fill it")
+        if force.get(slot, item) != item:
+            raise SystemExit(f"the spec forces {force[slot]} into {slot}, but --keep keeps {item}")
+        force[slot] = item
+    raw["force"] = force
+    return raw
+
+
+def _same_ring_order(new, old):
+    """Rings are interchangeable: put a ring the build already had back in its old
+    slot, so a re-search doesn't report a swap as a change."""
+    r1, r2 = SLOTS.index("ring1"), SLOTS.index("ring2")
+    if (new[r1] != old[r1] and new[r2] == old[r1]) or (new[r2] != old[r2] and new[r1] == old[r2]):
+        new[r1], new[r2] = new[r2], new[r1]
+
+
+def _merge_into(doc, new, gd, tree_preset=None):
+    """The re-searched build `new` written over `doc`. Name and notes carry over,
+    and so do powders on unchanged items, and aspects and the tree while the
+    class stays the same (unless `tree_preset` re-solves the tree). Returns the
+    doc and lines describing what changed."""
+    old_eq = list(doc.get("equipment") or [None] * len(SLOTS))
+    new_eq = new["equipment"]
+    out = {**doc, "level": new["level"], "equipment": new_eq, "tomes": new["tomes"]}
+    lines = [f"  {slot:<12}{old_eq[k] or '(empty)'} -> {new_eq[k] or '(empty)'}"
+             for k, slot in enumerate(SLOTS) if old_eq[k] != new_eq[k]]
+    if (doc.get("tomes") or []) != new["tomes"]:
+        lines.append("  tomes       now the spec's")
+    same_class = bool(old_eq[8]) and gd.weapon_class(old_eq[8]) == gd.weapon_class(new_eq[8])
+    if doc.get("powders"):             # powder lists: helmet, chestplate, leggings, boots, weapon
+        powders = [list(p) for p in doc["powders"]]
+        for k, slot in enumerate((0, 1, 2, 3, 8)):
+            if powders[k] and old_eq[slot] != new_eq[slot]:
+                lines.append(f"  powders     taken off: the {SLOTS[slot]} changed")
+                powders[k] = []
+        out["powders"] = powders
+    if not same_class:
+        if doc.get("aspects") and any(doc["aspects"]):
+            lines.append("  aspects     cleared: the weapon's class changed")
+        out.pop("aspects", None)
+        out["tree_preset"] = tree_preset
+    if tree_preset or not same_class or not doc.get("tree"):
+        out["tree"] = new.get("tree", [])
+        if tree_preset:
+            out["tree_preset"] = tree_preset
+        if doc.get("tree") and out["tree"] != doc["tree"]:
+            lines.append(f"  tree        re-solved with {tree_preset}" if tree_preset else
+                         "  tree        cleared: the weapon's class changed (add --tree PRESET)")
+    if doc.get("skillpoints") and old_eq != new_eq:
+        lines.append("  skill points  back to automatic: the items changed")
+        out["skillpoints"] = None
+    return out, lines
+
+
 def cmd_gear(a):
     gd = GameData()
-    raw = json.load(open(a.spec, encoding="utf-8"))
+    if a.edit:
+        if a.save:
+            raise SystemExit("--edit writes back into the build; use --save-as for a variant, not --save")
+        _refuse_if_unsaved(a.edit, a.force or bool(a.save_as))
+        if a.save_as and Path(a.save_as).exists() and not a.force:
+            raise SystemExit(f"{a.save_as} already exists; pick another name or pass --force")
+        old_doc = buildfile.read(a.edit)
+        raw = _edit_spec(a, old_doc, gd)
+    elif a.save_as or a.keep or a.change:
+        raise SystemExit("--save-as, --keep and --change go with --edit builds/<name>.json")
+    elif not a.spec:
+        raise SystemExit("give a spec file, or --edit builds/<name>.json to re-search a build")
+    else:
+        raw = json.load(open(a.spec, encoding="utf-8"))
     spec = _spec_from(raw, gd)
     _damage_tree(spec, a.tree, gd)
     if a.owned:
         inv = inv_mod.load(a.inventory)
         spec.only, spec.inventory, spec.crafted = inv.names(), inv, False
         print(f"Searching only the {len(inv.names())} items in {a.inventory} (real rolls where given).")
+    if a.edit:
+        from .gear_solver import _usable
+        pools = _usable(gd, spec)
+        unusable = [f"{slot}={name}" for slot, name in spec.force.items()
+                    if not any(gd.name(i) == name for i in pools[slot])]
+        if unusable:
+            raise SystemExit(f"the search can't use these kept items: {', '.join(unusable)} (above the "
+                             f"level, excluded, not owned, or for another class); --change those slots")
     exact = not a.shortlists and not spec.floors.get("damage")
     if not a.shortlists and not exact:
         print("(damage floors use the shortlist search; the exact search can't check them)")
@@ -243,6 +351,8 @@ def cmd_gear(a):
         else:
             print(f"(confirm: larger shortlists found nothing better)")
     print(f"Search took {r.seconds:.0f}s; objective {r.score:g}")
+    if a.edit:
+        _same_ring_order(r.equipment, old_doc.get("equipment") or [None] * len(SLOTS))
     b = _build_from(raw, r.equipment, a.tree, gd)
     link = to_link(b, gd)
     ok, rep = check_link(link, gd)
@@ -252,7 +362,28 @@ def cmd_gear(a):
     if dmg:
         _print_damage(dmg.get("typical", dmg))
     print(link)
-    if a.save:
+    if a.edit:
+        doc, lines = _merge_into(old_doc, buildfile.from_build(b, gd), gd, a.tree)
+        doc["spec"] = {k: v for k, v in raw.items() if not k.startswith("_")}
+        if a.name:
+            doc["name"] = a.name
+        elif a.save_as:
+            doc["name"] = Path(a.save_as).stem
+        doc = buildfile.refresh(doc, gd)
+        out = a.save_as or a.edit
+        print("changes:" if lines else "(no changes: the build's gear is already the best for this spec)")
+        for line in lines:
+            print(line)
+        if doc["link"] != link:          # powders, aspects or its own tree carried over
+            ok, rep = check_link(doc["link"], gd)
+            print("with what the build already had (powders, aspects, tree):")
+            _print_report(ok, rep, gd)
+            print(doc["link"])
+        buildfile.write(out, doc)
+        print(f"{'saved' if a.save_as else 'updated'} {out}")
+        if not a.no_show:
+            _show_in_app(out)
+    elif a.save:
         doc = {"name": a.name or Path(a.save).stem,
                "notes": raw.get("_about", ""), **buildfile.from_build(b, gd),
                "spec": {k: v for k, v in raw.items() if not k.startswith("_")},
@@ -813,7 +944,15 @@ def main(argv=None):
     s.add_argument("--ap", type=int, help="override the ability-point cap")
     s.set_defaults(fn=cmd_tree)
     s = sub.add_parser("gear", help="search gear from a JSON spec, then build and verify a link")
-    s.add_argument("spec")
+    s.add_argument("spec", nargs="?", help="goals as JSON (optional with --edit: reuses the build's own)")
+    s.add_argument("--edit", metavar="BUILD",
+                   help="re-search an existing build file and write the result back into it")
+    s.add_argument("--keep", metavar="SLOTS", help="with --edit: keep these slots' items (comma-separated)")
+    s.add_argument("--change", metavar="SLOTS",
+                   help="with --edit: search only these slots, keep the rest (comma-separated)")
+    s.add_argument("--save-as", metavar="PATH", help="with --edit: write a new build file instead")
+    s.add_argument("--force", action="store_true",
+                   help="with --edit: write even if the player has unsaved edits, or --save-as exists")
     s.add_argument("--tree", choices=sorted(PRESETS), help="also solve the tree with this preset")
     s.add_argument("--shortlists", action="store_true",
                    help="use the older shortlist search instead of the exact one (automatic with damage floors)")

@@ -125,3 +125,81 @@ def test_hook_output_names_the_open_build(app, builds, capsys):
     ctx = json.loads(out)["hookSpecificOutput"]
     assert code == 0 and ctx["hookEventName"] == "UserPromptSubmit"
     assert "storm.json" in ctx["additionalContext"] and "UNSAVED" in ctx["additionalContext"]
+
+
+# ---- `wt gear --edit`: re-search an existing build instead of making a new one
+
+def _spec(builds, **extra):
+    f = builds / "spec.json"
+    f.write_text(json.dumps({"objective": {"eSteal": 1}, **extra}))
+    return str(f)
+
+
+def test_gear_edit_changes_only_the_asked_slots_and_keeps_the_rest(builds, capsys):
+    f = builds / "storm.json"
+    doc = buildfile.read(f)
+    doc.update(notes="mine", powders=[["e6"], [], [], [], ["t6", "t6"]])
+    buildfile.write(f, buildfile.refresh(doc, cli.GameData()))
+    code, out = run(capsys, "gear", _spec(builds), "--edit", str(f), "--change", "helmet", "--quiet")
+    new = buildfile.read(f)
+    assert code == 0 and f"updated {f}" in out
+    assert new["equipment"][1:] == doc["equipment"][1:]      # only the helmet could change
+    assert new["name"] == "Storm" and new["notes"] == "mine" and new["tree"] == doc["tree"]
+    assert new["powders"][4] == ["t6", "t6"]                # the weapon kept its powders
+    assert new["spec"]["class"] == "Shaman" and new["spec"]["force"]["weapon"] == "Stormdrain"
+    assert new["status"]["verified"]
+    # the second time, the spec comes from the build itself and nothing changes
+    code, out = run(capsys, "gear", "--edit", str(f), "--change", "helmet", "--quiet")
+    assert code == 0 and "no changes" in out and buildfile.read(f)["equipment"] == new["equipment"]
+
+
+def test_gear_edit_save_as_leaves_the_original_alone(builds, capsys):
+    f, g = builds / "storm.json", builds / "storm2.json"
+    before = f.read_text()
+    code, out = run(capsys, "gear", _spec(builds), "--edit", str(f), "--keep",
+                    "weapon,chestplate,leggings,boots,ring1,ring2,bracelet,necklace",
+                    "--save-as", str(g), "--quiet")
+    assert code == 0 and f.read_text() == before
+    assert buildfile.read(g)["name"] == "storm2"
+
+
+def test_gear_edit_refuses_what_it_cannot_do(builds, capsys):
+    f = str(builds / "storm.json")
+    assert "no spec to reuse" in run(capsys, "gear", "--edit", f)[1]
+    assert "not both" in run(capsys, "gear", _spec(builds), "--edit", f, "--keep", "helmet",
+                             "--change", "boots")[1]
+    assert "unknown slot" in run(capsys, "gear", _spec(builds), "--edit", f, "--keep", "helm")[1]
+    assert "go with --edit" in run(capsys, "gear", _spec(builds), "--keep", "helmet")[1]
+    run(capsys, "edit", f, "--item", "ring2=")
+    assert "can't keep ring2" in run(capsys, "gear", _spec(builds), "--edit", f, "--keep", "ring2")[1]
+    assert "can't use these kept items" in run(capsys, "gear", _spec(builds, level=50), "--edit", f,
+                                               "--keep", "weapon")[1]
+
+
+def test_gear_edit_refuses_over_unsaved_edits(app, builds, capsys):
+    api(app, "PUT", "/api/view", {"view": "editor", "file": "storm.json", "dirty": True,
+                                  "doc": buildfile.read(builds / "storm.json")})
+    assert "unsaved edits" in run(capsys, "gear", _spec(builds), "--edit",
+                                  str(builds / "storm.json"))[1]
+
+
+def test_rings_that_only_swapped_places_are_not_a_change():
+    old = [None] * 4 + ["A", "B"] + [None] * 3
+    new = [None] * 4 + ["B", "C"] + [None] * 3
+    cli._same_ring_order(new, old)
+    assert new[4:6] == ["C", "B"]
+    new = [None] * 4 + ["B", "A"] + [None] * 3
+    cli._same_ring_order(new, old)
+    assert new[4:6] == ["A", "B"]
+
+
+def test_merge_drops_what_no_longer_fits(gd, links):
+    doc = {"name": "x", "notes": "n", **buildfile.from_build(
+        decode(links["shaman_105_stormdrain"]["hash"], gd), gd)}
+    doc.update(powders=[["e6"], [], [], [], ["t6"]], skillpoints=[0, 0, 0, 0, 0],
+               aspects=[None] * 5)
+    new = {**doc, "equipment": ["Morph-Stardust"] + doc["equipment"][1:8] + ["Gaia"], "tree": []}
+    out, lines = cli._merge_into(doc, new, gd)
+    assert out["powders"] == [[], [], [], [], []]
+    assert out["tree"] == [] and out["skillpoints"] is None and out["notes"] == "n"
+    assert any("class changed" in x for x in lines)

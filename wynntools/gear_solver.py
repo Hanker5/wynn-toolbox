@@ -67,7 +67,8 @@ def _slot_of(item, cls):
 def _usable(gd, spec):
     from .inventory import with_rolls
     pools = {s: [] for s in SLOTS}
-    extra = [gd.item(n) for n in (spec.only or ()) if n.startswith("CR-")]   # owned crafts
+    extra = [gd.item(n) for n in sorted({*(spec.only or ()), *(spec.force or {}).values()})
+             if n.startswith("CR-")]                  # owned or kept crafts
     for it in [*gd.items, *extra]:
         name = gd.name(it)
         if spec.only is not None and name not in spec.only:

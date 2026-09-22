@@ -1,6 +1,6 @@
 ---
 name: build
-description: Make, compare or adjust a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants their current build changed ("this build"). Produces verified WynnBuilder links saved to the player's build list.
+description: Make, compare, adjust or improve a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants an existing build changed or improved ("this build", "make my build tankier", "a better helmet"); changes go into that build's file rather than a new one. Produces verified WynnBuilder links saved to the player's build list.
 ---
 
 # Build
@@ -20,6 +20,13 @@ run `wt current` first. If they have a WynnBuilder link, decode it. Either
 tells you class, level and gear without asking:
 
     wt decode "<link>"
+
+**New build or a change to one?** When the player talks about a build they
+already have ("make my build tankier", "find me a better helmet", "swap in
+Gaia", "improve this"), change that build: follow "Changing an existing build"
+below instead of making a new one. Make a new build only when they ask for one,
+or the change would replace nearly everything (then say so, and offer to keep
+the old one with `--save-as`). If you can't tell, ask.
 
 Then collect only what is still missing:
 
@@ -86,12 +93,50 @@ best within the shortlists. It prints the build, totals and a link, and says
 `VERIFIED OK` or lists problems. Never pass on a link without `VERIFIED OK`
 (`wt verify <link>` checks any link). Never work out totals yourself.
 
-To change a saved build (swap an item, add a tome), use
-`wt edit builds/<name>.json --item helmet="Name"` (add
-`--save-as builds/<new>.json` to keep the original). If `wt current` reports
-unsaved edits in the page, ask the player to Save or Revert first. For fields
-`wt edit` doesn't cover, edit the file's editable fields by hand, then
-`wt link builds/<name>.json --write` to re-check it.
+## 4b. Changing an existing build
+
+Work on the player's file, not a new one. First run `wt current` (or
+`wt decode builds/<name>.json`) to see what it has now. If it reports
+**unsaved edits**, ask the player to Save or Revert before you change anything;
+the commands below refuse until they do.
+
+- **The player named the change** (an item, a tome, the level, a tree preset):
+
+      wt edit builds/<name>.json --item helmet="Name" --tome armorTome1="Name"
+
+- **The player wants it better at something** ("more HP", "better Stealing",
+  "a better helmet"): re-search it in place.
+
+      wt gear --edit builds/<name>.json [spec.json] [--change helmet,boots | --keep weapon,...]
+
+  `--change` searches only those slots and keeps every other item; `--keep`
+  keeps those slots and searches the rest. With neither, all nine slots are
+  searched. Keep what the player didn't ask to change, and always keep a
+  weapon they chose. Rings can come back in either slot.
+
+  The spec: a build made by `wt gear` carries its own, so leave the spec
+  out to reuse it, or write a new one when the goal changed. Class, level and
+  tomes default to the build's, so a spec for an edit can be as small as
+  `{"objective": {"hp": 1}, "floors": {"mr": 20}}`. A spec's `tomes` replace
+  the build's. Builds from links or the editor have no spec: write one, and
+  ask the player for the floors the build has to keep (HP, mana regen, ...).
+
+  It writes the result back into the file and prints what changed. Name,
+  notes and powders on unchanged items stay; so do aspects and the tree while
+  the class is the same (pass `--tree PRESET` to re-solve it, which replaces
+  the player's own tree choices, so ask first). Manual skill points go back
+  to automatic when items change. `(no changes: ...)` means the build is
+  already the best for that spec: say so rather than inventing a change.
+
+- **Fields neither command covers**: edit the file's editable fields by hand,
+  then `wt link builds/<name>.json --write` to re-check it.
+
+- **To compare before committing**, add `--save-as builds/<name>-v2.json`
+  (either command) so the original is untouched, then `wt compare` the two.
+
+Present the change as a before/after: the slots that changed, and the key
+totals before and after (both from `wt` output, e.g. `wt compare`). Tell the
+player which file changed.
 
 ## 5. When goals compete, show the trade-off
 

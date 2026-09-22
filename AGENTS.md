@@ -68,7 +68,8 @@ questions; you run the commands.
    than one answer.
 
 8. **Save every build you present.** Pass `--save builds/<name>.json` to
-   `wt gear` (and use `wt import` or `wt edit --save-as` for links and variants).
+   `wt gear` (and use `wt import` or `wt edit --save-as` for links and variants;
+   `wt gear --edit` and `wt edit` write changes back into the existing file).
    A build that only exists in your terminal output never reaches the player's
    build list. For trade-off tables, save the option the player picks, or each
    row if they want to compare them in the app.
@@ -95,6 +96,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
 | `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
 | `wt gear <spec.json> [--tree PRESET] --save builds/x.json` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, save a build file and open it in the app. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
+| `wt gear --edit builds/x.json [spec.json] [--change SLOTS \| --keep SLOTS] [--save-as builds/y.json]` | Re-search an existing build in place: only the `--change` slots (or all but the `--keep` ones), with the given spec or the one the build was made with. Keeps its name, notes, tree, aspects and powders on unchanged items, and prints what changed. |
 | `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
@@ -156,7 +158,10 @@ variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
   `wt import` and `wt edit` write to `builds/` and open the build in the page
   automatically; `wt show` opens any other one. The page
   never throws away the player's unsaved edits for this: it tells them instead.
-- To change a build, prefer `wt edit`. If you edit the JSON by hand, run
+- When the player wants their build changed or improved, change **that file**
+  instead of making a new build: `wt edit` for a named change,
+  `wt gear --edit` to search for a better one. Use `--save-as` only when they
+  want to keep the original. If you edit the JSON by hand, run
   `wt link <file> --write` afterwards. The page reloads within a second.
 - Tell the player which file you changed or created.
 
