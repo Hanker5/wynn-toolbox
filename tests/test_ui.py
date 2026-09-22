@@ -461,3 +461,23 @@ def test_page_tells_the_ai_what_it_shows_and_opens_what_it_asks(page, app):
     page.click("#open-inventory")
     view_is(lambda v: v["view"] == "inventory")
     assert not page.errors
+
+
+def test_blocked_tree_nodes_are_red_and_cannot_be_added(page):
+    """Ophanim is selected in this build. Void Acceleration lists it as a blocker,
+    and Ophanim lists Thunderstorm: both are shown red and refuse a click."""
+    open_build(page, "mage_105_gaia_lightbender")
+    for name in ("Void Acceleration", "Thunderstorm"):
+        hit = page.locator(f".tree-hit[aria-label='{name}']")
+        assert "blocked" in hit.get_attribute("class"), name
+        assert "blocked by Ophanim" in hit.get_attribute("title")
+        hit.click()
+        page.wait_for_function("document.querySelector('#toast').textContent.includes(\"can't be taken with Ophanim\")",
+                               timeout=5000)
+        assert hit.get_attribute("aria-pressed") == "false"
+    assert page.locator("#ed-save").is_disabled()             # nothing changed
+    assert "blocked" not in page.locator(".tree-hit[aria-label='Ophanim']").get_attribute("class")
+    page.locator(".tree-hit[aria-label='Void Acceleration']").scroll_into_view_if_needed()
+    page.locator(".tree-wrap").screenshot(path="/tmp/claude-1000/-var-home-hhays-wynn-toolbox/"
+                                          "3b42f8d6-212a-46a1-b732-0aa67914f57b/scratchpad/blocked.png")
+    assert not page.errors

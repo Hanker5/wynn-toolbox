@@ -321,15 +321,26 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     def tree(cls: str):
         if cls not in gd.atrees:
             raise HTTPException(404, f"no tree for {cls}")
+        from ..verify import wynnbuilder_order
+        nodes = gd.tree(cls)
+        # "excludes": both directions of every blocker link. WynnBuilder lists a
+        # few one way only (Ophanim blocks Thunderstorm, not the reverse); the
+        # page treats them as exclusive either way, as the tree solver does.
+        excludes = {n["id"]: set(n.get("blockers") or []) for n in nodes}
+        for n in nodes:
+            for b in n.get("blockers") or []:
+                excludes[b].add(n["id"])
+        rank = {i: k for k, i in enumerate(wynnbuilder_order(nodes))}
+        nodes = sorted(nodes, key=lambda n: rank.get(n["id"], len(rank) + n["id"]))
         return [{"id": n["id"], "name": n["display_name"], "cost": n.get("cost") or 0,
                  "row": n["display"]["row"], "col": n["display"]["col"],
                  "icon": n["display"].get("icon", "node_0"),
                  "archetype": n.get("archetype") or "", "req": n.get("archetype_req") or 0,
                  "parents": n["parents"], "deps": n.get("dependencies") or [],
-                 "blockers": n.get("blockers") or [],
+                 "blockers": n.get("blockers") or [], "excludes": sorted(excludes[n["id"]]),
                  "req_archetype": n.get("req_archetype") or n.get("archetype") or "",
                  "desc": (n.get("desc") or "").replace("</br>", "\n")}
-                for n in gd.tree(cls)]
+                for n in nodes]
 
     @app.post("/api/solve-tree")
     async def solve_tree_api(request: Request):

@@ -68,6 +68,40 @@ def sp_feasible(need, level):
     return sum(need) <= skill_points(level) and max(need) <= 100
 
 
+def wynnbuilder_order(tree):
+    """Node ids in the order WynnBuilder checks them (get_sorted_class_atree:
+    Kosaraju's SCC order from the root, js/utils.js make_SCC_graph). The order
+    matters for one-way blockers: WynnBuilder lists "Ophanim blocks
+    Thunderstorm" but not the reverse, so whichever it checks first wins."""
+    by_id = {n["id"]: n for n in tree}
+    children = {n["id"]: [] for n in tree}
+    for n in tree:
+        for p in n["parents"]:
+            children[p].append(n["id"])
+    root = next(n["id"] for n in tree if not n["parents"])
+    post, visited = [], set()
+
+    def visit(u):
+        visited.add(u)
+        for c in children[u]:
+            if c not in visited:
+                visit(c)
+        post.append(u)
+    visit(root)
+    order, assigned = [], set()
+
+    def assign(u):
+        if u in assigned:
+            return
+        assigned.add(u)
+        order.append(u)
+        for p in by_id[u]["parents"]:
+            assign(p)
+    for u in reversed(post):
+        assign(u)
+    return order
+
+
 def tree_activation(tree, selected):
     """Replay WynnBuilder's node-by-node activation.
 
@@ -80,12 +114,15 @@ def tree_activation(tree, selected):
     by_id = {n["id"]: n for n in tree}
     root = next(n["id"] for n in tree if not n["parents"])
     active, arch = {root}, {}
+    order = wynnbuilder_order(tree)
+    order += sorted(set(by_id) - set(order))     # unreachable from the root: never activate
+    pending = set(selected) - active
     if by_id[root].get("archetype"):
         arch[by_id[root]["archetype"]] = 1
     changed = True
     while changed:
         changed = False
-        for nid in sorted(set(selected) - active):
+        for nid in [i for i in order if i in pending]:
             n = by_id[nid]
             if not any(p in active for p in n["parents"]):
                 continue
@@ -97,6 +134,7 @@ def tree_activation(tree, selected):
             if req and arch.get(n.get("req_archetype") or n.get("archetype"), 0) < req:
                 continue
             active.add(nid)
+            pending.discard(nid)
             if n.get("archetype"):
                 arch[n["archetype"]] = arch.get(n["archetype"], 0) + 1
             changed = True

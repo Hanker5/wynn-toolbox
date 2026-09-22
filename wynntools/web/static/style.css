@@ -154,6 +154,9 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 .tree-hit:hover:not(:disabled) { border: 0; background: rgba(255, 255, 255, .08); }
 .tree-hit:focus-visible { outline: 2px solid var(--accent); }
 .tree-hit.fail { box-shadow: 0 0 0 3px var(--bad); }
+/* Blocked by a selected node: red, like WynnBuilder's red "Blocked By" mark. */
+.tree-hit.blocked { background: rgba(255, 85, 85, .32); box-shadow: 0 0 0 2px var(--bad); cursor: not-allowed; }
+.tree-hit.blocked:hover:not(:disabled) { background: rgba(255, 85, 85, .5); }
 .tree-desc { background: var(--panel-2); border-radius: 6px; padding: 10px; position: sticky; top: 0; max-height: 680px; overflow: auto; }
 .td-name { font-weight: 700; margin-bottom: 2px; }
 .td-text { white-space: pre-line; margin: 8px 0; }

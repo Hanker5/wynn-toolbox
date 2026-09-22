@@ -32,6 +32,9 @@ def _check_preset_trees(gd, levels_for):
             _, failed = tree_activation(tree, sel)
             assert not failed, (name, level)
             assert ap_cost(tree, sel) <= ability_points(level)
+            for n in tree:                        # never both sides of a blocker, either way
+                if n["id"] in sel:
+                    assert not sel & set(n.get("blockers") or []), (name, n["display_name"])
             if "archetype" in P:                  # generic presets take all four spells
                 spells = {k for k, v in w.items() if v == 5}
                 assert spells <= {n["display_name"] for n in tree if n["id"] in sel}, name
@@ -66,4 +69,24 @@ def test_every_archetype_of_every_class_has_a_preset(gd):
         for arch in in_data:
             w = preset_weights(f"{cls.lower()}-{arch.lower().replace(' ', '-')}", gd)
             assert sum(v == 5 for v in w.values()) == 4, (cls, arch, "four spells")
+
+
+def test_one_way_blockers_follow_wynnbuilders_order(gd, links):
+    """WynnBuilder lists "Void Acceleration is blocked by Ophanim" but not the
+    reverse, and checks nodes in its own tree order, where Ophanim comes first.
+    So with both selected, Ophanim stays on and Void Acceleration fails.
+    Regression: checking in id order kept both, passing trees WynnBuilder rejects."""
+    from wynntools.verify import wynnbuilder_order
+    tree = gd.tree("Mage")
+    ids = {n["display_name"]: n["id"] for n in tree}
+    order = wynnbuilder_order(tree)
+    assert sorted(order) == sorted(ids.values())            # every node, once
+    assert order.index(ids["Ophanim"]) < order.index(ids["Void Acceleration"])
+    path = ["Accelerated Strike", "Air Mastery", "Arcane Speed", "Arcane Transfer",
+            "Cheaper Ice Snake II", "Displacement", "Distortion", "Earth Mastery",
+            "Etheric Slash", "Frozen Tornado", "Influx Shift", "Larger Mana Bank II", "Seance",
+            "Time Dilation", "Vacuokinesis", "Void Acceleration", "Warp Blast"]
+    selected = decode(links["mage_105_gaia_lightbender"]["hash"], gd).atree | {ids[n] for n in path}
+    active, failed = tree_activation(tree, selected)
+    assert ids["Ophanim"] in active and ids["Void Acceleration"] in failed
 

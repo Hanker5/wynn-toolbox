@@ -685,14 +685,19 @@ function treeConnectors(tree, byId) {
 }
 
 /** Which unselected nodes could be taken now (abil_can_activate over the reachable set). */
+// Which nodes are on, which can be added, and which are blocked. Selected nodes
+// are replayed like WynnBuilder (in its order, one-way blockers), so the page
+// agrees with the checks; a node to ADD is blocked by conflicts either way
+// ("excludes"), like the tree solver.
 function treeAvailability(tree, byId, selected, apCap) {
   const root = tree.find((n) => !n.parents.length);
   const reachable = new Set(), arch = new Map();
   let cost = 0;
-  const canActivate = (n, pointsLeft) => {
+  const blockersOf = (n, twoWay) => (twoWay ? n.excludes : n.blockers).filter((b) => reachable.has(b));
+  const canActivate = (n, pointsLeft, twoWay = false) => {
     if (!n.parents.length) return true;
     if (n.deps.some((d) => !reachable.has(d))) return false;
-    if (n.blockers.some((b) => reachable.has(b))) return false;
+    if (blockersOf(n, twoWay).length) return false;
     if (!n.parents.some((p) => reachable.has(p))) return false;
     if (n.req && (arch.get(n.req_archetype) || 0) < n.req) return false;
     return n.cost <= pointsLeft;
@@ -709,7 +714,10 @@ function treeAvailability(tree, byId, selected, apCap) {
     pending = still;
   }
   const left = apCap - cost;
-  return new Set(tree.filter((n) => !selected.has(n.id) && canActivate(n, left)).map((n) => n.id));
+  const unselected = tree.filter((n) => !selected.has(n.id));
+  const blocked = new Map(unselected.map((n) => [n.id, blockersOf(n, true)]).filter(([, b]) => b.length));
+  return { active: reachable, blocked,
+           avail: new Set(unselected.filter((n) => canActivate(n, left, true)).map((n) => n.id)) };
 }
 
 async function renderTree() {
@@ -763,6 +771,8 @@ async function renderTree() {
     hit.addEventListener("mouseleave", () => describeDefault());
     hit.addEventListener("click", () => {
       if (n.id === root.id) return;
+      const by = availability(selectedIds()).blocked.get(n.id);
+      if (by) { toast(`${n.name} can't be taken with ${names(by)}. Remove that first.`); describe(n); return; }
       edit((x) => { const s = new Set(x.tree || []); s.has(n.name) ? s.delete(n.name) : s.add(n.name); x.tree = [...s]; });
       paint(); describe(n);
     });
@@ -770,6 +780,8 @@ async function renderTree() {
     canvas.append(art, hit);
   }
 
+  const names = (ids) => ids.map((i) => byId.get(i)?.name).filter(Boolean).join(", ");
+  const availability = (sel) => treeAvailability(tree, byId, sel, S.cur.doc.status?.ap?.[1] ?? S.cur.doc._ap_cap ?? 45);
   const selectedIds = () => {
     const names = new Set(S.cur.doc.tree || []);
     return new Set(tree.filter((n) => n.id === root.id || names.has(n.name)).map((n) => n.id));
@@ -779,14 +791,17 @@ async function renderTree() {
   function paint() {
     const sel = selectedIds();
     const failed = new Set(S.cur.doc.status?.tree_failed || []);
-    const avail = treeAvailability(tree, byId, sel, S.cur.doc.status?.ap?.[1] ?? S.cur.doc._ap_cap ?? 45);
+    const { avail, blocked } = availability(sel);
     for (const n of tree) {
       const { art, hit } = nodes.get(n.id);
       const state = sel.has(n.id) ? 2 : avail.has(n.id) ? 1 : 0;
       art.style.backgroundPosition = `-${(NODE_ATLAS[n.icon] ?? 0) * NODE_PX}px -${state * NODE_PX}px`;
+      const by = blocked.get(n.id);
       hit.classList.toggle("fail", failed.has(n.name));
+      hit.classList.toggle("blocked", !!by);
       hit.setAttribute("aria-pressed", String(sel.has(n.id)));
-      hit.title = `${n.name} (${n.cost} AP)` + (failed.has(n.name) ? " — can't be activated" : "");
+      hit.title = `${n.name} (${n.cost} AP)` + (failed.has(n.name) ? " — can't be activated"
+        : by ? ` — blocked by ${names(by)}` : "");
     }
     // atree_set_edge, recomputed from scratch: an edge is lit when both ends are selected
     const hl = new Map([...cells.keys()].map((k) => [k, [0, 0, 0, 0]]));
@@ -815,17 +830,18 @@ async function renderTree() {
     }
   }
   function describe(n) {
-    const names = (ids) => ids.map((i) => byId.get(i)?.name).filter(Boolean).join(", ");
     const text = n.desc.replace(/<[^>]*>/g, "").replace(/&emsp;/g, " ").replace(/&nbsp;/g, " ");
     const on = selectedIds().has(n.id);
+    const by = on ? null : availability(selectedIds()).blocked.get(n.id);
     setKids(desc,
       h("div", { class: "td-name" }, n.name),
       h("div", { class: "muted" }, `${n.cost} AP` + (n.archetype ? ` · ${n.archetype}` : "") +
         (n.req ? ` · needs ${n.req} ${n.req_archetype} abilities first` : "")),
       h("div", { class: "td-text" }, text),
       n.deps.length ? h("div", { class: "muted" }, `Requires: ${names(n.deps)}`) : null,
-      n.blockers.length ? h("div", { class: "muted" }, `Can't be taken with: ${names(n.blockers)}`) : null,
-      h("div", { class: on ? "pos" : "muted" }, n.id === root.id ? "Always active" : on ? "Selected — click to remove" : "Click to add"));
+      n.excludes.length ? h("div", { class: "muted" }, `Can't be taken with: ${names(n.excludes)}`) : null,
+      by ? h("div", { class: "neg" }, `Blocked by ${names(by)}, which is selected. Remove it to take this.`)
+        : h("div", { class: on ? "pos" : "muted" }, n.id === root.id ? "Always active" : on ? "Selected — click to remove" : "Click to add"));
   }
   function describeDefault() {
     const sel = selectedIds();
