@@ -134,6 +134,11 @@ update) and `builds/.server.json` (the running server's address) are not builds
 either; change settings with `wt config`. `builds/.update.json`,
 `builds/update.log` and `builds/app.log` belong to the app too.
 
+Deleting a build in the app (the editor's Delete button) moves it into
+`builds/.trash/` with a timestamp; it isn't listed any more but can be
+restored. Don't delete a player's build unless they ask; if they do, move it
+there too rather than erasing it.
+
 The page mirrors WynnBuilder's layout (equipment grid with item icons, element
 colours, a drawn ability tree), so players can read it the way they read
 WynnBuilder. Its Summary has a Typical/Perfect toggle; "Perfect" matches the

@@ -250,3 +250,24 @@ def test_unknown_tree_preset_is_a_clear_error(client):
     r = client.post("/api/upgrades", json={"spec": {**spec, "floors": {"damage": {"Ophanim": 1}}},
                                            "tree_preset": "mage-poison-lightbender"})
     assert r.status_code == 422 and "unknown tree preset" in r.json()["detail"]
+
+
+def test_delete_moves_a_build_to_the_trash_and_undo_restores_it(client, links, tmp_path):
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "hank.json"})
+    r = client.delete("/api/builds/hank.json")
+    assert r.status_code == 200 and r.json()["file"] == "hank.json"
+    trash = r.json()["trash"]
+    assert not (tmp_path / "hank.json").exists() and (tmp_path / ".trash" / trash).exists()
+    assert [b["file"] for b in client.get("/api/builds").json()] == []     # not listed
+    assert client.delete("/api/builds/hank.json").status_code == 404
+    assert client.delete("/api/builds/inventory.json").status_code == 400  # not a build
+    # a second delete of the same name never overwrites the first
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "hank.json"})
+    assert client.delete("/api/builds/hank.json").json()["trash"] != trash
+    assert len(list((tmp_path / ".trash").glob("hank-*.json"))) == 2
+    # undo
+    r = client.post("/api/trash/restore", json={"trash": trash, "file": "hank.json"})
+    assert r.status_code == 200 and (tmp_path / "hank.json").exists()
+    assert client.get("/api/builds/hank.json").json()["status"]["verified"]
+    assert client.post("/api/trash/restore", json={"trash": trash, "file": "hank.json"}).status_code == 404
+    assert client.post("/api/trash/restore", json={"trash": "../hank.json", "file": "x.json"}).status_code == 404

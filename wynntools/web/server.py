@@ -36,6 +36,7 @@ from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
+TRASH_DIR = ".trash"          # deleted builds go here (builds/.trash), not away
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
             "skillpoints")
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
@@ -402,6 +403,36 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         buildfile.write(p, doc)
         return {**doc, "_mtime": version(p),
                 "_ap_cap": ability_points(doc.get("level") or 1)}
+
+    trash_dir = builds_dir / TRASH_DIR
+
+    @app.delete("/api/builds/{name}")
+    def delete_build(name: str):
+        """Move a build into builds/.trash (not erased), so it can be restored."""
+        p = path_for(name)
+        if not p.exists():
+            raise HTTPException(404, "no such build")
+        trash_dir.mkdir(exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest, n = trash_dir / f"{p.stem}-{stamp}.json", 1
+        while dest.exists():
+            n += 1
+            dest = trash_dir / f"{p.stem}-{stamp}-{n}.json"
+        os.replace(p, dest)
+        return {"file": p.name, "trash": dest.name}
+
+    @app.post("/api/trash/restore")
+    async def restore_build(request: Request):
+        """Put a deleted build back under its old name (Undo)."""
+        body = await request.json()
+        src = (trash_dir / str(body.get("trash") or "")).resolve()
+        if src.parent != trash_dir.resolve() or src.suffix != ".json" or not src.exists():
+            raise HTTPException(404, "that build isn't in the trash")
+        p = path_for(body.get("file") or "")
+        if p.exists():
+            raise HTTPException(409, f"{p.name} exists again; rename it first")
+        os.replace(src, p)
+        return {"file": p.name}
 
     @app.post("/api/import")
     async def import_link(request: Request):

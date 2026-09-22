@@ -204,6 +204,8 @@ details.panel[open] > summary.panel-h::before { content: "▾ "; }
 
 #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel-3); border: 1px solid var(--line); padding: 8px 14px; border-radius: var(--radius); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 60; }
 #toast.show { opacity: 1; }
+#toast.has-action { display: flex; gap: 10px; align-items: center; }
+#toast.show.has-action { pointer-events: auto; }
 
 /* ------------------------------------------------------------------ terminal */
 #terminal-panel { position: relative; width: var(--term-width, 520px); min-width: 320px; max-width: 70vw;

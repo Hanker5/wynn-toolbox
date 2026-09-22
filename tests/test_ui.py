@@ -100,6 +100,23 @@ def test_save_from_browser_reaches_disk(page, app):
     assert not page.errors
 
 
+def test_delete_asks_first_then_undo_brings_the_build_back(page, app):
+    open_build(page, "shaman_105_crafted")
+    page.click("#ed-delete")
+    page.click("#ask button:has-text('Cancel')")
+    assert (Path(app.builds_dir) / "crafted.json").exists()
+    page.click("#ed-delete")
+    assert page.is_visible("#ask p:has-text('builds/.trash')")
+    page.click("#ask button:has-text('Delete')")
+    page.wait_for_selector("#empty:not([hidden])")
+    assert not (Path(app.builds_dir) / "crafted.json").exists()
+    assert page.locator("#build-list li:has-text('shaman_105_crafted')").count() == 0
+    page.click("#toast button:has-text('Undo')")
+    page.wait_for_selector("#build-list li.active:has-text('shaman_105_crafted')")
+    assert (Path(app.builds_dir) / "crafted.json").exists()
+    assert not page.errors
+
+
 def test_outside_edit_appears_in_page(page, app):
     open_build(page, "shaman_105_stormdrain")
     f = Path(app.builds_dir) / "stormdrain.json"
@@ -295,7 +312,9 @@ def test_compare_view(page):
     page.click("#open-compare")
     page.select_option("select[aria-label='First build']", label="mage_105_gaia_lightbender")
     page.select_option("select[aria-label='Second build']", label="shaman_105_stormdrain")
-    page.wait_for_selector("table.cmp")
+    # a table for the default pair may already be up; wait for the chosen one
+    page.wait_for_function("document.querySelector('#compare table.cmp') && "
+                           "document.querySelector('#compare').innerText.includes('different classes')")
     text = page.inner_text("#compare")
     assert "Gaia" in text and "Stormdrain" in text and "different classes" in text
     import os

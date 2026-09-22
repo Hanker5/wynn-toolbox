@@ -35,9 +35,12 @@ async function api(method, path, body) {
 }
 
 let toastTimer;
-function toast(msg) {
-  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+// action: optional {label, onclick}, e.g. Undo; the toast then stays up longer.
+function toast(msg, action) {
+  const t = $("#toast"); t.replaceChildren(msg); t.classList.add("show");
+  t.classList.toggle("has-action", !!action);
+  if (action) t.append(h("button", { class: "mini", onclick: () => { t.classList.remove("show"); action.onclick(); } }, action.label));
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show", "has-action"), action ? 8000 : 2600);
 }
 const fmt = (n) => (typeof n === "number" ? n.toLocaleString() : n ?? "—");
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -363,6 +366,28 @@ async function openBuild(file, { quiet } = {}) {
   if (!quiet) show("editor"); else reportView();
 }
 
+// Deleting moves the file to builds/.trash on the server, so Undo can bring it back.
+async function deleteBuild() {
+  const c = S.cur, name = c.doc.name || c.file;
+  const text = [`${c.file} will be moved to builds/.trash, where you can still get it back.`];
+  if (c.dirty) text.push("Its unsaved changes will be lost.");
+  const go = await ask(`Delete “${name}”?`, text,
+    [{ label: "Delete", value: true, danger: true }, { label: "Cancel", value: false }]);
+  if (!go || S.cur !== c) return;
+  let r;
+  try { r = await api("DELETE", `/api/builds/${encodeURIComponent(c.file)}`); }
+  catch (e) { toast(`Couldn't delete ${c.file}: ${e.message}`); return; }
+  S.cur = null;
+  await loadList();
+  show("empty");
+  toast(`Deleted “${name}”`, { label: "Undo", onclick: async () => {
+    try { await api("POST", "/api/trash/restore", { trash: r.trash, file: r.file }); }
+    catch (e) { toast(`Couldn't restore it: ${e.message}`); return; }
+    await openBuild(r.file);
+    toast(`Restored “${name}”`);
+  } });
+}
+
 async function treeFor(cls) {
   if (!cls) return null;
   S.trees[cls] ??= await api("GET", `/api/tree/${cls}`);
@@ -401,6 +426,8 @@ async function renderEditor() {
       h("input", { class: "name", value: d.name || "", "aria-label": "Build name",
         oninput: (e) => edit((x) => { x.name = e.target.value; }, false) }),
       h("span", { id: "ed-badge" }),
+      h("button", { id: "ed-delete", class: "danger", title: "Delete this build (it goes to builds/.trash)",
+        onclick: deleteBuild }, "Delete"),
       h("button", { id: "ed-revert", onclick: () => openBuild(c.file) }, "Revert"),
       h("button", { id: "ed-save", class: "primary", onclick: save }, "Save")),
     h("div", { id: "ed-banners" }),
@@ -1237,7 +1264,9 @@ async function renderCompare() {
   };
   const a = pick("cmp-a", 0), b = pick("cmp-b", 1), out = h("div");
   const roll = h("span", { class: "segs" });
+  let drawn = 0;                   // only the latest draw may fill the page
   const draw = async () => {
+    const seq = ++drawn;
     S.compare = [a.value, b.value];
     roll.replaceChildren(...[["typical", "Typical"], ["perfect", "Perfect"]].map(([v, l]) =>
       h("button", { class: "seg" + (S.roll === v ? " on" : ""), onclick: () => { S.roll = v; store.set("wt-roll", v); draw(); } }, l)));
@@ -1245,6 +1274,7 @@ async function renderCompare() {
     out.replaceChildren(h("p", { class: "hint" }, "Comparing…"));
     try {
       const r = await api("GET", `/api/compare?a=${encodeURIComponent(a.value)}&b=${encodeURIComponent(b.value)}&roll=${S.roll}`);
+      if (seq !== drawn) return;      // a newer choice is on its way
       const nameA = S.builds.find((x) => x.file === a.value)?.name, nameB = S.builds.find((x) => x.file === b.value)?.name;
       const itemCell = (it) => (it ? h("span", { class: `tier-${it.tier || "none"}` }, it.text) : h("span", { class: "muted" }, "—"));
       const num = (v) => (v == null ? "—" : fmt(Math.round(v)));
@@ -1263,7 +1293,7 @@ async function renderCompare() {
           h("td", {}, num(row.a)), h("td", {}, num(row.b)), diffCell(row.diff))) : null,
         h("p", { class: "hint" }, `${S.roll === "perfect" ? "Perfect" : "Typical"} rolls. Damage is each spell's headline number (melee: average DPS).` +
           (r.same_class ? "" : " The builds are different classes, so their spells don't line up.")));
-    } catch (e) { out.replaceChildren(h("p", { class: "neg" }, e.message)); }
+    } catch (e) { if (seq === drawn) out.replaceChildren(h("p", { class: "neg" }, e.message)); }
   };
   a.onchange = b.onchange = draw;
   box.replaceChildren(h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Compare builds"), roll),
