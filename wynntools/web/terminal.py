@@ -34,7 +34,7 @@ AI_CLIS = [
      "login": "The first time it starts, choose \u201cSign in with ChatGPT\u201d.",
      "install": {"posix": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
                  "windows": "irm https://chatgpt.com/codex/install.ps1 | iex"},
-     "needs_node": False, "docs": "https://github.com/openai/codex"},
+     "needs_node": False, "docs": "https://developers.openai.com/codex/cli"},
     {"key": "gemini", "cmd": "gemini", "label": "Gemini CLI", "vendor": "Google",
      "account": "Sign in with a Google account, or use a Gemini API key.",
      "login": "The first time it starts, choose \u201cSign in with Google\u201d.",
@@ -75,11 +75,16 @@ def cli(key):
 
 
 def launch_command(key):
-    """What to type to start CLI `key`, or None if it isn't installed. The bare
-    name is enough: the shell's PATH includes the install dirs even if they
-    were created after it started."""
+    """What to type to start CLI `key`, or None if it isn't installed.
+
+    Codex normally uses the terminal's alternate screen. Keeping it inline
+    makes its conversation survive the browser terminal's scrollback and a
+    page reattach. Other CLIs keep their normal launch commands.
+    """
     c = cli(key)
-    return c["cmd"] if c and find_cli(c["cmd"]) else None
+    if not c or not find_cli(c["cmd"]):
+        return None
+    return f'{c["cmd"]} --no-alt-screen' if key == "codex" else c["cmd"]
 
 
 def install_command(key):

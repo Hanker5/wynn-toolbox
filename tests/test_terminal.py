@@ -166,6 +166,15 @@ def test_find_cli_looks_in_install_dirs(tmp_path, monkeypatch):
     assert str(tmp_path / ".local" / "bin") in terminal.shell_path()
 
 
+def test_codex_keeps_its_conversation_in_terminal_scrollback(monkeypatch):
+    """Only Codex opts out of its alternate terminal screen for the web PTY."""
+    from wynntools.web import terminal
+    monkeypatch.setattr(terminal, "find_cli", lambda cmd: f"/mock/bin/{cmd}")
+    assert terminal.launch_command("codex") == "codex --no-alt-screen"
+    assert terminal.launch_command("claude") == "claude"
+    assert terminal.launch_command("gemini") == "gemini"
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ConPTY backend")
 def test_powershell_round_trip(app):
     with TestClient(app, base_url=GOOD_ORIGIN) as c:
