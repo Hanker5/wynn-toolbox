@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": ["Bash(wt *)", "Bash(uv run wt *)", "Edit(builds/**)", "Write(builds/**)"]
+
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {"hooks": [{"type": "command", "command": "uv run --quiet wt current --hook UserPromptSubmit",
+  "timeout": 15}]}
+    ]
+  }
+}
