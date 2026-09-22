@@ -8,6 +8,23 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<header id="titlebar" hidden>
+  <div class="tb-drag">
+    <svg class="tb-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 14 5.5 8 15 2 5.5Z" fill="var(--accent)"/><path d="M2 5.5h12M8 1 5.5 5.5 8 15l2.5-9.5L8 1" fill="none" stroke="var(--accent-text)" stroke-width=".9"/></svg>
+    <span class="tb-title">Wynn Toolbox</span>
+    <span id="tb-sub" class="muted"></span>
+  </div>
+  <button id="tb-update" class="tb-update" hidden>Update available</button>
+  <div class="tb-buttons">
+    <button id="tb-min" aria-label="Minimize" title="Minimize"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1 5.5h8"/></svg></button>
+    <button id="tb-max" aria-label="Maximize" title="Maximize"><svg viewBox="0 0 10 10" aria-hidden="true"><path class="max" d="M1.5 1.5h7v7h-7z"/><path class="restore" d="M1.5 3.5h5v5h-5zM3.5 3.5v-2h5v5h-2"/></svg></button>
+    <button id="tb-close" class="tb-close" aria-label="Close" title="Close"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"/></svg></button>
+  </div>
+</header>
+<div class="rz" data-edge="n"></div><div class="rz" data-edge="s"></div>
+<div class="rz" data-edge="e"></div><div class="rz" data-edge="w"></div>
+<div class="rz" data-edge="ne"></div><div class="rz" data-edge="nw"></div>
+<div class="rz" data-edge="se"></div><div class="rz" data-edge="sw"></div>
 <div id="app">
   <aside id="sidebar">
     <div class="brand">Wynn Toolbox <span id="version" class="muted"></span></div>
@@ -16,6 +33,7 @@
     <button id="ai-settings" class="wide" title="Choose the AI assistant that starts in the terminal">AI assistant…</button>
     <button id="open-inventory" class="wide">Inventory</button>
     <button id="open-compare" class="wide">Compare builds</button>
+    <button id="check-updates" class="wide">Check for updates</button>
     <details class="import">
       <summary>Import a WynnBuilder link</summary>
       <input id="import-link" placeholder="https://wynnbuilder.github.io/builder/#…">
@@ -51,6 +69,8 @@
   </aside>
 </div>
 <dialog id="setup" aria-labelledby="setup-title"></dialog>
+<dialog id="update" class="modal" aria-labelledby="update-title"></dialog>
+<dialog id="ask" class="modal"></dialog>
 <div id="toast"></div>
 <div id="tooltip" hidden></div>
 <script src="/static/vendor/xterm.js"></script>
@@ -58,5 +78,7 @@
 <script src="/static/app.js"></script>
 <script src="/static/terminal.js"></script>
 <script src="/static/setup.js"></script>
+<script src="/static/titlebar.js"></script>
+<script src="/static/updates.js"></script>
 </body>
 </html>

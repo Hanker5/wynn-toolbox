@@ -1121,6 +1121,7 @@ function renderSolver() {
   }
   function follow(job, onDone) {
     runBtn.disabled = upBtn.disabled = true; cancelBtn.hidden = false;
+    S.job = job;                // the app window's close button warns while it runs
     cancelBtn.onclick = () => api("POST", `/api/jobs/${job}/cancel`);
     const es = new EventSource(`/api/jobs/${job}/events`);
     es.onmessage = async (ev) => {
@@ -1138,6 +1139,7 @@ function renderSolver() {
       }
       if (j.state !== "running") {
         es.close(); runBtn.disabled = upBtn.disabled = false; cancelBtn.hidden = true;
+        S.job = null;
         bar.parentElement.classList.remove("busy");
         if (j.state === "done") { bar.style.width = "100%"; await onDone(j); }
         else status.textContent = j.state === "cancelled" ? "Cancelled." : `Failed: ${j.error}`;
@@ -1305,7 +1307,7 @@ async function showRequested(file) {
 async function boot() {
   if (location.search.includes("token=")) history.replaceState(null, "", "/");  // keep token out of history
   [S.meta, S.tomes] = await Promise.all([api("GET", "/api/meta"), api("GET", "/api/tomes")]);
-  $("#version").textContent = `data ${S.meta.version}`;
+  for (const el of document.querySelectorAll("#version, #tb-sub")) el.textContent = `data ${S.meta.version}`;
   $("#new-build").onclick = () => { renderSolver(); show("solver"); };
   $("#open-inventory").onclick = async () => { await renderInventory(); show("inventory"); };
   $("#open-compare").onclick = () => { renderCompare(); show("compare"); };

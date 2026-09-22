@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from .. import buildfile
 from .. import inventory as inv_mod
 from .. import settings as settings_mod
+from .. import updates
 from ..codec import SLOTS, TOME_SLOTS
 from ..data import VERSIONS, GameData
 from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
@@ -56,8 +57,12 @@ class Cancelled(Exception):
     pass
 
 
-def create_app(builds_dir, port, token=None, terminal_cwd=None):
+def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, update_check=None):
+    """root: the toolbox folder the update checker looks at (default: this one).
+    update_check: stands in for `updates.check` (tests; no network)."""
     builds_dir = Path(builds_dir).resolve()
+    root = Path(root) if root else updates.ROOT
+    update_check = update_check or updates.check
     builds_dir.mkdir(parents=True, exist_ok=True)
     token = token or secrets.token_urlsafe(24)
     allowed_hosts = {f"127.0.0.1:{port}", f"localhost:{port}"}
@@ -89,6 +94,11 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
                   lifespan=lifespan)
     app.state.token = token
     app.state.terminal = term
+    # Set by serve(): how the app was opened ("window", "browser", "none") and
+    # how to stop it (for the updater, which needs the app gone).
+    app.state.mode = "none"
+    app.state.shutdown = None
+    app.state.last_update = updates.take_result(builds_dir)
 
     # ------------------------------------------------------------ security
     @app.middleware("http")
@@ -695,6 +705,48 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
         except ValueError as e:
             raise HTTPException(422, str(e))
 
+    # ------------------------------------------------------------ updates
+    @app.get("/api/update")
+    def get_update(force: bool = False):
+        cfg = settings_mod.load(settings_path)
+        if not cfg["check_updates"] and not force:
+            return {"available": False, "disabled": True}
+        out = update_check(root, builds_dir, force=force)
+        last, app.state.last_update = app.state.last_update, None
+        return {**out, "ignored": bool(out.get("latest")) and out["latest"] == cfg["ignored_update"],
+                "last_update": last}
+
+    @app.post("/api/update/ignore")
+    async def ignore_update(request: Request):
+        body = await request.json()
+        commit = body.get("commit") if isinstance(body, dict) else None
+        try:
+            settings_mod.save({"ignored_update": commit}, settings_path)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        return {"ignored": commit}
+
+    @app.post("/api/update/install")
+    async def install_update(request: Request):
+        body = await request.json()
+        commit = body.get("commit") if isinstance(body, dict) else None
+        relaunch = {"window": "", "browser": "--browser"}.get(app.state.mode)
+        try:
+            updates.start_update(root, builds_dir, commit, relaunch=relaunch)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
+        if app.state.shutdown:
+            # After this response is sent: the updater waits for us to exit.
+            asyncio.get_running_loop().call_later(0.5, app.state.shutdown)
+        return {"started": True, "relaunch": relaunch is not None}
+
+    @app.post("/api/window/focus")
+    def focus_window():
+        from . import window
+        if not window.focus():
+            raise HTTPException(409, "the app isn't open in its own window")
+        return {"focused": True}
+
     # ------------------------------------------------------------ terminal
     @app.get("/api/terminal/clis")
     def clis():
@@ -768,20 +820,28 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None):
     return app
 
 
-def running_instance(builds_dir):
-    """The URL of a `wt serve` already running for these builds, or None."""
+def _call_running(builds_dir, method, path):
+    """(port, token, response or None) for the `wt serve` already running for
+    these builds; (None, None, None) if there is none."""
     import urllib.request
     try:
         state = json.loads((Path(builds_dir) / STATE_FILE).read_text())
         port, token = int(state["port"]), str(state["token"])
-        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/settings",
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None, None
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}", method=method,
                                      headers={"x-wt-token": token})
         with urllib.request.urlopen(req, timeout=2) as r:
-            if r.status == 200:
-                return f"http://127.0.0.1:{port}/?token={token}"
-    except (OSError, ValueError, KeyError, TypeError):
-        pass
-    return None
+            return port, token, r.status
+    except OSError as e:
+        return port, token, getattr(e, "code", None)
+
+
+def running_instance(builds_dir):
+    """The URL of a `wt serve` already running for these builds, or None."""
+    port, token, status = _call_running(builds_dir, "GET", "/api/settings")
+    return f"http://127.0.0.1:{port}/?token={token}" if status == 200 else None
 
 
 def free_port(start, tries=20):
@@ -802,15 +862,23 @@ def free_port(start, tries=20):
     raise SystemExit(f"no free port between {start} and {start + tries - 1}")
 
 
-def serve(builds_dir="builds", port=8765, open_browser=True):
+def serve(builds_dir="builds", port=8765, mode=None):
+    """Run the web app. mode: "window" (its own borderless window; the default
+    when pywebview works), "browser" (open a browser tab) or "none" (just serve)."""
     import webbrowser
 
     import uvicorn
+
+    from . import window
+    if mode is None:
+        mode = "window" if window.available() else "browser"
     builds_dir = Path(builds_dir)
     url = running_instance(builds_dir)
     if url:
         print(f"Wynn Toolbox is already running at:\n  {url}", flush=True)
-        if open_browser:
+        if mode == "window" and _call_running(builds_dir, "POST", "/api/window/focus")[2] == 200:
+            return
+        if mode != "none":
             webbrowser.open(url)
         return
     port = free_port(port)
@@ -822,13 +890,64 @@ def serve(builds_dir="builds", port=8765, open_browser=True):
     fd = os.open(state, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump({"port": port, "token": app.state.token, "pid": os.getpid()}, f)
+
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
+                                           log_level="warning"))
+    app.state.mode = mode
+    app.state.shutdown = lambda: setattr(server, "should_exit", True)
+    how = {"window": "Close the Wynn Toolbox window (or press Ctrl+C here) to quit.",
+           "browser": "Keep this window open while you use Wynn Toolbox. Close it (or press "
+                      "Ctrl+C) to quit.",
+           "none": "Press Ctrl+C to quit."}
     print(f"Wynn Toolbox is running at:\n  {url}\n(only this computer can connect; "
-          f"the token in the link is the password for this session)\n\n"
-          f"Keep this window open while you use Wynn Toolbox. Close it (or press Ctrl+C) "
-          f"to quit.", flush=True)
-    if open_browser:
-        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+          f"the token in the link is the password for this session)\n\n{how[mode]}",
+          flush=True)
     try:
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
+        if mode == "window":
+            _serve_in_window(server, url, builds_dir, app)
+        else:
+            if mode == "browser":
+                threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+            server.run()
     finally:
         cleanup(builds_dir)
+
+
+def _serve_in_window(server, url, builds_dir, app):
+    """Serve on a thread; the window needs the main thread (macOS insists)."""
+    import webbrowser
+
+    from . import window
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    while not server.started and thread.is_alive():
+        time.sleep(0.05)
+    if not thread.is_alive():
+        return                                     # uvicorn failed; it said why
+
+    def stop():
+        server.should_exit = True
+
+    def close_window():
+        # Updating from the page: close the window, which then stops the server.
+        if not window.close():
+            stop()
+
+    app.state.shutdown = close_window
+    try:
+        window.run(url, builds_dir / "settings.json", on_close=stop)
+    except KeyboardInterrupt:
+        stop()
+    except Exception as e:                         # no display, missing Qt libraries, ...
+        print(f"\nCouldn't open the app window ({type(e).__name__}: {e}).\n"
+              f"Opening it in your browser instead; `wt serve --browser` skips the window.",
+              flush=True)
+        app.state.mode = "browser"
+        app.state.shutdown = stop
+        webbrowser.open(url)
+    try:
+        while thread.is_alive():
+            thread.join(0.5)
+    except KeyboardInterrupt:
+        stop()
+        thread.join(5)

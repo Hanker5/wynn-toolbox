@@ -361,7 +361,7 @@ def test_wizard_opens_on_first_run_and_remembers_choice(fresh, tmp_path):
     pg.click("#setup .setup-card:has-text('No AI')")
     pg.click("#setup button:has-text('Next')")
     pg.wait_for_selector("#setup", state="hidden")
-    assert json.loads((tmp_path / "settings.json").read_text()) == {"ai": "shell"}
+    assert json.loads((tmp_path / "settings.json").read_text())["ai"] == "shell"
     assert "Plain terminal" in pg.inner_text("#ai-settings")
     pg.reload()
     pg.wait_for_timeout(800)
@@ -399,7 +399,7 @@ def test_install_step_and_saved_ai_opens_terminal(fresh, tmp_path, monkeypatch):
     pg.wait_for_selector("#setup h2:has-text('Claude Code is ready')")
     pg.click("#setup button:has-text('Start Claude Code')")
     pg.wait_for_function("document.querySelector('#term').innerText.includes('UI-AI-42')", timeout=15000)
-    assert json.loads((tmp_path / "settings.json").read_text()) == {"ai": "claude"}
+    assert json.loads((tmp_path / "settings.json").read_text())["ai"] == "claude"
     assert "AI: Claude Code" in pg.inner_text("#ai-settings"), pg.errors
     assert not pg.errors
 
@@ -481,3 +481,137 @@ def test_blocked_tree_nodes_are_red_and_cannot_be_added(page):
     page.locator(".tree-wrap").screenshot(path="/tmp/claude-1000/-var-home-hhays-wynn-toolbox/"
                                           "3b42f8d6-212a-46a1-b732-0aa67914f57b/scratchpad/blocked.png")
     assert not page.errors
+
+
+# ------------------------------------------------------------ app window and updates
+# A stand-in for pywebview's bridge (wynntools/web/window.py's WindowApi): the
+# page only sees `window.pywebview.api`, so the title bar can be tested here.
+FAKE_PYWEBVIEW = """
+window.__calls = [];
+let maximized = false;
+const call = (name, ret) => (...args) => { window.__calls.push([name, ...args]); return Promise.resolve(ret?.(...args)); };
+window.pywebview = { api: {
+  native_moves: call("native_moves", () => false),
+  is_maximized: call("is_maximized", () => maximized),
+  toggle_maximize: call("toggle_maximize", () => (maximized = !maximized)),
+  minimize: call("minimize"), close: call("close"), toggle_fullscreen: call("toggle_fullscreen"),
+  start_move: call("start_move"), start_resize: call("start_resize"),
+  geometry: call("geometry", () => ({ x: 100, y: 100, width: 1200, height: 800 })),
+  set_geometry: call("set_geometry"),
+} };
+"""
+
+
+def calls(pg):
+    return [c[0] for c in pg.evaluate("window.__calls")]
+
+
+def test_plain_browser_has_no_title_bar(fresh):
+    pg = fresh()
+    pg.wait_for_selector("#check-updates")
+    assert pg.locator("#titlebar").is_hidden()
+    assert not pg.evaluate("document.body.classList.contains('app-window')")
+    assert pg.locator(".rz").first.is_hidden()
+    pg.click("#check-updates")
+    pg.wait_for_selector("#toast.show:has-text('up to date')")
+    assert not pg.errors
+
+
+def test_app_window_title_bar(tmp_path):
+    srv = AppServer(str(tmp_path), terminal_cwd=str(tmp_path)).__enter__()
+    with playwright.sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as e:
+            srv.__exit__(); pytest.skip(f"headless Chromium unavailable: {e}")
+        pg = browser.new_page(viewport={"width": 1400, "height": 900})
+        errors = []
+        pg.on("pageerror", lambda e: errors.append(str(e)))
+        pg.add_init_script(FAKE_PYWEBVIEW)
+        pg.goto(srv.url)
+        pg.wait_for_selector("#titlebar:not([hidden])")
+        pg.wait_for_function("document.getElementById('tb-sub').textContent.startsWith('data')")
+        assert pg.evaluate("document.body.classList.contains('app-window')")
+        # The app fills the window under the title bar, with no page scrollbar.
+        box = pg.locator("#app").bounding_box()
+        assert box["y"] >= 34 and box["y"] + box["height"] <= 900
+        assert pg.evaluate("document.documentElement.scrollHeight") <= 900
+        # Not Qt: pywebview drags by the drag region.
+        assert "pywebview-drag-region" in pg.get_attribute(".tb-drag", "class")
+        pg.screenshot(path=str(tmp_path / "titlebar.png"), clip={"x": 0, "y": 0, "width": 1400, "height": 120})
+
+        pg.click("#tb-min")
+        pg.click("#tb-max")
+        pg.wait_for_function("document.body.classList.contains('maximized')")
+        assert pg.locator(".rz").first.is_hidden()           # no resize edges when maximized
+        pg.dblclick(".tb-title")
+        pg.wait_for_function("!document.body.classList.contains('maximized')")
+        assert pg.get_attribute("#tb-max", "aria-label") == "Maximize"
+
+        # Resizing from the right edge (the non-Qt path) moves the window edge with the mouse.
+        edge = pg.locator(".rz[data-edge='e']").bounding_box()
+        pg.mouse.move(edge["x"] + 2, edge["y"] + 100)
+        pg.mouse.down(); pg.mouse.move(edge["x"] - 98, edge["y"] + 100); pg.mouse.up()
+        pg.wait_for_function("window.__calls.some((c) => c[0] === 'set_geometry')")
+        last = [c for c in pg.evaluate("window.__calls") if c[0] == "set_geometry"][-1]
+        assert last[1:] == [100, 100, 1100, 800]
+
+        # Closing with unsaved edits asks first (in the page, not a native dialog).
+        pg.evaluate("S.cur = { file: 'x.json', dirty: true, doc: { name: 'My build' } }")
+        pg.click("#tb-close")
+        pg.wait_for_selector("#ask[open]:has-text('My build')")
+        pg.click("#ask button:has-text('Cancel')")
+        assert "close" not in calls(pg)
+        pg.click("#tb-close")
+        pg.click("#ask button:has-text('Close anyway')")
+        pg.wait_for_function("window.__calls.some((c) => c[0] === 'close')")
+        pg.evaluate("S.cur.dirty = false")
+        assert calls(pg).count("minimize") == 1 and calls(pg).count("toggle_maximize") == 2
+        assert not errors
+        browser.close()
+    srv.__exit__()
+
+
+NEW_SHA = "3" * 40
+
+
+def update_available(*_a, **_k):
+    return {"available": True, "kind": "install", "can_update": True, "current": "1" * 40,
+            "latest": NEW_SHA, "ahead_by": 12, "repo": "x/y", "branch": "main", "checked_at": 0,
+            "error": None, "commits": [{"sha": NEW_SHA, "message": "Newest feature",
+                                        "date": "2026-09-01T10:00:00Z"},
+                                       {"sha": "2" * 40, "message": "Older fix", "date": None}]}
+
+
+def test_update_prompt_ignore_and_update(fresh, tmp_path, monkeypatch):
+    from wynntools import updates
+    started = []
+    monkeypatch.setattr(updates, "start_update", lambda *a, **k: started.append(a))
+    pg = fresh(update_check=update_available)
+    pg.wait_for_selector("#update[open]:has-text('Newest feature')")
+    text = pg.inner_text("#update")
+    assert "12 new changes" in text and "Older fix" in text and "…and 10 more" in text
+    pg.screenshot(path=str(tmp_path / "update-dialog.png"))
+    pg.click("#update button:has-text('Ignore')")
+    pg.wait_for_selector("#update", state="hidden")
+    assert json.loads((tmp_path / "settings.json").read_text())["ignored_update"] == NEW_SHA
+
+    pg.reload()                                          # ignored: not asked again...
+    pg.wait_for_selector("#check-updates:has-text('Update available')")
+    pg.wait_for_timeout(2000)
+    assert pg.locator("#update").is_hidden()
+    pg.click("#check-updates")                           # ...but the button still offers it
+    pg.wait_for_selector("#update[open]")
+    pg.click("#update button:has-text('Update now')")
+    pg.wait_for_selector("#update h2:has-text('Updating')")
+    assert started and started[0][2] == NEW_SHA
+    assert not pg.errors
+
+
+def test_update_prompt_waits_for_the_setup_wizard(fresh):
+    pg = fresh(ai=None, update_check=update_available)
+    pg.wait_for_selector("#setup[open]")
+    pg.wait_for_timeout(2500)
+    assert pg.locator("#update").is_hidden()
+    pg.click("#setup .setup-x")
+    pg.wait_for_selector("#update[open]")

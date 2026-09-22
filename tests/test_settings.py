@@ -18,12 +18,32 @@ def client(tmp_path):
     return TestClient(app, base_url=f"http://127.0.0.1:{PORT}", headers={"x-wt-token": TOKEN})
 
 
+DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None}
+
+
 def test_defaults_and_round_trip(tmp_path):
     f = tmp_path / "settings.json"
-    assert settings.load(f) == {"ai": None}              # no file: wizard not run yet
-    assert settings.save({"ai": "codex"}, f) == {"ai": "codex"}
-    assert settings.load(f) == {"ai": "codex"}
-    assert settings.save({"ai": None}, f) == {"ai": None}
+    assert settings.load(f) == DEFAULTS                  # no file: wizard not run yet
+    assert settings.save({"ai": "codex"}, f) == {**DEFAULTS, "ai": "codex"}
+    assert settings.load(f) == {**DEFAULTS, "ai": "codex"}
+    assert settings.save({"ai": None}, f) == DEFAULTS
+
+
+def test_update_and_window_settings(tmp_path):
+    f = tmp_path / "settings.json"
+    sha = "a" * 40
+    geo = {"width": 1200, "height": 800, "x": None, "y": 40, "maximized": False}
+    out = settings.save({"check_updates": False, "ignored_update": sha, "window": geo}, f)
+    assert out == {**DEFAULTS, "check_updates": False, "ignored_update": sha, "window": geo}
+    assert settings.load(f) == out
+    for bad in ({"check_updates": "yes"}, {"ignored_update": "; rm -rf ~"},
+                {"window": {"width": "big"}}, {"window": {"width": True}},
+                {"window": {"colour": 1}}, {"window": [1, 2]}):
+        with pytest.raises(ValueError):
+            settings.save(bad, f)
+    # A hand-edited bad value falls back to the default instead of breaking the app.
+    f.write_text(json.dumps({"ai": "codex", "window": "huge", "check_updates": 0}))
+    assert settings.load(f) == {**DEFAULTS, "ai": "codex"}
 
 
 def test_bad_values_rejected_and_bad_files_ignored(tmp_path):
@@ -33,18 +53,18 @@ def test_bad_values_rejected_and_bad_files_ignored(tmp_path):
     with pytest.raises(ValueError):
         settings.save({"colour": "blue"}, f)
     f.write_text('{"ai": "not-a-cli", "other": 1}')     # hand-edited nonsense
-    assert settings.load(f) == {"ai": None}
+    assert settings.load(f) == DEFAULTS
     f.write_text("not json")
-    assert settings.load(f) == {"ai": None}
+    assert settings.load(f) == DEFAULTS
 
 
 def test_settings_api(client, tmp_path):
-    assert client.get("/api/settings").json() == {"ai": None}
-    assert client.put("/api/settings", json={"ai": "gemini"}).json() == {"ai": "gemini"}
-    assert json.loads((tmp_path / "settings.json").read_text()) == {"ai": "gemini"}
+    assert client.get("/api/settings").json() == DEFAULTS
+    assert client.put("/api/settings", json={"ai": "gemini"}).json() == {**DEFAULTS, "ai": "gemini"}
+    assert json.loads((tmp_path / "settings.json").read_text()) == {**DEFAULTS, "ai": "gemini"}
     assert client.put("/api/settings", json={"ai": "bash"}).status_code == 422
     assert client.put("/api/settings", json=["ai"]).status_code == 422
-    assert client.get("/api/settings").json() == {"ai": "gemini"}
+    assert client.get("/api/settings").json() == {**DEFAULTS, "ai": "gemini"}
 
 
 def test_settings_and_state_files_are_not_builds(client, tmp_path):
@@ -66,6 +86,15 @@ def test_wt_config(tmp_path, capsys):
     with pytest.raises(SystemExit):
         main(["config", "ai", "none", "--file", f])
     assert settings.load(f)["ai"] is None
+    with pytest.raises(SystemExit) as e:
+        main(["config", "check_updates", "off", "--file", f])
+    assert e.value.code == 0 and settings.load(f)["check_updates"] is False
+    with pytest.raises(SystemExit) as e:
+        main(["config", "check_updates", "maybe", "--file", f])
+    assert e.value.code != 0 and settings.load(f)["check_updates"] is False
+    with pytest.raises(SystemExit) as e:
+        main(["config", "window", "x", "--file", f])       # not changeable from here
+    assert e.value.code != 0
 
 
 def test_second_launch_finds_the_running_server(tmp_path):

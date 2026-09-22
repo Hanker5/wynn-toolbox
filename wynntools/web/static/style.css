@@ -10,6 +10,7 @@
   --earth: #00aa00; --thunder: #ffff55; --water: #55ffff; --fire: #ff5555; --air: #ffffff;
   --hp: #ff5555;
   --radius: 6px;
+  --titlebar-h: 34px;
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
 }
 * { box-sizing: border-box; }
@@ -282,9 +283,10 @@ table.cmp tr.changed td:first-child { border-left: 2px solid var(--fabled, #ff55
 @keyframes busy { from { margin-left: 0; } to { margin-left: 70%; } }
 
 /* ---------------------------------------------------------------- AI setup wizard */
-#setup { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
+#setup, dialog.modal { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
   background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
-#setup::backdrop { background: rgba(0, 0, 0, .6); }
+dialog.modal { width: min(520px, calc(100vw - 32px)); }
+#setup::backdrop, dialog.modal::backdrop { background: rgba(0, 0, 0, .6); }
 .setup-body { padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
 .setup-head { display: flex; align-items: center; gap: 8px; }
 .setup-head h2 { margin: 0; flex: 1; font-size: 19px; }
@@ -304,3 +306,45 @@ table.cmp tr.changed td:first-child { border-left: 2px solid var(--fabled, #ff55
 .setup-foot { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; margin-top: 6px; }
 .setup-foot .msg { flex: 1; min-width: 160px; }
 .setup-foot .msg:empty { display: none; }
+
+/* ---------------------------------------------------------------- app window (pywebview) */
+/* Only inside the borderless window: body.app-window is set by titlebar.js. */
+#titlebar { height: var(--titlebar-h); display: flex; align-items: stretch; background: #0d0d0d;
+  border-bottom: 1px solid var(--line); user-select: none; -webkit-user-select: none; }
+.tb-drag { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 12px; cursor: default; }
+.tb-icon { width: 16px; height: 16px; flex: none; }
+.tb-title { font-weight: 600; font-size: 13px; }
+#tb-sub { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-update { align-self: center; margin-right: 8px; padding: 2px 10px; font-size: 12px; border-radius: 999px;
+  background: rgba(79, 209, 224, .12); border-color: var(--accent-2); color: var(--accent); }
+.tb-buttons { display: flex; }
+.tb-buttons button { width: 46px; border: 0; border-radius: 0; background: transparent; padding: 0;
+  display: grid; place-items: center; color: var(--muted); }
+.tb-buttons button:hover:not(:disabled) { background: var(--panel-3); color: var(--text); }
+.tb-buttons button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tb-buttons svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1; }
+.tb-buttons button.tb-close:hover:not(:disabled) { background: #c42b1c; color: #fff; }
+#tb-max .restore, body.maximized #tb-max .max { display: none; }
+body.maximized #tb-max .restore { display: inline; }
+
+body.app-window #sidebar .brand { display: none; }     /* the title bar says it */
+body.app-window { height: 100vh; overflow: hidden; border: 1px solid #444; }
+body.app-window.maximized { border: 0; }
+body.app-window #app { height: calc(100vh - var(--titlebar-h) - 2px); }
+body.app-window.maximized #app { height: calc(100vh - var(--titlebar-h)); }
+
+/* Edges to resize the borderless window from. */
+.rz { display: none; position: fixed; z-index: 100; }
+body.app-window:not(.maximized) .rz { display: block; }
+.rz[data-edge="n"] { top: 0; left: 8px; right: 8px; height: 4px; cursor: ns-resize; }
+.rz[data-edge="s"] { bottom: 0; left: 8px; right: 8px; height: 5px; cursor: ns-resize; }
+.rz[data-edge="e"] { right: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.rz[data-edge="w"] { left: 0; top: 8px; bottom: 8px; width: 5px; cursor: ew-resize; }
+.rz[data-edge="ne"] { top: 0; right: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.rz[data-edge="sw"] { bottom: 0; left: 0; width: 8px; height: 8px; cursor: nesw-resize; }
+.rz[data-edge="nw"] { top: 0; left: 0; width: 8px; height: 8px; cursor: nwse-resize; }
+.rz[data-edge="se"] { bottom: 0; right: 0; width: 10px; height: 10px; cursor: nwse-resize; }
+
+/* ---------------------------------------------------------------- updates */
+#check-updates.update-on { border-color: var(--accent-2); color: var(--accent); }
+.update-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }

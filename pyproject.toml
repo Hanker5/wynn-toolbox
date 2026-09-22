@@ -8,6 +8,8 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.141.1",
     "numpy>=2",
+    "pywebview>=5; sys_platform != 'linux'",
+    "pywebview[qt]>=5; sys_platform == 'linux'",
     "pywinpty>=2; sys_platform == 'win32'",
     "scipy>=1.11",
     "uvicorn[standard]>=0.53.0",
@@ -15,6 +17,9 @@ dependencies = [
 
 [project.scripts]
 wt = "wynntools.cli:main"
+
+[project.gui-scripts]
+wynn-toolbox-app = "wynntools.cli:app_main"
 
 [dependency-groups]
 dev = [

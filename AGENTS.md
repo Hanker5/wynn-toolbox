@@ -110,8 +110,9 @@ the sandbox, including the ones that talk to the web app.
 | `wt gear spec.json --tree PRESET` with `"floors": {"damage": {"Ophanim": 15000}}` | Damage minimums: a spell's headline number (melee: average DPS), checked exactly on every candidate with the preset's tree. |
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
-| `wt serve` | Start the local web app (this computer only) with the build editor and a terminal panel. |
-| `wt config [ai [claude\|codex\|gemini\|shell\|none]]` | Show or change the AI assistant the web app starts in its terminal (`builds/settings.json`). |
+| `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
+| `wt config [ai [claude\|codex\|gemini\|shell\|none]]` / `wt config check_updates on\|off` | Show or change the AI assistant the web app starts in its terminal, or turn the update check off (`builds/settings.json`). |
+| `wt update [--check]` | Is a newer Wynn Toolbox on GitHub? Without `--check`, install it (only while the app is closed; in the app the player uses its Update button). |
 
 ## Build files are the shared record
 
@@ -126,8 +127,10 @@ the web app, you edit them with `wt` or by hand; both see the same file. Format:
 "what should I get next?", run `wt upgrades`; when they want a build they can
 wear today, run `wt gear --owned`.
 
-`builds/settings.json` (app settings) and `builds/.server.json` (the running
-server's address) are not builds either; change settings with `wt config`.
+`builds/settings.json` (app settings, including the window size and an ignored
+update) and `builds/.server.json` (the running server's address) are not builds
+either; change settings with `wt config`. `builds/.update.json`,
+`builds/update.log` and `builds/app.log` belong to the app too.
 
 The page mirrors WynnBuilder's layout (equipment grid with item icons, element
 colours, a drawn ability tree), so players can read it the way they read

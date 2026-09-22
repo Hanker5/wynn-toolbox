@@ -717,10 +717,18 @@ def cmd_config(a):
         for k, v in settings.load(a.file).items():
             print(f"{k} = {v if v is not None else '(not set)'}")
         return 0
-    if a.key != "ai":
-        raise SystemExit("the only setting is: ai")
+    if a.key not in ("ai", "check_updates"):
+        raise SystemExit("settings you can change here: ai, check_updates")
     if a.value is None:
-        print(settings.load(a.file)["ai"] or "(not set)")
+        v = settings.load(a.file)[a.key]
+        print(v if v is not None else "(not set)")
+        return 0
+    if a.key == "check_updates":
+        flags = {"on": True, "true": True, "yes": True, "off": False, "false": False, "no": False}
+        if a.value.lower() not in flags:
+            raise SystemExit("check_updates must be on or off")
+        settings.save({"check_updates": flags[a.value.lower()]}, a.file)
+        print(f"check_updates = {'on' if flags[a.value.lower()] else 'off'}")
         return 0
     value = None if a.value in ("none", "unset") else a.value
     try:
@@ -731,9 +739,51 @@ def cmd_config(a):
     return 0
 
 
+def cmd_update(a):
+    """Is a newer Wynn Toolbox on GitHub? Without --check, install it."""
+    from . import updates
+    from .web.client import running
+    r = updates.check(updates.ROOT, a.builds, force=True)
+    if r["error"]:
+        raise SystemExit(f"Couldn't check for updates: {r['error']}")
+    if not r["available"]:
+        print(f"Wynn Toolbox is up to date ({(r['current'] or '?')[:7]} on {r['branch']}).")
+        return 0
+    what = (f"{r['ahead_by']} new change{'s' if r['ahead_by'] != 1 else ''}"
+            if r["ahead_by"] is not None else "a newer version (this one's version is unknown)")
+    print(f"Update available: {what}, latest {r['latest'][:7]}.")
+    for c in r["commits"]:
+        print(f"  - {c['message']}")
+    if a.check:
+        return 0
+    if not r["can_update"]:
+        print("This is a git clone: update it with `git pull`.")
+        return 0
+    if running(a.builds):
+        raise SystemExit("Wynn Toolbox is open: use the Update button in the app, or close "
+                         "it and run `wt update` again.")
+    installer = "install.ps1" if sys.platform == "win32" else "install.sh"
+    print(f"Installing (install/{installer} from {r['latest'][:7]})...", flush=True)
+    import subprocess
+    argv, env, _ = updates.update_command(updates.ROOT, a.builds, r["latest"], pid=0,
+                                          relaunch=None)      # pid 0: nothing to wait for
+    return subprocess.call(argv, env=env)
+
+
 def cmd_serve(a):
     from .web.server import serve
-    serve(a.builds, a.port, open_browser=not a.no_browser)
+    serve(a.builds, a.port, mode="none" if a.no_browser else "browser" if a.browser else None)
+
+
+def app_main():
+    """The console-less launcher (Windows shortcut): `wt serve` by default,
+    with output to builds/app.log since there is no console to show it."""
+    if sys.stdout is None or sys.stderr is None:
+        Path("builds").mkdir(exist_ok=True)
+        log = open("builds/app.log", "a", buffering=1, encoding="utf-8")
+        sys.stdout = sys.stdout or log
+        sys.stderr = sys.stderr or log
+    main(sys.argv[1:] or ["serve"])
 
 
 def main(argv=None):
@@ -843,14 +893,22 @@ def main(argv=None):
     s.add_argument("name")
     s.set_defaults(fn=cmd_ingredient)
     s = sub.add_parser("config", help="show or change app settings, e.g. `wt config ai claude`")
-    s.add_argument("key", nargs="?", help="setting name (ai)")
-    s.add_argument("value", nargs="?", help="claude, codex, gemini, shell, or none")
+    s.add_argument("key", nargs="?", help="setting name (ai, check_updates)")
+    s.add_argument("value", nargs="?", help="ai: claude, codex, gemini, shell, or none; "
+                   "check_updates: on or off")
     s.add_argument("--file", default="builds/settings.json")
     s.set_defaults(fn=cmd_config)
     s = sub.add_parser("serve", help="start the local web app (this computer only)")
     s.add_argument("--port", type=int, default=8765)
     s.add_argument("--builds", default="builds", help="folder of build files")
-    s.add_argument("--no-browser", action="store_true")
+    how = s.add_mutually_exclusive_group()
+    how.add_argument("--browser", action="store_true",
+                     help="open in the browser instead of the app window")
+    how.add_argument("--no-browser", action="store_true", help="just serve; open nothing")
     s.set_defaults(fn=cmd_serve)
+    s = sub.add_parser("update", help="check GitHub for a newer Wynn Toolbox and install it")
+    s.add_argument("--check", action="store_true", help="only say whether there is one")
+    s.add_argument("--builds", default="builds", help="folder of build files")
+    s.set_defaults(fn=cmd_update)
     a = p.parse_args(argv)
     sys.exit(a.fn(a) or 0)

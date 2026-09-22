@@ -7,7 +7,11 @@
 # your builds, settings and downloaded game data are kept.
 #
 # Overrides: WYNN_TOOLBOX_REPO (owner/name), WYNN_TOOLBOX_BRANCH,
+# WYNN_TOOLBOX_COMMIT (install this commit; the app's updater sets it),
 # WYNN_TOOLBOX_DIR (install folder), WYNN_TOOLBOX_ZIP (URL or local file).
+#
+# The marker file records the installed commit, which the app's update
+# checker compares with GitHub.
 #
 # Runs through `iex`, so it never calls `exit` (that would close the window);
 # errors are thrown instead.
@@ -19,7 +23,7 @@
     $Repo = if ($env:WYNN_TOOLBOX_REPO) { $env:WYNN_TOOLBOX_REPO } else { 'Hanker5/wynn-toolbox' }
     $Branch = if ($env:WYNN_TOOLBOX_BRANCH) { $env:WYNN_TOOLBOX_BRANCH } else { 'main' }
     $Dir = if ($env:WYNN_TOOLBOX_DIR) { $env:WYNN_TOOLBOX_DIR } else { Join-Path $env:LOCALAPPDATA 'WynnToolbox' }
-    $Zip = if ($env:WYNN_TOOLBOX_ZIP) { $env:WYNN_TOOLBOX_ZIP } else { "https://github.com/$Repo/archive/refs/heads/$Branch.zip" }
+    $Commit = if ($env:WYNN_TOOLBOX_COMMIT) { $env:WYNN_TOOLBOX_COMMIT } else { '' }
     $Bin = Join-Path $env:USERPROFILE '.local\bin'
     $Marker = '.wynn-toolbox-install'
 
@@ -41,6 +45,19 @@
         throw "$Dir already exists and wasn't made by this installer. Move it, or set WYNN_TOOLBOX_DIR to another folder."
     }
 
+    # Which commit: download exactly that one, so the recorded version matches the files.
+    if (-not $Commit -and -not $env:WYNN_TOOLBOX_ZIP) {
+        try {
+            $Commit = [string](Invoke-RestMethod "https://api.github.com/repos/$Repo/commits/$Branch" `
+                -Headers @{ Accept = 'application/vnd.github.sha'; 'User-Agent' = 'wynn-toolbox' })
+        } catch { $Commit = '' }
+    }
+    $Commit = $Commit.Trim()
+    if ($Commit -notmatch '^[0-9a-f]{40}$') { $Commit = '' }
+    $Zip = if ($env:WYNN_TOOLBOX_ZIP) { $env:WYNN_TOOLBOX_ZIP }
+           elseif ($Commit) { "https://github.com/$Repo/archive/$Commit.zip" }
+           else { "https://github.com/$Repo/archive/refs/heads/$Branch.zip" }
+
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('wynn-toolbox-' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
@@ -59,7 +76,9 @@
     } finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
-    New-Item -ItemType File -Force -Path (Join-Path $Dir $Marker) | Out-Null
+    $installed = [ordered]@{ repo = $Repo; branch = $Branch; commit = $(if ($Commit) { $Commit } else { $null });
+                             installed_at = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() }
+    Set-Content -Path (Join-Path $Dir $Marker) -Encoding ASCII -Value ($installed | ConvertTo-Json -Compress)
     New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'builds') | Out-Null
 
     Push-Location $Dir
@@ -76,6 +95,7 @@
 
     # ------------------------------------------------------------ launchers
     $wt = Join-Path $Dir '.venv\Scripts\wt.exe'
+    $app = Join-Path $Dir '.venv\Scripts\wynn-toolbox-app.exe'    # no console window
     New-Item -ItemType Directory -Force -Path $Bin | Out-Null
     Set-Content -Path (Join-Path $Bin 'wynn-toolbox.cmd') -Encoding ASCII -Value @(
         '@echo off',
@@ -88,7 +108,7 @@
     foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
         if (-not $folder) { continue }
         $lnk = $shell.CreateShortcut((Join-Path $folder 'Wynn Toolbox.lnk'))
-        $lnk.TargetPath = $wt
+        $lnk.TargetPath = $app
         $lnk.Arguments = 'serve'
         $lnk.WorkingDirectory = $Dir
         $lnk.Description = 'AI-assisted Wynncraft builds'
@@ -99,5 +119,5 @@
     Say "Done! Wynn Toolbox is installed in $Dir"
     Write-Host '    To start it, open "Wynn Toolbox" from the Start menu or your Desktop.'
     Write-Host '    The first time, it will help you set up an AI assistant.'
-    Write-Host '    To update later, run this installer again.'
+    Write-Host '    It checks for updates itself (or run this installer again).'
 }

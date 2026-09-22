@@ -8,13 +8,17 @@
 # downloaded game data are kept.
 #
 # Overrides: WYNN_TOOLBOX_REPO (owner/name), WYNN_TOOLBOX_BRANCH,
+# WYNN_TOOLBOX_COMMIT (install this commit; the app's updater sets it),
 # WYNN_TOOLBOX_DIR (install folder), WYNN_TOOLBOX_TARBALL (URL or local file).
+#
+# The marker file records the installed commit, which the app's update
+# checker compares with GitHub.
 set -eu
 
 REPO="${WYNN_TOOLBOX_REPO:-Hanker5/wynn-toolbox}"
 BRANCH="${WYNN_TOOLBOX_BRANCH:-main}"
 DIR="${WYNN_TOOLBOX_DIR:-$HOME/WynnToolbox}"
-TARBALL="${WYNN_TOOLBOX_TARBALL:-https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz}"
+COMMIT="${WYNN_TOOLBOX_COMMIT:-}"
 BIN="$HOME/.local/bin"
 MARKER=".wynn-toolbox-install"
 
@@ -39,6 +43,20 @@ if [ -d "$DIR" ] && [ -n "$(ls -A "$DIR" 2>/dev/null)" ] && [ ! -f "$DIR/$MARKER
        Move it, or choose another folder: WYNN_TOOLBOX_DIR=/some/folder sh install.sh"
 fi
 
+# Which commit: download exactly that one, so the recorded version matches the files.
+if [ -z "$COMMIT" ] && [ -z "${WYNN_TOOLBOX_TARBALL:-}" ]; then
+  COMMIT="$(curl -fsSL -H "Accept: application/vnd.github.sha" \
+    "https://api.github.com/repos/$REPO/commits/$BRANCH" 2>/dev/null || true)"
+fi
+case "$COMMIT" in
+  *[!0-9a-f]*|"") COMMIT="" ;;
+esac
+if [ -n "$COMMIT" ]; then
+  TARBALL="${WYNN_TOOLBOX_TARBALL:-https://github.com/$REPO/archive/$COMMIT.tar.gz}"
+else
+  TARBALL="${WYNN_TOOLBOX_TARBALL:-https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz}"
+fi
+
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 say "Downloading Wynn Toolbox..."
@@ -55,7 +73,9 @@ mkdir -p "$DIR"
 find "$DIR" -mindepth 1 -maxdepth 1 ! -name builds ! -name data ! -name .venv ! -name "$MARKER" \
   -exec rm -rf {} +
 cp -R "$tmp/src/." "$DIR/"
-touch "$DIR/$MARKER"
+if [ -n "$COMMIT" ]; then commit_json="\"$COMMIT\""; else commit_json=null; fi
+printf '{"repo": "%s", "branch": "%s", "commit": %s, "installed_at": %s}\n' \
+  "$REPO" "$BRANCH" "$commit_json" "$(date +%s)" > "$DIR/$MARKER"
 mkdir -p "$DIR/builds"
 
 cd "$DIR"
@@ -68,8 +88,11 @@ say "Downloading WynnBuilder's item data..."
 mkdir -p "$BIN"
 cat > "$BIN/wynn-toolbox" <<EOF
 #!/bin/sh
-# Starts Wynn Toolbox (made by its installer; re-run the installer to update).
-cd "$DIR" && exec "$DIR/.venv/bin/wt" serve "\$@"
+# Starts Wynn Toolbox (made by its installer; it updates itself from the app).
+# Its output goes to builds/app.log when there is no terminal to show it.
+cd "$DIR" || exit 1
+if [ -t 1 ]; then exec "$DIR/.venv/bin/wt" serve "\$@"; fi
+exec "$DIR/.venv/bin/wt" serve "\$@" >> "$DIR/builds/app.log" 2>&1
 EOF
 chmod +x "$BIN/wynn-toolbox"
 
@@ -96,7 +119,7 @@ Name=Wynn Toolbox
 Comment=AI-assisted Wynncraft builds
 Exec="$BIN/wynn-toolbox"
 Icon=applications-games
-Terminal=true
+Terminal=false
 Categories=Game;Utility;
 EOF
     chmod +x "$entry"
@@ -119,4 +142,4 @@ case ":$ORIG_PATH:" in
   *":$BIN:"*) ;;
   *) echo "    (Open a new terminal first if the wynn-toolbox command isn't found.)" ;;
 esac
-echo "    To update later, run this installer again."
+echo "    It checks for updates itself (or run this installer again)."

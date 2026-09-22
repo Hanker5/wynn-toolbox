@@ -11,6 +11,14 @@ import uvicorn
 from wynntools.web.server import create_app
 
 TOKEN = "ui-test-token"
+LATEST = "c0ffee" + "0" * 34
+
+
+def up_to_date(*_a, **_k):
+    """The update check without GitHub: nothing new."""
+    return {"available": False, "kind": "install", "can_update": True, "current": LATEST,
+            "latest": LATEST, "ahead_by": 0, "commits": [], "repo": "x/y", "branch": "main",
+            "checked_at": 0, "error": None}
 
 
 def free_port():
@@ -22,9 +30,11 @@ def free_port():
 class AppServer:
     """Context manager: serves the app from `builds_dir` on a free localhost port."""
 
-    def __init__(self, builds_dir, seed_from=None, terminal_cwd=None, ai="shell"):
+    def __init__(self, builds_dir, seed_from=None, terminal_cwd=None, ai="shell",
+                 update_check=up_to_date):
         """`ai` is the saved AI choice; the default ("shell") skips the setup
-        wizard, and None leaves settings.json out so the wizard opens."""
+        wizard, and None leaves settings.json out so the wizard opens.
+        `update_check` answers the update checker (default: up to date)."""
         self.builds_dir = builds_dir
         if seed_from:
             for f in seed_from:
@@ -34,7 +44,8 @@ class AppServer:
             if not settings_file.exists():
                 settings_file.write_text(json.dumps({"ai": ai}))
         self.port = free_port()
-        self.app = create_app(builds_dir, self.port, token=TOKEN, terminal_cwd=terminal_cwd)
+        self.app = create_app(builds_dir, self.port, token=TOKEN, terminal_cwd=terminal_cwd,
+                              update_check=update_check)
         self.server = uvicorn.Server(uvicorn.Config(self.app, host="127.0.0.1", port=self.port,
                                                     log_level="warning", ws="websockets"))
         self.thread = threading.Thread(target=self.server.run, daemon=True)

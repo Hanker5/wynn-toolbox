@@ -29,9 +29,12 @@ rules, and hand you a working WynnBuilder link.
 The installer sets up Python (through [uv](https://docs.astral.sh/uv/)),
 downloads WynnBuilder's data and adds a **Wynn Toolbox** shortcut (Start menu
 and Desktop on Windows, apps menu or Desktop elsewhere) plus a `wynn-toolbox`
-command. To update, run it again: your builds and settings are kept.
+command. Wynn Toolbox checks GitHub for updates when it opens and asks whether
+to **Update now** or **Ignore** (it asks again when something newer appears;
+"Check for updates" in the sidebar looks any time). You can also run the
+installer again. Either way your builds and settings are kept.
 
-**First run.** Wynn Toolbox opens in your browser and asks which AI assistant
+**First run.** Wynn Toolbox opens in its own window and asks which AI assistant
 you want: **Claude Code**, **Codex** or **Gemini CLI** (or none). If it isn't
 installed, "Install for me" runs the official installer in the built-in
 terminal, where you can watch it. Then it starts the AI, which asks you to
@@ -79,9 +82,19 @@ uv run wt craft --type ring --level 105 --maximize eSteal
 ## The web app
 
 ```bash
-uv run wt serve        # opens http://127.0.0.1:8765 in your browser
+uv run wt serve              # opens the app in its own window
+uv run wt serve --browser    # ...or in your browser, at http://127.0.0.1:8765
 ```
 
+- **Its own window**: borderless, with its own title bar (drag it, double-click
+  to maximize, F11 for full screen) and a close button that warns about
+  unsaved edits. It remembers its size. Closing it quits the app. If the window
+  can't open (no display, missing system libraries) the app opens in your
+  browser instead.
+- **Updates**: when GitHub has a newer version, the app lists what changed and
+  offers Update now or Ignore. Updating closes the app, installs the new
+  version and reopens it. Developer clones are told to `git pull` instead.
+  `wt config check_updates off` turns the check off.
 - **Builds**: open, edit and save builds with item search, tomes, a clickable
   ability tree and live re-checking. Changes the AI makes to the same files show
   up within a second.
