@@ -78,7 +78,7 @@ def load(kind, version=LATEST):
     path = CACHE_DIR / VERSIONS[version] / f"{kind}.json"
     if not path.exists():
         fetch(version)
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _with_redirects(entries):

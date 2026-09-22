@@ -30,14 +30,14 @@ def write_json(path, data):
     """Atomic, so a reader never sees half a file."""
     path = Path(path)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(data, f)
     os.replace(tmp, path)
 
 
 def read_json(path):
     try:
-        return json.loads(Path(path).read_text())
+        return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 

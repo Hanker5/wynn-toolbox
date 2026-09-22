@@ -107,7 +107,7 @@ def refresh(doc, gd, inventory=None):
 
 
 def read(path):
-    return json.loads(Path(path).read_text())
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def write(path, doc):
@@ -115,7 +115,7 @@ def write(path, doc):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp, path)

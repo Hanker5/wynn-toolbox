@@ -56,7 +56,7 @@ def install_info(root=ROOT):
     marker = root / MARKER
     if marker.exists():
         try:
-            data = json.loads(marker.read_text() or "{}")
+            data = json.loads(marker.read_text(encoding="utf-8") or "{}")
         except (OSError, ValueError):
             data = {}
         if not isinstance(data, dict):
@@ -109,7 +109,7 @@ def check(root=ROOT, cache_dir=None, force=False, fetch=None, now=time.time):
     cache = Path(cache_dir) / CACHE_FILE if cache_dir else None
     if cache and not force:
         try:
-            cached = json.loads(cache.read_text())
+            cached = json.loads(cache.read_text(encoding="utf-8"))
             if cached.get("key") == key and now() - cached["result"]["checked_at"] < CACHE_TTL:
                 return cached["result"]
         except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -152,7 +152,7 @@ def check(root=ROOT, cache_dir=None, force=False, fetch=None, now=time.time):
 
     if cache and out["error"] is None:
         try:
-            cache.write_text(json.dumps({"key": key, "result": out}))
+            cache.write_text(json.dumps({"key": key, "result": out}), encoding="utf-8")
         except OSError:
             pass
     return out
@@ -233,7 +233,7 @@ def start_update(root, builds_dir, target, pid=None, relaunch="", popen=subproce
     if sys.platform == "win32":          # shows in its own console; the transcript logs it
         popen(argv, env=env, close_fds=True, **kwargs)
         return
-    with open(Path(builds_dir) / LOG_FILE, "a") as log:
+    with open(Path(builds_dir) / LOG_FILE, "a", encoding="utf-8") as log:
         popen(argv, env=env, stdout=log, stderr=subprocess.STDOUT, close_fds=True, **kwargs)
 
 
@@ -241,7 +241,7 @@ def take_result(builds_dir):
     """The last update's outcome ({ok, to, at}), once; None if there is none."""
     path = Path(builds_dir) / RESULT_FILE
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     path.unlink(missing_ok=True)

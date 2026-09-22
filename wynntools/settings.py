@@ -29,7 +29,7 @@ def ai_choices():
 def load(path=DEFAULT):
     path = Path(path)
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         data = {}
     if not isinstance(data, dict):
@@ -77,5 +77,5 @@ def save(data, path=DEFAULT):
             raise ValueError(problem)
     out = {**load(path), **data}
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(out, indent=2) + "\n")
+    path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     return out

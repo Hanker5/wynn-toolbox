@@ -43,7 +43,7 @@ def load(path=DEFAULT):
     path = Path(path)
     if not path.exists():
         return Inventory()
-    raw = json.loads(path.read_text())
+    raw = json.loads(path.read_text(encoding="utf-8"))
     return Inventory(items=raw.get("items") or {}, tomes=raw.get("tomes") or [],
                      crafts=raw.get("crafts") or [])
 

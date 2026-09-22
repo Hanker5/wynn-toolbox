@@ -174,7 +174,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     # ------------------------------------------------------------ pages
     @app.get("/", response_class=HTMLResponse)
     def index():
-        return (STATIC / "index.html").read_text()
+        return (STATIC / "index.html").read_text(encoding="utf-8")
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -829,7 +829,7 @@ def _call_running(builds_dir, method, path):
     these builds; (None, None, None) if there is none."""
     import urllib.request
     try:
-        state = json.loads((Path(builds_dir) / STATE_FILE).read_text())
+        state = json.loads((Path(builds_dir) / STATE_FILE).read_text(encoding="utf-8"))
         port, token = int(state["port"]), str(state["token"])
     except (OSError, ValueError, KeyError, TypeError):
         return None, None, None
@@ -892,7 +892,7 @@ def serve(builds_dir="builds", port=8765, mode=None):
     cleanup(builds_dir)                  # a crashed run's view and requests
     # Readable only by this user: the token is the session's password.
     fd = os.open(state, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump({"port": port, "token": app.state.token, "pid": os.getpid()}, f)
 
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,

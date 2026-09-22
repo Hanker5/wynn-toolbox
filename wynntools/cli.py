@@ -204,7 +204,7 @@ def _spec_from(raw, gd):
 
 def cmd_gear(a):
     gd = GameData()
-    raw = json.load(open(a.spec))
+    raw = json.load(open(a.spec, encoding="utf-8"))
     spec = _spec_from(raw, gd)
     _damage_tree(spec, a.tree, gd)
     if a.owned:
@@ -535,7 +535,7 @@ def cmd_edit(a):
 
 def cmd_upgrades(a):
     gd = GameData()
-    spec = _spec_from(json.load(open(a.spec)), gd)
+    spec = _spec_from(json.load(open(a.spec, encoding="utf-8")), gd)
     _damage_tree(spec, a.tree, gd)
     inv = inv_mod.load(a.inventory)
     if not inv.names():
