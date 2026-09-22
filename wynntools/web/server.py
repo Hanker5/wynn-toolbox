@@ -512,6 +512,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         if body.get("owned_only"):
             spec.only, spec.inventory, spec.crafted = owned.names(), owned, False
         preset = body.get("tree_preset") or None
+        if preset and preset not in PRESETS:
+            raise HTTPException(422, f"unknown tree preset {preset!r}")
         if preset and PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
         # Exact search by default; damage minimums need the shortlist search.
@@ -606,8 +608,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         """Damage minimums are checked on a fixed tree: the preset's."""
         if not spec.floors.get("damage"):
             return
-        if not preset or preset not in PRESETS:
+        if not preset:
             raise HTTPException(422, "damage minimums need a tree preset")
+        if preset not in PRESETS:
+            raise HTTPException(422, f"unknown tree preset {preset!r}")
         if PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
         spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),

@@ -59,3 +59,15 @@ def test_armor_powders_count_in_totals(gd, links):
     after = summarize(b, gd)["totals"]
     assert after["hp"] - before["hp"] == 2 * 60
     assert after["eDef"] - before["eDef"] == 2 * 29 and after["aDef"] - before["aDef"] == -2 * 7
+
+
+def test_build_naming_a_removed_preset(gd, links, tmp_path):
+    """Build files remember `tree_preset`; the goal-tuned presets were removed.
+    A file that still needs one to solve its tree gets a clear message."""
+    import pytest
+    from wynntools.cli import main
+    doc = buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    f = tmp_path / "old.json"
+    buildfile.write(f, {**doc, "tree": [], "tree_preset": "summoner-stealing"})
+    with pytest.raises(SystemExit, match="unknown tree preset 'summoner-stealing'"):
+        main(["link", str(f)])

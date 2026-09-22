@@ -122,12 +122,13 @@ entries may be stated as fact.
 ## Unknown
 
 - Whether **totem ticks, hummingbirds, Crimson Effigy and Patchwork** trigger
-  Stealing. Only puppets were tested. The `summoner-stealing` preset assumes all
-  summons count; if only puppets do, puppet count is all that matters.
+  Stealing. Only puppets were tested. Counting every summon's hits (as the
+  "summon hits/sec" in `wt decode` does) assumes all summons count; if only
+  puppets do, puppet count is all that matters.
   *Test: equip one Stealing item, place only totems, count emeralds per minute.*
 - Whether Stealing has a **cap**, or whether emeralds per proc scale with mob level.
-- Whether **sigil and tornado ticks re-apply poison** on every hit. The poison
-  Mage presets assume they do.
+- Whether **sigil and tornado ticks re-apply poison** on every hit. Poison Mage
+  trees built around sigils and Frozen Tornado assume they do.
 - Whether a **crafted item's IDs roll randomly** within the ingredient range when
   crafted. The tools treat the middle of the range as typical.
 - **How obtainable ingredients are** (drop rates, trading). WynnBuilder's data

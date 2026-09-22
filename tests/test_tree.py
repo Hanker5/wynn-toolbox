@@ -35,28 +35,34 @@ def _check_preset_trees(gd, levels_for):
             for n in tree:                        # never both sides of a blocker, either way
                 if n["id"] in sel:
                     assert not sel & set(n.get("blockers") or []), (name, n["display_name"])
-            if "archetype" in P:                  # generic presets take all four spells
-                spells = {k for k, v in w.items() if v == 5}
-                assert spells <= {n["display_name"] for n in tree if n["id"] in sel}, name
+            spells = {k for k, v in w.items() if v == 5}   # every preset takes all four spells
+            assert spells <= {n["display_name"] for n in tree if n["id"] in sel}, name
 
 
 def test_presets_solve_to_valid_trees(gd):
-    # Goal-tuned presets at both ends; the 15 generic ones at one level here
-    # (their level-121 solves take up to ~9s each, see the slow test).
-    _check_preset_trees(gd, lambda P: (106,) if "archetype" in P else (105, 121))
+    # One level here; level-121 solves take up to ~9s each (see the slow test).
+    _check_preset_trees(gd, lambda P: (106,))
 
 
 @pytest.mark.slow
 def test_generic_presets_at_max_level(gd):
-    _check_preset_trees(gd, lambda P: (121,) if "archetype" in P else ())
+    _check_preset_trees(gd, lambda P: (121,))
 
 
-def test_summoner_tree_matches_session(gd, links):
+def test_summoner_hits_per_sec(gd, links):
+    """`wt decode` reports summon hits/sec for Shaman trees (the session's summoner)."""
     tree = gd.tree("Shaman")
-    sel = solve_tree(tree, preset_weights("summoner-stealing", gd), ability_points(105))
-    assert sel == decode(links["shaman_105_stormdrain"]["hash"], gd).atree
-    steady, buffed = summoner_hits_per_sec(tree, sel)
+    steady, buffed = summoner_hits_per_sec(tree, decode(links["shaman_105_stormdrain"]["hash"], gd).atree)
     assert steady >= 34 and buffed >= 50
+    assert summoner_hits_per_sec(tree, set()) == (2.5, 2.5)     # just the one totem
+
+
+def test_only_generic_presets(gd):
+    """Goal-tuned presets (stealing Summoner, poison Mage) were removed: the
+    toolbox is for any player, so every preset is one class's archetype."""
+    from wynntools.presets import ARCHETYPES
+    assert all("archetype" in P for P in PRESETS.values())
+    assert len(PRESETS) == sum(len(a) for a in ARCHETYPES.values())
 
 
 def test_every_archetype_of_every_class_has_a_preset(gd):

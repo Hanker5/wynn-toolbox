@@ -59,22 +59,20 @@ silently.
 
 ## 3. Pick a tree preset
 
-`wt tree <preset> --level N` lists what a preset selects. Presets:
-
-- **Goal-tuned**: `summoner-stealing` (Shaman), `mage-poison-lightbender`,
-  `mage-poison-riftwalker`.
-- **Generic, one per archetype for every class**: `<class>-<archetype>`, e.g.
-  `archer-boltslinger`, `assassin-shadestepper`, `warrior-battle-monk`,
-  `mage-arcanist`, `shaman-ritualist` (`wt tree --help` lists all). Each takes
-  the class's four spells, then as many nodes of that archetype as fit, all
-  valued the same. They ignore damage, utility and the other archetypes, and
-  may leave points unspent; say so, and suggest the player finish the tree in
-  the editor.
+`wt tree <preset> --level N` lists what a preset selects. There is one
+generic preset per archetype for every class: `<class>-<archetype>`, e.g.
+`archer-boltslinger`, `assassin-shadestepper`, `warrior-battle-monk`,
+`mage-arcanist`, `shaman-ritualist` (`wt tree --help` lists all). Each takes
+the class's four spells, then as many nodes of that archetype as fit, all
+valued the same. They ignore damage, utility and the other archetypes, and
+may leave points unspent; say so, and suggest the player finish the tree in
+the editor.
 
 Say what the preset's weights favor, especially an archetype it ignores. If
-the player's goal needs a tuned tree, add a preset to `wynntools/presets.py`
-with an `about` string that says what it rewards and why, and tell the player
-it is a judgment call.
+the player's goal needs a different tree, change that build's tree (the
+editor, or `tree` in the build file, then `wt link --write`) rather than adding
+a preset: presets are shared by every player, so they stay generic. Say that
+the changes are a judgment call.
 
 ## 4. Run, save and verify
 

@@ -82,7 +82,7 @@ def test_damage_floor_needs_a_tree(gd):
 
 
 def test_damage_floor_is_respected(gd):
-    tree = set(solve_tree(gd.tree("Mage"), preset_weights("mage-poison-lightbender", gd),
+    tree = set(solve_tree(gd.tree("Mage"), preset_weights("mage-light-bender", gd),
                           ability_points(105)))
     base = solve_gear(_mage_spec(atree=tree), gd)
     from wynntools.codec import Build

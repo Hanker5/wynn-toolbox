@@ -62,8 +62,8 @@ uv run wt serve
 
 ```bash
 uv run wt decode "<wynnbuilder link>"      # read and check any build
-uv run wt gear examples/shaman-105-stealing.json --tree summoner-stealing
-uv run wt tree mage-poison-riftwalker --level 105
+uv run wt gear examples/shaman-105-stealing.json --tree shaman-summoner
+uv run wt tree mage-riftwalker --level 105
 uv run wt craft --type ring --level 105 --maximize eSteal
 ```
 

@@ -113,7 +113,7 @@ def test_solver_form_runs_and_opens_result(page):
     page.click("#new-build")
     page.get_by_role("combobox", name="Class").select_option("Mage")
     page.get_by_role("combobox", name="Maximize").select_option("poison")
-    page.get_by_role("combobox", name="Tree preset").select_option("mage-poison-riftwalker")
+    page.get_by_role("combobox", name="Tree preset").select_option("mage-riftwalker")
     page.get_by_role("spinbutton", name="Health").fill("15000")
     page.get_by_role("spinbutton", name="Mana regen").fill("20")
     page.get_by_role("combobox", name="Required major IDs").select_option("PLAGUE")
@@ -244,7 +244,7 @@ def test_solver_offers_spell_damage_minimum(page):
     page.select_option("#solver select >> nth=0", "Mage")
     spell = page.locator("select[aria-label='Spell for the damage minimum']")
     assert spell.is_disabled()                              # no preset yet
-    page.select_option("select[aria-label='Tree preset']", "mage-poison-lightbender")
+    page.select_option("select[aria-label='Tree preset']", "mage-light-bender")
     page.wait_for_function("!document.querySelector(\"select[aria-label='Spell for the damage minimum']\").disabled")
     options = spell.locator("option").all_inner_texts()
     assert "Wand Melee (DPS)" in options and "Ophanim" in options

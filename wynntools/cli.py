@@ -101,6 +101,8 @@ def _print_damage(dmg, parts=False, label="typical rolls"):
 
 def _tree_for(build_level, weapon, preset, gd):
     cls = gd.weapon_class(weapon)
+    if preset not in PRESETS:        # e.g. a build file naming a preset that was removed
+        raise SystemExit(f"unknown tree preset {preset!r}; `wt tree --help` lists them")
     P = PRESETS[preset]
     if P["class"] != cls:
         raise SystemExit(f"preset {preset} is for {P['class']}, weapon {weapon} is {cls}")

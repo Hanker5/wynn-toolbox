@@ -74,7 +74,7 @@ def test_solve_job_writes_build(client):
             "floors": {"hp": 15000, "mr": 20, "mana": 113}, "require_major": ["PLAGUE"],
             "force": {"weapon": "Gaia"}}
     job = client.post("/api/solve", json={"spec": spec, "file": "gaia.json", "name": "Gaia",
-                                          "tree_preset": "mage-poison-lightbender"}).json()["job"]
+                                          "tree_preset": "mage-light-bender"}).json()["job"]
     for _ in range(600):
         with client.stream("GET", f"/api/jobs/{job}/events") as s:
             last = [line for line in s.iter_lines() if line.startswith("data:")][-1]
@@ -159,7 +159,7 @@ def test_build_status_has_damage_and_spell_list(client, links):
     ophanim = {s["name"]: s for s in dmg["perfect"]["spells"]}["Ophanim"]
     assert ophanim["summary"] == 19482.73 and ophanim["cost"] == 65.0
     assert dmg["typical"]["defense"]["ehp"] < dmg["perfect"]["defense"]["ehp"]
-    names = [s["name"] for s in client.get("/api/spells?cls=Mage&preset=mage-poison-lightbender").json()]
+    names = [s["name"] for s in client.get("/api/spells?cls=Mage&preset=mage-light-bender").json()]
     assert names[0] == "Wand Melee" and "Ophanim" in names
     assert [s["name"] for s in client.get("/api/spells?cls=Mage").json()] == ["Wand Melee"]
 
@@ -170,7 +170,7 @@ def test_damage_minimum_needs_a_preset(client):
     r = client.post("/api/solve", json={"spec": spec, "file": "x.json"})
     assert r.status_code == 422 and "preset" in r.json()["detail"]
     r = client.post("/api/solve", json={"spec": spec, "file": "x.json",
-                                        "tree_preset": "mage-poison-lightbender"})
+                                        "tree_preset": "mage-light-bender"})
     assert r.status_code == 200
     client.post(f"/api/jobs/{r.json()['job']}/cancel")
 
@@ -202,7 +202,7 @@ def test_exact_solve_job(client):
     assert client.get("/api/builds/exact.json").json()["status"]["totals"]["poison"] == 84300
     # a damage minimum falls back to the shortlist search
     r = client.post("/api/solve", json={"spec": {**spec, "floors": {"damage": {"Ophanim": 1}}},
-                                        "file": "x.json", "tree_preset": "mage-poison-lightbender"})
+                                        "file": "x.json", "tree_preset": "mage-light-bender"})
     assert r.status_code == 200
     client.post(f"/api/jobs/{r.json()['job']}/cancel")
 
@@ -229,3 +229,14 @@ def test_show_request_needs_an_existing_build(client, links):
     assert client.post("/api/show", json={"file": "inventory.json"}).status_code == 400
     client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "h.json"})
     assert client.post("/api/show", json={"file": "h.json"}).json() == {"ok": True, "file": "h.json"}
+
+
+def test_unknown_tree_preset_is_a_clear_error(client):
+    """A removed preset (e.g. mage-poison-lightbender) must not crash the search."""
+    spec = {"class": "Mage", "level": 105, "objective": {"poison": 1}}
+    r = client.post("/api/solve", json={"spec": spec, "file": "x.json",
+                                        "tree_preset": "mage-poison-lightbender"})
+    assert r.status_code == 422 and "unknown tree preset" in r.json()["detail"]
+    r = client.post("/api/upgrades", json={"spec": {**spec, "floors": {"damage": {"Ophanim": 1}}},
+                                           "tree_preset": "mage-poison-lightbender"})
+    assert r.status_code == 422 and "unknown tree preset" in r.json()["detail"]
