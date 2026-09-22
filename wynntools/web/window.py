@@ -13,6 +13,7 @@ moved or resized by the window manager, so:
 The window's size and position are kept in settings.json (`window`).
 """
 import logging
+from pathlib import Path
 
 from .. import settings as settings_mod
 
@@ -194,6 +195,10 @@ def run(url, settings_path, on_close):
     global _current
     import webview
 
+    # Absolute: `wt serve` passes builds/ relative to the working folder, and Qt
+    # WebEngine with a relative storage path stalled the page (blank build list
+    # and terminal) for up to minutes at every start.
+    settings_path = Path(settings_path).resolve()
     g = _saved_geometry(settings_path)
     api = WindowApi()
     window = webview.create_window(
