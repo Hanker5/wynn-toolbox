@@ -977,7 +977,7 @@ function renderDamage(st) {
   const open = new Set([...document.querySelectorAll("#ed-damage details.spell[open]")].map((x) => x.dataset.name));
   const cards = dmg.spells.map((sp) => { const c = spellCard(sp); c.dataset.name = sp.name; c.open = open.has(sp.name); return c; });
   const knobs = [...Object.entries(dmg.sliders).map(([k, v]) => `${k} ${v.default}/${v.max}`), ...dmg.toggles.map((t) => `${t} off`)];
-  $("#ed-damage").replaceChildren(
+  $("#ed-damage").replaceChildren(...[          // filter: replaceChildren would print a skipped row as "null"
     statRow(h("span", {}, h("span", { class: "hp" }, "♥ "), "Effective HP"), fmt(Math.round(d.ehp))),
     statRow("Effective HP (no agi)", fmt(Math.round(d.ehp_no_agi))),
     statRow("HP regen", fmt(Math.round(d.hpr))),
@@ -986,7 +986,8 @@ function renderDamage(st) {
     h("div", { class: "sep" }),
     ...cards,
     h("p", { class: "hint" }, `${S.roll === "perfect" ? "Perfect" : "Typical"} rolls. Click a spell for every part. ` +
-      "No potions, raid buffs or powder specials" + (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."));
+      "No potions, raid buffs or powder specials" + (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."),
+  ].filter(Boolean));
 }
 
 function renderSets(st) {

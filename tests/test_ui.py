@@ -117,6 +117,35 @@ def test_delete_asks_first_then_undo_brings_the_build_back(page, app):
     assert not page.errors
 
 
+STRAY_TEXT_JS = """() => {
+  const bad = [], w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  while (w.nextNode()) {
+    const n = w.currentNode, t = n.textContent.trim();
+    if (["null", "undefined", "false", "NaN"].includes(t) && n.parentElement.closest("body > *:not(script)"))
+      bad.push(`${t} in ${n.parentElement.closest("[id]")?.id}`);
+  }
+  return bad;
+}"""
+
+
+def test_no_stray_null_text_anywhere(page):
+    """Found by looking at a screenshot: plain replaceChildren() turned a skipped
+    row (null) into a "null" line in the Damage panel of every build without poison."""
+    found = []
+    for li in range(page.locator("#build-list li").count()):
+        page.locator("#build-list li").nth(li).click()
+        page.wait_for_selector("#ed-badge .badge.ok, #ed-badge .badge.bad", timeout=20000)
+        settle(page)
+        for roll in ("Perfect", "Typical"):
+            page.click(f"#roll-toggle button:has-text('{roll}')")
+            found += page.evaluate(STRAY_TEXT_JS)
+    for view in ("#new-build", "#open-inventory", "#open-compare"):
+        page.click(view)
+        page.wait_for_timeout(1500)
+        found += page.evaluate(STRAY_TEXT_JS)
+    assert not found, sorted(set(found))
+
+
 def test_outside_edit_appears_in_page(page, app):
     open_build(page, "shaman_105_stormdrain")
     f = Path(app.builds_dir) / "stormdrain.json"
