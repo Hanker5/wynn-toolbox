@@ -60,22 +60,38 @@ uv run wt serve
 
 ## What the tools do
 
+You normally don't type these yourself; your AI assistant runs them. They're
+here so you can see what it's doing (and for developers):
+
 ```bash
 uv run wt decode "<wynnbuilder link>"      # read and check any build
 uv run wt gear examples/shaman-105-stealing.json --tree shaman-summoner
+uv run wt damage builds/my-build.json      # spell/melee damage, effective HP
+uv run wt compare builds/a.json builds/b.json
 uv run wt tree mage-riftwalker --level 105
 uv run wt craft --type ring --level 105 --maximize eSteal
+uv run wt own add "Warp" --roll spd=180    # items you own, with real rolls
+uv run wt upgrades examples/shaman-105-stealing.json
 ```
 
-- **Link codec**: decodes and encodes WynnBuilder links, including tomes and the
-  ability tree.
-- **Gear solver**: searches the item database under your class, level, required
-  Major IDs, minimum HP/mana/regen/speed, and weapon constraints.
+Run `uv run wt --help` (or `wt <command> --help`) for the full list.
+
+- **Link codec**: decodes and encodes WynnBuilder links, including tomes, powders,
+  aspects and the ability tree.
+- **Gear solver**: an exact search (mixed-integer programming) over every usable
+  item under your class, level, required Major IDs, minimum HP/mana/regen/speed,
+  damage floors and weapon constraints. It can also re-search just some slots of
+  an existing build (`wt gear --edit`).
+- **Damage**: WynnBuilder's right column (melee DPS, every spell's damage or
+  healing, mana costs, effective HP), checked against the live WynnBuilder page.
+- **Compare**: two builds side by side: gear, totals, skill points, damage, HP.
+- **Inventory and upgrades**: record the items and tomes you own (with their real
+  rolls), build only from those, and rank which unowned item would help most.
 - **Crafting**: exact crafted-item stats (checked against WynnBuilder's own code)
-  and suggestions for the best ingredients and layout for a slot and goal;
-  the gear search can include crafted pieces.
+  and suggestions for the best ingredients and layout for a slot and goal, plus
+  where each ingredient drops; the gear search can include crafted pieces.
 - **Tree solver**: exact ability-tree optimization with WynnBuilder's activation
-  rules.
+  rules, with a preset for every archetype.
 - **Verifier**: skill points (negative bonuses included), tree activation order,
   and link round-trip. No link goes out without passing.
 
@@ -100,6 +116,8 @@ uv run wt serve --browser    # ...or in your browser, at http://127.0.0.1:8765
   up within a second.
 - **New build from goals**: set what to maximize, your minimums and required
   Major IDs, then watch the search run with a progress bar.
+- **Compare builds** and **Inventory** pages: two builds side by side, and the
+  items and tomes you own.
 - **Terminal panel**: a shell in the toolbox folder (PowerShell on Windows).
   Your chosen AI assistant starts in it when the app opens; the setup wizard
   (the sidebar's AI button) installs or switches it. The shell keeps running if
@@ -122,9 +140,25 @@ what is proven, what was tested in game, and what is still unknown.
 - Item stats are 100% rolls; real items roll 30–130%.
 - Damage follows WynnBuilder's model with its page defaults (no potions, raid
   buffs or powder specials; ability sliders at their defaults).
-- Custom items and old-format links are not supported yet.
+- Custom items and old-format (pre-binary) links are not supported yet.
+- Game knowledge beyond WynnBuilder's data comes from player testing; see
+  `knowledge/mechanics.md` for what has and hasn't been checked in game.
 
-See `docs/ROADMAP.md`.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's planned.
+
+## Contributing
+
+Bug reports, in-game test results and pull requests are all welcome. You don't
+need to write code to help:
+
+- **Found a wrong number or a bad link?** [Open an issue](https://github.com/Hanker5/wynn-toolbox/issues/new/choose)
+  with the WynnBuilder link (or the build file) and what you expected.
+- **Tested a mechanic in game?** Results that confirm or overturn an entry in
+  `knowledge/mechanics.md` are valuable; the issue form asks for what you need.
+- **Want to write code?** Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for setup,
+  tests and how pull requests are reviewed. Items on the roadmap are a good
+  place to start; say which one you're taking in an issue first so work isn't
+  duplicated.
 
 ## Credits and license
 

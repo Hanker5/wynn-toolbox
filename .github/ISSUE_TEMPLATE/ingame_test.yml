@@ -1,0 +1,32 @@
+name: In-game test result
+description: You tested a game mechanic; it confirms, contradicts or settles an entry in knowledge/mechanics.md.
+labels: [mechanics]
+body:
+  - type: input
+    id: mechanic
+    attributes:
+      label: Mechanic
+      description: What you tested. Name the entry in knowledge/mechanics.md if there is one.
+      placeholder: "Do puppets scale with spell damage or melee damage?"
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: The build (a WynnBuilder link is best), class, level, and anything else that could matter (potions, buffs, mob type).
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: What you saw
+      description: The numbers you measured and how, so someone else could repeat it. Screenshots or clips help.
+    validations:
+      required: true
+  - type: input
+    id: date
+    attributes:
+      label: Game version or date tested
+    validations:
+      required: true

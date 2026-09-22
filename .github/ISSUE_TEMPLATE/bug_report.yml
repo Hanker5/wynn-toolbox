@@ -1,0 +1,34 @@
+name: Bug report
+description: A wrong number, a broken link, a crash, or the app misbehaving.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What went wrong?
+      description: What happened, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: build
+    attributes:
+      label: Build
+      description: The WynnBuilder link, or paste the build file from `builds/`. For a number that disagrees with WynnBuilder, say whether you compared typical or perfect rolls.
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or steps
+      description: The `wt` command that was run (your AI shows it), or what you clicked in the app.
+      render: shell
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or error
+      description: Any error text from the terminal, or `builds/app.log` if the app misbehaved.
+      render: text
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Operating system, and the AI assistant you use (Claude Code, Codex, Gemini CLI, none).
+      placeholder: Windows 11, Claude Code
