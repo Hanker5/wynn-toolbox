@@ -808,6 +808,24 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             raise HTTPException(422, "pick a weapon first")
         return out
 
+    @app.post("/api/powders")
+    async def powders_api(request: Request):
+        """{"doc", "weapon_goal", "armor_goal", "tier", "measure"}: the
+        powder planner's suggestion (wynntools.powders)."""
+        from ..powders import plan_armor, plan_weapon
+        body = await request.json()
+        try:
+            b = buildfile.to_build({k: body["doc"][k] for k in EDITABLE if k in body["doc"]}, gd)
+            tier = int(body["tier"]) if body.get("tier") else None
+            weapon = plan_weapon(b, gd, body["weapon_goal"], tier, inventory=inv(),
+                                 measure=body.get("measure") or "melee_dps") \
+                if body.get("weapon_goal") and b.weapon else None
+            armor = plan_armor(b, gd, body["armor_goal"], tier, inventory=inv()) \
+                if body.get("armor_goal") else None
+        except (KeyError, ValueError, NotImplementedError, TypeError) as e:
+            raise HTTPException(422, str(e).strip('"'))
+        return {"weapon": weapon, "armor": armor}
+
     @app.get("/api/inventory")
     def get_inventory():
         i = inv()

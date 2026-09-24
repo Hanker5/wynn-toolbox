@@ -793,7 +793,7 @@ def test_manual_skill_points_in_the_editor(page, app):
     assert not page.errors
 
 
-def test_specials_scenario(page):
+def test_specials_scenario_and_powder_planner(page):
     open_build(page, "shaman_105_stormdrain")
     settle(page)
     page.click("#ed-specials summary")
@@ -806,6 +806,12 @@ def test_specials_scenario(page):
     page.press("input[aria-label='weapon powders']", "Tab")
     settle(page)
     page.wait_for_selector("#ed-powders-give:has-text('Quake power 7 (weapon)')", timeout=20000)
+    page.click("#ed-powder-panel summary")
+    page.click("#ed-powder >> text=Suggest")
+    page.wait_for_selector("#plan-armor", timeout=20000)
+    page.click("#plan-armor >> text=Apply")
+    settle(page)
+    assert "-" not in page.inner_text("#ed-surv .srow.lowest .sv")
     assert not page.errors
 
 

@@ -577,7 +577,7 @@ ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build
             "link": "Checking a build", "edit": "Editing a build",
             "craft": "Finding crafted items", "compare": "Comparing builds",
             "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival",
-            "variants": "Comparing candidates"}
+            "variants": "Comparing candidates", "powders": "Planning powders"}
 NO_PROGRESS = {"serve", "update"}      # the app itself, and replacing it
 
 
@@ -924,6 +924,54 @@ def cmd_variants(a):
         if p != parent:
             print(f"{'':<2}{p}")
     print("(typical rolls. Choose one with --choose FILE; --trash-rest moves the others to builds/.trash)")
+    return 0
+
+
+def cmd_powders(a):
+    """Suggest weapon and armor powders for a build (wynntools.powders)."""
+    from .powders import plan_armor, plan_weapon
+    gd = GameData()
+    inventory = inv_mod.load(a.inventory)
+    doc = buildfile.read(a.build) if a.build.endswith(".json") else None
+    from .codec import decode, link_hash
+    b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
+    tier = a.tier
+    try:
+        w = plan_weapon(b, gd, a.weapon, tier, inventory=inventory, measure=a.measure) \
+            if a.weapon and b.weapon else None
+        ar = plan_armor(b, gd, a.armor, tier, inventory=inventory) if a.armor else None
+    except ValueError as e:
+        raise SystemExit(str(e))
+    powders = [list(x) for x in (doc.get("powders") if doc and doc.get("powders") else [[], [], [], [], []])]
+    if w:
+        print(f"Weapon ({w['goal']}, tier {w['tier']}): {' '.join(w['powders'])}")
+        print(f"  {w['measure']}: {w['before']:,.0f} now -> {w['value']:,.0f}")
+        if w["burst"] and w["burst"].get("average") is not None:
+            print(f"  {w['burst']['name']} hit: {w['burst']['average']:,.0f}")
+        print("  " + (f"with {w['special']['weapon'][0]} on at power {w['special']['weapon'][1]}" if w["special"]
+                      else "powder specials off (WynnBuilder's default)"))
+        powders[4] = w["powders"]
+    elif a.weapon:
+        print("Weapon: no powder slots.")
+    if ar:
+        print(f"Armor ({ar['goal']}, tier {ar['tier']}): " + " · ".join(
+            f"{s} {' '.join(v)}" for s, v in ar["powders"].items() if v))
+        print(f"  health {ar['before']['hp']:,.0f} -> {ar['hp']:,.0f} · lowest elemental defence "
+              f"{ar['before']['lowest']:,.0f} -> {ar['lowest']:,.0f}")
+        for k, s in enumerate(("helmet", "chestplate", "leggings", "boots")):
+            powders[k] = ar["powders"][s]
+    print("(typical rolls, with the build's tree)")
+    if a.write:
+        if not doc:
+            raise SystemExit("--write needs a build file")
+        _refuse_if_unsaved(a.build, a.force)
+        out = buildfile.refresh({**doc, "powders": powders}, gd, inventory)
+        buildfile.write(a.build, out)
+        ok, rep = check_link(out["link"], gd)
+        _print_report(ok, rep, gd)
+        print(out["link"])
+        print(f"updated {a.build}")
+        _show_in_app(a.build)
     return 0
 
 
@@ -1278,6 +1326,17 @@ def main(argv=None):
     s.add_argument("--force", action="store_true", help="choose even if the player has unsaved edits")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_variants)
+    s = sub.add_parser("powders", help="suggest weapon and armor powders for a build")
+    s.add_argument("build", help="build file (or link)")
+    s.add_argument("--weapon", help="melee_dps, puppet_dps, summon_dps, damage:<spell>, or "
+                                    "special:<Quake|Chain Lightning|Curse|Courage|Wind Prison>")
+    s.add_argument("--armor", help="hp, eledef (balanced elemental defence) or special:<e|t|w|f|a>")
+    s.add_argument("--measure", default="melee_dps", help="with a weapon special: the damage to score by")
+    s.add_argument("--tier", type=int, choices=range(1, 8), help="powder tier (default: the highest the level allows)")
+    s.add_argument("--write", action="store_true", help="put the suggestion into the build file")
+    s.add_argument("--force", action="store_true")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_powders)
     s = sub.add_parser("upgrades", help="rank items you don't own by how much each would help")
     s.add_argument("spec")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))

@@ -13,6 +13,7 @@ from wynntools.explain import explain
 from wynntools.gear_milp import GearModel, solve_gear_exact
 from wynntools.gear_solver import Spec, solve_gear
 from wynntools.inventory import Inventory
+from wynntools.powders import plan_armor, plan_weapon
 from wynntools.rules import skill_points
 from wynntools.search import kind_for, spec_from
 from wynntools.verify import build_skillpoints, check_link, summarize
@@ -290,3 +291,22 @@ def test_candidates_choose_and_trash(gd, links, tmp_path):
     assert (tmp_path / ".trash" / trash).exists() and "parent" not in new
     moved = variants.trash_candidates(tmp_path / "main.json")
     assert [f for f, _ in moved] == ["main--b.json"] and not variants.candidates(tmp_path / "main.json")
+
+
+def test_armor_powders_balance_elemental_defence(gd, links):
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    r = plan_armor(b, gd, "eledef")
+    assert r["lowest"] > r["before"]["lowest"] and r["lowest"] >= 0
+    b.powders[:4] = [[{"e": 0, "t": 7, "w": 14, "f": 21, "a": 28}[p[0]] + int(p[1]) - 1 for p in r["powders"][s]]
+                     for s in ("helmet", "chestplate", "leggings", "boots")]
+    after = damage_report(b, gd, "base")["defense"]["eledefs"]
+    assert min(after.values()) == pytest.approx(r["lowest"])
+    assert plan_armor(b, gd, "special:e")["powders"]["helmet"][0].startswith("e")
+
+
+def test_weapon_powders_raise_damage(gd, links):
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    r = plan_weapon(b, gd, "puppet_dps")
+    assert len(r["powders"]) == gd.item("Stormdrain")["slots"] and r["value"] >= r["before"]
+    q = plan_weapon(b, gd, "special:Wind Prison", measure="puppet_dps")
+    assert all(p.startswith("a") for p in q["powders"]) and q["special"] == {"weapon": ["Wind Prison", 7]}

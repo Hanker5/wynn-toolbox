@@ -377,24 +377,6 @@ body.app-window:not(.maximized) .rz { display: block; }
 #check-updates.update-on { border-color: var(--accent-2); color: var(--accent); }
 .update-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
 
-/* ------------------------------------------------------------------ damage scenarios */
-details.specials { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
-details.specials summary { cursor: pointer; font-size: 12px; }
-details.specials .row { margin-top: 6px; }
-.boosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-top: 6px; }
-label.boost { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
-.sv.special { color: var(--warn); }
-
-/* ------------------------------------------------------------------ solver groups, trade-offs */
-.floor-group { margin-bottom: 10px; }
-.fg-h { font-size: 12px; font-weight: 700; color: var(--text); margin: 4px 0 6px; }
-.card.explain ul { margin: 6px 0 0; padding-left: 18px; }
-table.cmp.trade th:first-child { width: 14%; }
-table.cmp.trade th:last-child { width: 8%; }
-select.inline { width: auto; }
-button.lock.on { border-color: var(--accent); color: var(--accent); }
-select.inline { width: auto; }
-
 /* ------------------------------------------------------------------ survivability */
 .srow.lowest { background: rgba(255, 85, 85, .08); border-radius: 4px; }
 .tag-low { font-size: 10px; margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--panel-3); color: var(--warn); }
@@ -404,6 +386,14 @@ select.inline { width: auto; }
   border-left: 3px solid var(--warn); background: rgba(255, 183, 74, .08); }
 .warn-row.bad { border-left-color: var(--bad); background: rgba(255, 85, 85, .1); }
 
+/* ------------------------------------------------------------------ solver groups, trade-offs */
+.floor-group { margin-bottom: 10px; }
+.fg-h { font-size: 12px; font-weight: 700; color: var(--text); margin: 4px 0 6px; }
+.card.explain ul { margin: 6px 0 0; padding-left: 18px; }
+table.cmp.trade th:first-child { width: 14%; }
+table.cmp.trade th:last-child { width: 8%; }
+select.inline { width: auto; }
+
 /* ------------------------------------------------------------------ candidates, locks */
 #build-list li.cand { margin-left: 18px; padding: 3px 8px; font-size: 13px; }
 .badge-count { margin-left: 6px; font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--accent-2); color: #fff; }
@@ -411,3 +401,14 @@ select.inline { width: auto; }
 table.cmp.cands { table-layout: auto; }
 table.cmp.cands td.cand-actions { white-space: nowrap; }
 table.cmp.cands tr.cand-parent td { background: var(--panel-2); }
+button.lock.on { border-color: var(--accent); color: var(--accent); }
+
+/* ------------------------------------------------------------------ damage scenarios */
+details.specials { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+details.specials summary { cursor: pointer; font-size: 12px; }
+details.specials .row { margin-top: 6px; }
+.boosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-top: 6px; }
+label.boost { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
+.sv.special { color: var(--warn); }
+.plan { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.plan button { align-self: flex-start; }

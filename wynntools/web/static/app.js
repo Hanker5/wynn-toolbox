@@ -450,7 +450,7 @@ async function renderEditor() {
           h("div", { class: "panel-h" }, h("span", {}, "Candidates"), h("span", { class: "actions", id: "ed-cands-actions" })),
           h("div", { id: "ed-cands" })),
         h("section", { class: "panel" }, h("div", { id: "ed-sp", class: "sp" }), h("div", { id: "ed-sp-foot", class: "sp-foot" })),
-        tomesPanel, aspectsPanel,
+        tomesPanel, aspectsPanel, powderPanel(),
         h("section", { class: "panel" }, h("div", { class: "panel-h", id: "ed-tree-h" }), h("div", { id: "ed-tree" }))),
       h("aside", { class: "ed-side" },
         h("section", { class: "panel", id: "ed-surv-panel" }, h("div", { class: "panel-h" }, h("span", {}, "Survivability"), rollToggle()),
@@ -468,7 +468,69 @@ async function renderEditor() {
   renderCandidates();
 }
 
+// ------------------------------------------------------------------ powder planner
+function powderPanel() {
+  const panel = h("details", { class: "panel", id: "ed-powder-panel", open: store.get("wt-powders-open") === "1" },
+    h("summary", { class: "panel-h" }, "Powder planner"), h("div", { id: "ed-powder" }));
+  panel.addEventListener("toggle", () => { store.set("wt-powders-open", panel.open ? "1" : "0"); if (panel.open) renderPowderPlanner(); });
+  if (panel.open) setTimeout(renderPowderPlanner);
+  return panel;
+}
 
+function renderPowderPlanner() {
+  const box = $("#ed-powder"); if (!box) return;
+  const d = S.cur.doc, cls = weaponClass(d.equipment[8]);
+  const dmg = d.status?.damage?.typical;
+  const measures = [["melee_dps", "Main-attack DPS"], ...(cls === "Shaman" ? [["puppet_dps", "Puppet DPS"], ["summon_dps", "Total summon DPS"]] : []),
+    ...((dmg?.spells || []).slice(1).filter((sp) => sp.summary != null && sp.summary_type !== "heal").map((sp) => [`damage:${sp.name}`, sp.name]))];
+  const wgoal = h("select", { "aria-label": "Weapon powder goal" }, h("option", { value: "" }, "leave the weapon"),
+    h("optgroup", { label: "Passive damage" }, measures.map(([k, l]) => h("option", { value: k }, l))),
+    h("optgroup", { label: "Powder-special playstyle" }, S.meta.specials.map((x) => h("option", { value: `special:${x.weapon}` }, `${x.weapon} (${ELEMENTS[ELEM_OF[x.element]].el})`))));
+  wgoal.value = measures[0][0];
+  const measure = h("select", { "aria-label": "Damage to score a special by" }, measures.map(([k, l]) => h("option", { value: k }, l)));
+  const agoal = h("select", { "aria-label": "Armor powder goal" }, h("option", { value: "" }, "leave the armor"),
+    h("option", { value: "hp" }, "Most health"), h("option", { value: "eledef" }, "Balanced elemental defence"),
+    h("optgroup", { label: "Armor-special playstyle" }, S.meta.specials.map((x) => h("option", { value: `special:${x.element}` }, `${x.armor} (${ELEMENTS[ELEM_OF[x.element]].el})`))));
+  agoal.value = "eledef";
+  const tier = h("select", { "aria-label": "Powder tier" }, [7, 6, 5, 4, 3, 2, 1].map((t) => h("option", { value: t }, `tier ${t}`)));
+  const out = h("div");
+  const sync = () => { measure.closest("label").hidden = !wgoal.value.startsWith("special:"); };
+  wgoal.onchange = sync;
+  const n = (v) => fmt(Math.round(v));
+  const go = h("button", { class: "mini primary", onclick: async () => {
+    out.replaceChildren(h("p", { class: "hint" }, "Trying every mix…"));
+    try {
+      const r = await api("POST", "/api/powders", { doc: editable(d), weapon_goal: wgoal.value || null, armor_goal: agoal.value || null,
+        tier: +tier.value, measure: measure.value });
+      const kids = [];
+      if (r.weapon) {
+        const w = r.weapon, label = measures.find(([k]) => k === w.measure)?.[1] || w.measure;
+        kids.push(h("div", { class: "plan", id: "plan-weapon" }, h("strong", {}, "Weapon: "), w.powders.join(" "),
+          h("div", {}, `${label}: ${n(w.before)} → `, h("strong", { class: w.value >= w.before ? "pos" : "neg" }, n(w.value))),
+          w.burst?.average != null ? h("div", { class: "muted" }, `${w.burst.name} hit: ${n(w.burst.average)}`) : null,
+          h("div", { class: "hint" }, w.special ? `With ${w.special.weapon[0]} on at power ${w.special.weapon[1]}; the Damage panel's main numbers keep specials off.`
+            : "Powder specials off (as WynnBuilder shows)."),
+          h("button", { class: "mini", onclick: () => { edit((x) => { x.powders = x.powders || [[], [], [], [], []]; x.powders[4] = w.powders; }); renderEquipment(); toast("Weapon powders applied. Save to keep them."); } }, "Apply")));
+      } else if (wgoal.value) kids.push(h("p", { class: "hint" }, "The weapon has no powder slots."));
+      if (r.armor) {
+        const a = r.armor, lowB = a.before.lowest, lowA = a.lowest;
+        kids.push(h("div", { class: "plan", id: "plan-armor" }, h("strong", {}, "Armor: "),
+          Object.entries(a.powders).filter(([, v]) => v.length).map(([s, v]) => `${slotLabel(s)} ${v.join(" ")}`).join(" · ") || "no slots",
+          h("div", {}, `Health ${n(a.before.hp)} → `, h("strong", {}, n(a.hp)), ` · lowest elemental defence ${n(lowB)} → `,
+            h("strong", { class: lowA < 0 ? "neg" : "pos" }, n(lowA))),
+          h("button", { class: "mini", onclick: () => { edit((x) => { x.powders = x.powders || [[], [], [], [], []]; ["helmet", "chestplate", "leggings", "boots"].forEach((s, k) => { x.powders[k] = a.powders[s]; }); }); renderEquipment(); toast("Armor powders applied. Save to keep them."); } }, "Apply")));
+      }
+      setKids(out, kids.length ? kids : h("p", { class: "hint" }, "Pick a goal."));
+    } catch (e) { out.replaceChildren(h("p", { class: "neg" }, e.message)); }
+  } }, "Suggest");
+  setKids(box, h("div", { class: "form" }, h("label", {}, "Weapon", wgoal), h("label", {}, "Score the special by", measure),
+      h("label", {}, "Armor", agoal), h("label", {}, "Tier", tier)),
+    h("div", { class: "row", style: "margin-top:8px" }, go), out,
+    h("p", { class: "hint" }, "Weapon and armor are planned separately. Weapon: every order of every element at the tier (order matters: the first powder converts first). " +
+      "A powder special needs two or more tier IV+ powders of its element; the tiers set its power. " +
+      "Armor: every mix of elements (health is the same for any element). Typical rolls, with this build's tree."));
+  sync();
+}
 
 // ------------------------------------------------------------------ candidates
 // Builds a search made for this one ("parent" in the file). Compare, use one, trash the rest.

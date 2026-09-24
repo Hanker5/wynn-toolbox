@@ -71,14 +71,17 @@ def test_trash_candidates_and_undo(client, tmp_path, gd, links):
     assert (tmp_path / "m--a.json").exists()
 
 
-def test_damage_scenario(client, links):
+def test_damage_scenario_and_powders(client, links):
     client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "s.json"})
     doc = client.get("/api/builds/s.json").json()
     r = client.post("/api/damage", json={"doc": doc, "specials": {"weapon": ["Curse", 7]}}).json()
     base = doc["status"]["damage"]["typical"]["spells"][2]["summary"]
     assert r["typical"]["spells"][2]["summary"] == pytest.approx(base * 1.25, rel=1e-3)
     assert client.post("/api/damage", json={"doc": doc, "specials": {"weapon": ["Nope", 1]}}).status_code == 422
+    p = client.post("/api/powders", json={"doc": doc, "weapon_goal": "puppet_dps", "armor_goal": "eledef"}).json()
+    assert p["weapon"]["value"] >= p["weapon"]["before"] and p["armor"]["lowest"] >= 0
     meta = client.get("/api/meta").json()
+    assert {g["key"] for g in meta["derived"]} >= {"ehp", "puppet_dps", "min_eledef"}
     assert [s["weapon"] for s in meta["specials"]][0] == "Quake"
 
 
