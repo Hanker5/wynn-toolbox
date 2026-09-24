@@ -86,8 +86,8 @@ def close(a, b, what):
     assert b == pytest.approx(a, rel=1e-9, abs=1e-6), what
 
 
-def compare(build, gd, got):
-    stats, tree, spells, *_ = final_stats(build, gd)
+def compare(build, gd, got, specials=None):
+    stats, tree, spells, *_ = final_stats(build, gd, specials=specials)
     for k, v in got["stats"].items():
         if isinstance(v, dict):
             mine = stats.get(k, {})
@@ -97,7 +97,7 @@ def compare(build, gd, got):
             close(stats.get(k, 0), v, f"stat {k}")
     weapon = weapon_stats(gd.item(build.equipment[8]), dict(zip(POWDERABLE, build.powders))[8], gd)
     assert [s["base"] for s in got["spells"]] == sorted(spells)
-    report = {s["base_spell"]: s for s in damage_report(build, gd)["spells"]}
+    report = {s["base_spell"]: s for s in damage_report(build, gd, specials=specials)["spells"]}
     for js in got["spells"]:
         spell = spells[js["base"]]
         assert js["name"] == spell.get("name")
@@ -108,14 +108,18 @@ def compare(build, gd, got):
             assert mine["name"] == theirs["name"], where
             assert mine.get("type") == theirs.get("type"), where
             if theirs.get("type") == "damage":
-                for key in ("normal_min", "normal_max", "normal_total",
-                            "crit_min", "crit_max", "crit_total"):
+                # With a Critical Damage Bonus ID the crits differ on purpose: the
+                # developer guide multiplies crit damage by it, WynnBuilder adds it.
+                crits = ("crit_min", "crit_max", "crit_total") if not stats.get("critDamPct") else ()
+                for key in ("normal_min", "normal_max", "normal_total", *crits):
                     # JS pads a summed part's 2-entry totals out to 6 with NaN; ignore those
                     theirs_k = theirs[key][:2] if key.endswith("total") else theirs[key]
                     for x, y in zip(mine[key], theirs_k, strict=True):
                         close(x, y, f"{where} {key}")
             elif theirs.get("type") == "heal":
                 close(mine["heal_amount"], theirs["heal_amount"], f"{where} heal")
+    if specials:
+        return
     # Summary totals (gear, tomes, sets, armor powders, tree bonuses) at perfect rolls
     from wynntools.verify import STAT_KEYS, summarize
     tm = summarize(build, gd)["totals_max"]
@@ -241,3 +245,54 @@ def test_links_edited_in_wynnbuilder_round_trip(gd, browser, cls):
         from wynntools.codec import powder_name
         assert [powder_name(p) for p in edited.powders[POWDERABLE.index(idx)]] == want, slot
     compare(edited, gd, got)
+
+
+def test_partial_manual_skill_points_match_wynnbuilder(gd, browser):
+    """A link with only Intelligence set by hand (a final total; the rest automatic)."""
+    b = decode(LINKS["shaman_105_stormdrain"]["hash"], gd)
+    from wynntools.verify import resolve_skillpoints
+    b.skillpoints = [None, None, resolve_skillpoints(b, gd).final[2] + 17, None, None]
+    h = encode(b, gd)
+    got = page_numbers(browser, h)
+    assert got["stats"]["int"] == b.skillpoints[2]
+    compare(decode(h, gd), gd, got)
+
+
+@pytest.mark.parametrize("special", [("Curse", 7), ("Wind Prison", 3), ("Quake", 5), ("Courage", 7)])
+def test_powder_specials_match_wynnbuilder(gd, browser, special):
+    """A weapon special switched on with WynnBuilder's own buttons, and an armor
+    special's slider: every spell part, and the special's burst hit."""
+    name, power = special
+    h = LINKS["shaman_105_stormdrain"]["hash"]
+    page = browser.new_page()
+    try:
+        page.goto(PAGE + h, wait_until="networkidle", timeout=120_000)
+        page.wait_for_function("() => typeof stat_agg_node !== 'undefined' && stat_agg_node.value"
+                               " && atree_collect_spells.value", timeout=120_000)
+        page.wait_for_timeout(500)
+        page.evaluate("""([id]) => {
+            updatePowderSpecials(id);
+            const s = document.getElementById('str_boost_armor');
+            s.value = 150; s.dispatchEvent(new Event('change'));
+        }""", [f"{name.replace(' ', '_')}-{power}"])
+        page.wait_for_timeout(1500)
+        got = page.evaluate(PROBE)
+        burst = page.evaluate("""([idx, pct, boost]) => {
+            const stats = stat_agg_node.value, weapon = build_node.value.weapon.statMap;
+            const conv = [0, 0, 0, 0, 0, 0]; conv[idx] = pct;
+            const [n, c] = calculateSpellDamage(stats, weapon, conv, false, true, '0.Powder Special');
+            const d = 1 + boost / 100;
+            return [(n[0] + n[1]) / 2 / d, (c[0] + c[1]) / 2 / d];
+        }""", [1 + ["Quake", "Chain Lightning", "Curse", "Courage", "Wind Prison"].index(name),
+               {"Quake": [240, 280, 320, 360, 400, 440, 480], "Courage": [110, 125, 140, 155, 170, 185, 200]}
+               .get(name, [0] * 7)[power - 1],
+               {"Courage": [10, 12.5, 15, 17.5, 20, 22.5, 25]}.get(name, [0] * 7)[power - 1]])
+    finally:
+        page.close()
+    specials = {"weapon": [name, power], "armor": {"e": 150}}
+    build = decode(h, gd)
+    compare(build, gd, got, specials)
+    ps = damage_report(build, gd, specials=specials)["powder_special"]
+    if name in ("Quake", "Courage"):
+        close(ps["non_crit"], burst[0], "burst non-crit")
+        close(ps["crit"], burst[1], "burst crit")

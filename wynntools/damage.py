@@ -10,7 +10,13 @@ A port of, in the order the builder page runs them:
   js/display.js         getSpellCost and the averages in displaySpellDamage
 
 Every function keeps WynnBuilder's evaluation order, including the quirks
-(neutral conversion, rainbow raw, the relik's 0.6 class defence). The live test
+(neutral conversion, rainbow raw, the relik's 0.6 class defence), which is the
+order the Wynncraft developer guide "How Damage Is Calculated - Fruma Edition"
+describes: base damage (melee) or base DPS (spells), conversions, elemental
+additives, base modifiers (additive), master modifiers (multiplicative), then
+the target's elemental defences (not modelled: they depend on the mob). One
+deliberate difference from WynnBuilder: the Critical Damage Bonus ID multiplies
+crit damage, as the guide says (WynnBuilder adds it). The live test
 (tests/test_wynnbuilder_live.py) compares these numbers with the page itself.
 Page toggles default to off (no potions, raid buffs, powder specials, radiance)
 and ability sliders sit at their defaults, as when a link is first opened.
@@ -57,6 +63,85 @@ POWDER_STATS = [
     (8, 15, 35, 30, 8), (9, 17, 42, 38, 13),
 ]
 POWDER_ARMOR_HP = [5, 10, 20, 30, 45, 60, 75]
+# js/powders.js powderSpecialStats, ETWFA: the weapon special (name, burst damage %
+# and damage boost % per power 1-7) and the armor special (name, and the cap on
+# its "% <element> Dmg Boost" slider in builder.js).
+POWDER_SPECIALS = [
+    {"weapon": "Quake", "damage": [240, 280, 320, 360, 400, 440, 480], "boost": None,
+     "armor": "Rage", "cap": 300},
+    {"weapon": "Chain Lightning", "damage": [200, 225, 250, 275, 300, 325, 350], "boost": None,
+     "armor": "Kill Streak", "cap": 200},
+    {"weapon": "Curse", "damage": None, "boost": [10, 12.5, 15, 17.5, 20, 22.5, 25],
+     "armor": "Concentration", "cap": 120},
+    {"weapon": "Courage", "damage": [110, 125, 140, 155, 170, 185, 200],
+     "boost": [10, 12.5, 15, 17.5, 20, 22.5, 25], "armor": "Endurance", "cap": 120},
+    {"weapon": "Wind Prison", "damage": None, "boost": [100, 125, 150, 175, 200, 225, 250],
+     "armor": "Dodge", "cap": 120},
+]
+SPECIAL_BY_NAME = {sp["weapon"]: (i, sp) for i, sp in enumerate(POWDER_SPECIALS)}
+# Shaman summons: the spells whose headline is a summon's DPS (their names in
+# WynnBuilder's tree data). "Total summon DPS" adds these up.
+SUMMON_SPELLS = ("Puppet Damage", "Crimson Effigy", "Hummingbird's Song", "Patchwork Abomination")
+PUPPET_SPELL = "Puppet Damage"
+
+
+def powder_special(powders):
+    """(element index 0-4, power 1-7) of the special a weapon's or armor piece's
+    powders give, or None. Per the developer guide: two or more tier IV+
+    powders of one element give that element's special; with pairs of several
+    elements, the element of the first qualifying powder wins; the power comes
+    from the two powders' tiers (IV+IV = 1, IV+V = 2, V+V or IV+VI = 3, ...,
+    VII+VII = 7, i.e. the tiers' sum minus 7). With three or more of the element
+    the two highest tiers count (the guide only covers pairs)."""
+    good = [p for p in powders if p % POWDER_TIERS + 1 >= 4]
+    for p in good:
+        e = p // POWDER_TIERS
+        tiers = sorted((q % POWDER_TIERS + 1 for q in good if q // POWDER_TIERS == e), reverse=True)
+        if len(tiers) >= 2:
+            return e, tiers[0] + tiers[1] - 7
+    return None
+
+
+def build_specials(build, gd):
+    """The powder specials a build's powders give: {"weapon": [name, power] or
+    None, "armor": [{"slot", "name", "element", "power"}]}."""
+    out = {"weapon": None, "armor": []}
+    for slot_idx, pw in zip(POWDERABLE, build.powders):
+        name = build.equipment[slot_idx]
+        if not name or not pw:
+            continue
+        got = powder_special(list(pw)[:gd.item(name).get("slots") or 0])
+        if got is None:
+            continue
+        e, power = got
+        if slot_idx == 8:
+            out["weapon"] = [POWDER_SPECIALS[e]["weapon"], power]
+        else:
+            out["armor"].append({"slot": SLOTS[slot_idx], "name": POWDER_SPECIALS[e]["armor"],
+                                 "element": SKP_ELEMENTS[e], "power": power})
+    return out
+
+
+def check_specials(specials):
+    """Raise ValueError unless `specials` is None or {"weapon": [name, power] or
+    None, "armor": {"e"|"t"|"w"|"f"|"a": percent}} within WynnBuilder's limits."""
+    if not specials:
+        return
+    w = specials.get("weapon")
+    if w:
+        name, power = w
+        if name not in SPECIAL_BY_NAME:
+            raise ValueError(f"unknown weapon powder special {name!r}; "
+                             f"one of {', '.join(SPECIAL_BY_NAME)}")
+        if not 1 <= int(power) <= 7:
+            raise ValueError(f"{name} power must be 1-7, not {power}")
+    for e, v in (specials.get("armor") or {}).items():
+        if e not in SKP_ELEMENTS:
+            raise ValueError(f"armor special element must be one of e t w f a, not {e!r}")
+        cap = POWDER_SPECIALS[SKP_ELEMENTS.index(e)]["cap"]
+        if not 0 <= v <= cap:
+            raise ValueError(f"{POWDER_SPECIALS[SKP_ELEMENTS.index(e)]['armor']} boost must be "
+                             f"0-{cap}%, not {v}")
 POWDER_TIERS = 7
 SKP_ELEMENTS = ELEMENTS[1:]
 
@@ -741,7 +826,12 @@ def calculate_spell_damage(stats, weapon, conversions, use_spell, ignore_speed=F
                 ele_mult[ELEMENTS.index(bonus)] *= 1 + v / 100
         else:
             damage_mult *= 1 + v / 100
-    crit_mult = 0 if ignore_str else 1 + g("critDamPct", 0) / 100
+    # A crit adds +100% on top of Strength's bonus. The Critical Damage Bonus ID
+    # is a master modifier on crits (multiplicative), per the developer guide
+    # (knowledge/mechanics.md); WynnBuilder adds it to the +100% instead
+    # (crit_mult = 1 + critDamPct/100 beside strBoost). A hit is never negative.
+    crit_boost = str_boost if ignore_str else \
+        (str_boost + 1) * max(0.0, 1 + g("critDamPct", 0) / 100)
     for i in range(6):
         damages[i][0] *= ele_mult[i]
         damages[i][1] *= ele_mult[i]
@@ -752,8 +842,7 @@ def calculate_spell_damage(stats, weapon, conversions, use_spell, ignore_speed=F
         d[0] = max(d[0], 0)
         d[1] = max(d[1], 0)
         r = [d[0] * str_boost * damage_mult, d[1] * str_boost * damage_mult,
-             d[0] * (str_boost + crit_mult) * damage_mult,
-             d[1] * (str_boost + crit_mult) * damage_mult]
+             d[0] * crit_boost * damage_mult, d[1] * crit_boost * damage_mult]
         results.append(r)
         norm[0] += r[0]
         norm[1] += r[1]
@@ -866,9 +955,12 @@ def defense_stats(stats):
 
 # ------------------------------------------------------------------ whole build
 
-def final_stats(build, gd, roll="max", inventory=None, sliders=None, toggles=()):
-    """The page's final stat map, merged tree, spells and interactive defaults."""
-    stats = build_stats(build, gd, roll, inventory)
+def final_stats(build, gd, roll="max", inventory=None, sliders=None, toggles=(), specials=None,
+                base=None):
+    """The page's final stat map, merged tree, spells and interactive defaults.
+    `specials`: powder specials switched on (check_specials; off by default, as
+    on WynnBuilder's page). `base`: build_stats already worked out (or changed)."""
+    stats = base if base is not None else build_stats(build, gd, roll, inventory)
     weapon_name = build.equipment[8]
     cls = gd.weapon_class(weapon_name)
     merged = merge_tree(cls, build.atree, gd, build.aspects or (), stats["activeMajorIDs"])
@@ -876,31 +968,41 @@ def final_stats(build, gd, roll="max", inventory=None, sliders=None, toggles=())
     for src in (stats, raw_tree_stats(merged)):
         for k, v in src.items():
             merge_stat(pre, k, v)
+    specials = specials or {}
+    if specials.get("weapon"):                 # PowderSpecialCalcNode, into pre-scale stats
+        name, power = specials["weapon"]
+        boost = SPECIAL_BY_NAME[name][1]["boost"]
+        if boost:
+            merge_stat(pre, "damMult." + name, boost[int(power) - 1])
+            pre["poisonPct"] = boost[int(power) - 1]          # WynnBuilder's "legacy" line
     slider_info, toggle_info = interactives(merged)
     tree, scaled = tree_scaling(merged, pre, slider_info, toggle_info, sliders, toggles)
     final = {}
     boosts = {"damMult.Potion": 0, "damMult.Strength": 0, "damMult.Vulnerability": 0,
               "defMult.Potion": 0, "defMult.AbilityWeaken": 0}
-    armor_boost = {e + "DamPct": 0 for e in SKP_ELEMENTS}
+    # armor_powder_node: the armor specials' "% <element> Dmg Boost" sliders
+    armor_boost = {e + "DamPct": (specials.get("armor") or {}).get(e, 0) for e in SKP_ELEMENTS}
     for src in (pre, scaled, armor_boost, boosts):
         for k, v in src.items():
             merge_stat(final, k, v)
     return final, tree, collect_spells(tree), slider_info, toggle_info
 
 
-def damage_report(build, gd, roll="max", inventory=None, sliders=None, toggles=()):
+def damage_report(build, gd, roll="max", inventory=None, sliders=None, toggles=(), specials=None,
+                  base=None):
     """Everything the builder page's right column shows, as plain data."""
     if build.equipment[8] is None:
         return None
+    check_specials(specials)
     stats, tree, spells, slider_info, toggle_info = final_stats(
-        build, gd, roll, inventory, sliders, toggles)
+        build, gd, roll, inventory, sliders, toggles, specials, base)
     weapon = weapon_stats(_weapon_item(build, gd), dict(zip(POWDERABLE, build.powders))[8], gd)
     crit = sp_to_pct(stats.get("dex", 0))
     out = []
-    for base in sorted(spells):
-        spell = spells[base]
+    for base_spell in sorted(spells):
+        spell = spells[base_spell]
         parts = spell_parts(stats, weapon, spell)
-        entry = {"base_spell": base, "name": spell.get("name"), "display": spell.get("display"),
+        entry = {"base_spell": base_spell, "name": spell.get("name"), "display": spell.get("display"),
                  "parts": []}
         if spell.get("cost"):
             c = spell_cost(stats, spell)
@@ -920,7 +1022,7 @@ def damage_report(build, gd, roll="max", inventory=None, sliders=None, toggles=(
                                        "crit_min": p["crit_min"], "crit_max": p["crit_max"]})
                 if p["name"] == spell.get("display"):
                     entry["summary"] = avg
-                    if base == 0:
+                    if base_spell == 0:
                         adj = ATTACK_SPEEDS.index(stats["atkSpd"]) + stats.get("atkTier", 0)
                         adj = min(6, max(0, adj))
                         entry["dps"] = avg * ATTACK_SPEED[ATTACK_SPEEDS[adj]]
@@ -934,10 +1036,33 @@ def damage_report(build, gd, roll="max", inventory=None, sliders=None, toggles=(
         out.append(entry)
     return {"roll": roll, "spells": out, "defense": defense_stats(stats),
             "poison_tick": max(math.floor(stats.get("poison", 0) / 3), 0),
-            "crit_chance": crit,
+            "crit_chance": crit, "skills": {k: stats.get(k, 0) for k in SKILLS},
+            "specials": specials or None, "powders_give": build_specials(build, gd),
+            "powder_special": _special_burst(stats, weapon, specials, crit),
             "sliders": {k: {kk: vv for kk, vv in v.items() if kk != "abil"}
                         for k, v in slider_info.items()},
             "toggles": sorted(toggle_info)}
+
+
+def _special_burst(stats, weapon, specials, crit):
+    """displayPowderSpecials: the instant hit of Quake, Chain Lightning or Courage."""
+    if not specials or not specials.get("weapon"):
+        return None
+    name, power = specials["weapon"]
+    idx, sp = SPECIAL_BY_NAME[name]
+    if not sp["damage"]:
+        return {"name": name, "power": int(power), "boost": sp["boost"][int(power) - 1]}
+    conv = [0] * 6
+    conv[idx + 1] = sp["damage"][int(power) - 1]
+    norm, crit_tot, _, _ = calculate_spell_damage(stats, weapon, conv, False, True,
+                                                  "0.Powder Special")
+    if sp["boost"]:              # Courage's own boost doesn't apply to its burst
+        div = 1 + sp["boost"][int(power) - 1] / 100
+        norm, crit_tot = [x / div for x in norm], [x / div for x in crit_tot]
+    nc, cr = sum(norm) / 2, sum(crit_tot) / 2
+    return {"name": name, "power": int(power), "element": DAMAGE_CLASSES[idx + 1],
+            "boost": sp["boost"][int(power) - 1] if sp["boost"] else None,
+            "average": (1 - crit) * nc + crit * cr, "non_crit": nc, "crit": cr}
 
 
 def _weapon_item(build, gd):
@@ -980,21 +1105,28 @@ def compact(report):
                        "dps": _r(s.get("dps")), "attack_speed": s.get("attack_speed"),
                        "parts": parts})
     d = report["defense"]
+    ps = report.get("powder_special")
     return {"spells": spells,
-            "defense": {k: _r(d[k]) for k in ("hp", "ehp", "ehp_no_agi", "hpr", "ehpr",
-                                               "def_pct", "agi_pct")},
+            "defense": {**{k: _r(d[k]) for k in ("hp", "ehp", "ehp_no_agi", "hpr", "ehpr",
+                                                  "def_pct", "agi_pct")},
+                        "eledefs": {e: _r(v) for e, v in d["eledefs"].items()}},
+            "skills": report.get("skills"), "specials": report.get("specials"),
+            "powders_give": report.get("powders_give"),
+            "powder_special": None if ps is None else {k: _r(v) if isinstance(v, float) else v
+                                                       for k, v in ps.items()},
             "poison_tick": report["poison_tick"], "crit_chance": _r(report["crit_chance"] * 100),
             "sliders": {k: {"max": v["max"], "default": v["default"]}
                         for k, v in report["sliders"].items()},
             "toggles": report["toggles"]}
 
 
-def summary(build, gd, inventory=None):
+def summary(build, gd, inventory=None, specials=None):
     """Typical (100%) and perfect (130%, WynnBuilder's view) damage, for status."""
     if build.equipment[8] is None:
         return None
     try:
-        return {"typical": compact(damage_report(build, gd, "base", inventory)),
-                "perfect": compact(damage_report(build, gd, "max", inventory))}
+        out = {"typical": compact(damage_report(build, gd, "base", inventory, specials=specials)),
+               "perfect": compact(damage_report(build, gd, "max", inventory, specials=specials))}
+        return out
     except Exception as e:           # never let a damage quirk block saving a build
         return {"error": f"{type(e).__name__}: {e}"}

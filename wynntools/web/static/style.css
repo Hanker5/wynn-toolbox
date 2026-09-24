@@ -376,3 +376,11 @@ body.app-window:not(.maximized) .rz { display: block; }
 /* ---------------------------------------------------------------- updates */
 #check-updates.update-on { border-color: var(--accent-2); color: var(--accent); }
 .update-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; max-height: 40vh; overflow-y: auto; }
+
+/* ------------------------------------------------------------------ damage scenarios */
+details.specials { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+details.specials summary { cursor: pointer; font-size: 12px; }
+details.specials .row { margin-top: 6px; }
+.boosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-top: 6px; }
+label.boost { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
+.sv.special { color: var(--warn); }

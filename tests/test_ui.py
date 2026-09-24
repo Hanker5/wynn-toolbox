@@ -791,3 +791,19 @@ def test_manual_skill_points_in_the_editor(page, app):
     page.wait_for_selector("#ed-badge .badge.ok", timeout=20000)
     assert json.loads((Path(app.builds_dir) / "stormdrain.json").read_text())["skillpoints"] is None
     assert not page.errors
+
+
+def test_specials_scenario(page):
+    open_build(page, "shaman_105_stormdrain")
+    settle(page)
+    page.click("#ed-specials summary")
+    page.select_option("select[aria-label='Weapon powder special']", "Curse")
+    page.click("#ed-specials >> text=Compare")
+    page.wait_for_selector("#ed-damage .sv.special", timeout=20000)
+    assert "+25.0%" in page.inner_text("#ed-damage")
+    assert "no special" in page.inner_text("#ed-powders-give")        # no powders yet
+    page.fill("input[aria-label='weapon powders']", "e7 e7")
+    page.press("input[aria-label='weapon powders']", "Tab")
+    settle(page)
+    page.wait_for_selector("#ed-powders-give:has-text('Quake power 7 (weapon)')", timeout=20000)
+    assert not page.errors

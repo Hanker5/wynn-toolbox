@@ -109,6 +109,20 @@ def _print_damage(dmg, parts=False, label="typical rolls"):
                           f"(non-crit {p['non_crit']:,.0f}, crit {p['crit']:,.0f}) [{elems}]")
     print(f"  Effective HP {d['ehp']:,.0f} ({d['ehp_no_agi']:,.0f} without agility dodge) · "
           f"HP regen {d['hpr']:,.0f}")
+    if d.get("eledefs"):
+        low = min(d["eledefs"], key=d["eledefs"].get)
+        print("  Elemental defences: " + " · ".join(
+            f"{ELEMENT_NAMES[e]} {v:+,.0f}" + (" (lowest)" if e == low else "") for e, v in d["eledefs"].items()))
+    give = dmg.get("powders_give") or {}
+    named = ([f"{give['weapon'][0]} power {give['weapon'][1]}"] if give.get("weapon") else []) + \
+        [f"{a['name']} power {a['power']} ({a['slot']})" for a in give.get("armor") or []]
+    if named:
+        print(f"  The powders give: {', '.join(named)}")
+    ps = dmg.get("powder_special")
+    if ps:
+        burst = f"{ps['average']:,.0f} per hit" if ps.get("average") is not None else f"+{ps['boost']}% damage"
+        print(f"  Powder special {ps['name']} (power {ps['power']}): {burst}")
+
     if dmg["poison_tick"]:
         print(f"  Poison {dmg['poison_tick']:,}/s")
     if dmg["sliders"] or dmg["toggles"]:
@@ -168,11 +182,33 @@ def cmd_damage(a):
     gd = GameData()
     inventory = inv_mod.load(a.inventory) if a.inventory else None
     build = decode(link_hash(_link_arg(a.link, gd)), gd)
-    dmg = summary(build, gd, inventory)
+    specials = None
+    if a.special or a.armor_boost:
+        specials = {"weapon": None, "armor": {}}
+        if a.special == "auto":
+            from .damage import build_specials
+            specials["weapon"] = build_specials(build, gd)["weapon"]
+            if not specials["weapon"]:
+                raise SystemExit("the weapon's powders give no special (it takes two or more tier "
+                                 "IV+ powders of one element)")
+        elif a.special:
+            name, _, power = a.special.partition(":")
+            specials["weapon"] = [name, int(power or 7)]
+        for entry in a.armor_boost or []:
+            e, _, v = entry.partition("=")
+            specials["armor"][e] = float(v)
+    try:
+        dmg = summary(build, gd, inventory, specials=specials)
+    except ValueError as e:
+        raise SystemExit(str(e))
     if not dmg:
         raise SystemExit("this build has no weapon")
     if "error" in dmg:
         raise SystemExit(f"could not compute damage: {dmg['error']}")
+    if specials:
+        print("Powder specials ON (not WynnBuilder's default): " + ", ".join(
+            ([f"{specials['weapon'][0]} power {specials['weapon'][1]}"] if specials["weapon"] else []) +
+            [f"{ELEMENT_NAMES[e]} armor boost {v:g}%" for e, v in specials["armor"].items()]))
     if a.json:
         print(json.dumps(dmg["perfect" if a.perfect else "typical"], indent=2))
         return 0
@@ -972,6 +1008,11 @@ def main(argv=None):
     s.add_argument("--parts", action="store_true", help="show every spell part and element")
     s.add_argument("--json", action="store_true")
     s.add_argument("--inventory", help="use real rolls from this inventory file")
+    s.add_argument("--special", metavar="NAME[:POWER]",
+                   help="switch a weapon powder special on, e.g. Curse:7 (Quake, Chain Lightning, "
+                        "Curse, Courage, Wind Prison), or `auto` for the one the weapon's powders give")
+    s.add_argument("--armor-boost", action="append", metavar="E=PCT",
+                   help="an armor special's damage boost, e.g. e=300 (Rage); repeatable")
     s.set_defaults(fn=cmd_damage)
     s = sub.add_parser("tree", help="solve an ability tree from a preset")
     s.add_argument("preset", choices=sorted(PRESETS))

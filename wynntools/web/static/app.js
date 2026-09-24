@@ -943,7 +943,7 @@ function renderChecks(st) {
 const DAMAGE_CLASS = { Neutral: "neutral", Earth: "earth", Thunder: "thunder", Water: "water", Fire: "fire", Air: "air" };
 const f2 = (x) => (x ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function spellCard(sp) {
+function spellCard(sp, alt = null) {
   // One spell, as WynnBuilder's right column shows it: name (mana), the headline
   // number, and on click every part with its non-crit / crit ranges per element.
   const title = h("span", { class: "sp-name" }, sp.name,
@@ -954,6 +954,11 @@ function spellCard(sp) {
       statRow("Per attack", f2(sp.summary), "dmg"));
   } else if (sp.summary != null) {
     lines.push(statRow(sp.display, f2(sp.summary), sp.summary_type === "heal" ? "heal" : "dmg"));
+  }
+  if (alt) {       // the same spell with powder specials on
+    const a = alt.dps ?? alt.summary, b = sp.dps ?? sp.summary;
+    if (a != null && b != null) lines.push(statRow("With specials", f2(a), "dmg special",
+      b ? h("span", { class: a > b ? "pos" : a < b ? "neg" : "muted" }, `  ${a >= b ? "+" : ""}${((a / b - 1) * 100).toFixed(1)}%`) : null));
   }
   const parts = sp.parts.map((p) => h("div", { class: "part" },
     h("div", { class: "part-h" }, p.name),
@@ -976,8 +981,10 @@ function renderDamage(st) {
   if (!all) return;
   if (all.error) { $("#ed-damage").replaceChildren(h("p", { class: "hint neg" }, `Couldn't compute damage: ${all.error}`)); return; }
   const dmg = S.roll === "perfect" ? all.perfect : all.typical, d = dmg.defense;
+  const sc = S.cur.scenario?.result ? (S.roll === "perfect" ? S.cur.scenario.result.perfect : S.cur.scenario.result.typical) : null;
+  const altOf = (name) => sc?.spells.find((x) => x.name === name) || null;
   const open = new Set([...document.querySelectorAll("#ed-damage details.spell[open]")].map((x) => x.dataset.name));
-  const cards = dmg.spells.map((sp) => { const c = spellCard(sp); c.dataset.name = sp.name; c.open = open.has(sp.name); return c; });
+  const cards = dmg.spells.map((sp) => { const c = spellCard(sp, altOf(sp.name)); c.dataset.name = sp.name; c.open = open.has(sp.name); return c; });
   const knobs = [...Object.entries(dmg.sliders).map(([k, v]) => `${k} ${v.default}/${v.max}`), ...dmg.toggles.map((t) => `${t} off`)];
   $("#ed-damage").replaceChildren(...[          // filter: replaceChildren would print a skipped row as "null"
     statRow(h("span", {}, h("span", { class: "hp" }, "♥ "), "Effective HP"), fmt(Math.round(d.ehp))),
@@ -986,10 +993,64 @@ function renderDamage(st) {
     dmg.poison_tick ? statRow("Poison", `${fmt(dmg.poison_tick)}/s`, "pos") : null,
     statRow("Crit chance", `${dmg.crit_chance}%`),
     h("div", { class: "sep" }),
+    specialsBox(sc, dmg.powders_give),
     ...cards,
     h("p", { class: "hint" }, `${S.roll === "perfect" ? "Perfect" : "Typical"} rolls. Click a spell for every part. ` +
-      "No potions, raid buffs or powder specials" + (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."),
+      "Summons (puppets, effigy, hummingbirds, totems) are spell damage. Before the target's elemental defences. " +
+      "No potions or raid buffs; powder specials " + (sc ? "compared above (the main numbers leave them off)" : "off, as on WynnBuilder") +
+      (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."),
   ].filter(Boolean));
+}
+
+const ELEM_OF = { e: "str", t: "dex", w: "int", f: "def", a: "agi" };
+
+// Powder specials, as a scenario next to WynnBuilder's default (off): a weapon
+// special at a power, and the armor specials' damage boosts.
+function specialsBox(sc, give) {
+  const c = S.cur, cur = c.scenario?.specials || { weapon: give?.weapon || null, armor: {} };
+  const wsel = h("select", { "aria-label": "Weapon powder special", class: "inline" }, h("option", { value: "" }, "no weapon special"),
+    S.meta.specials.map((x) => h("option", { value: x.weapon }, x.weapon)));
+  wsel.value = cur.weapon?.[0] || "";
+  const power = h("select", { "aria-label": "Special power", class: "inline" }, [1, 2, 3, 4, 5, 6, 7].map((n) => h("option", { value: n }, `power ${n}`)));
+  power.value = String(cur.weapon?.[1] || 7);
+  const boosts = S.meta.specials.map((x) => {
+    const inp = h("input", { type: "number", min: 0, max: x.cap, value: cur.armor?.[x.element] || "", placeholder: "0",
+      "aria-label": `${x.armor} boost`, title: `${x.armor}: % ${ELEMENTS[ELEM_OF[x.element]].el} damage boost, 0-${x.cap}` });
+    inp.dataset.el = x.element;
+    return h("label", { class: "boost" }, elemTag(ELEM_OF[x.element]), `${x.armor} %`, inp);
+  });
+  const go = h("button", { class: "mini", onclick: async () => {
+    const armor = {};
+    for (const l of boosts) { const i = l.querySelector("input"); if (i.value !== "" && +i.value > 0) armor[i.dataset.el] = +i.value; }
+    const specials = { weapon: wsel.value ? [wsel.value, +power.value] : null, armor };
+    if (!specials.weapon && !Object.keys(armor).length) { c.scenario = null; renderDerived(); return; }
+    c.scenario = { specials, result: null };
+    await fetchScenario();
+  } }, "Compare");
+  const off = h("button", { class: "mini", onclick: () => { c.scenario = null; renderDerived(); } }, "Off");
+  const burst = sc?.powder_special;
+  return h("details", { class: "specials", open: !!c.scenario || null, id: "ed-specials" },
+    h("summary", {}, "Powder specials: ", h("strong", {}, c.scenario ? "compared" : "off"), h("span", { class: "muted" }, " (WynnBuilder's default)")),
+    h("div", { class: "row" }, wsel, power), h("div", { class: "boosts" }, boosts), h("div", { class: "row" }, go, c.scenario ? off : null),
+    burst?.average != null ? statRow(`${burst.name} hit (power ${burst.power})`, f2(burst.average), "dmg") : null,
+    burst?.boost ? statRow(`${burst.name}: damage boost`, `+${burst.boost}%`) : null,
+    c.scenario?.error ? h("p", { class: "hint neg" }, c.scenario.error) : null,
+    h("p", { class: "hint", id: "ed-powders-give" }, give && (give.weapon || give.armor.length)
+      ? "Your powders give: " + [give.weapon ? `${give.weapon[0]} power ${give.weapon[1]} (weapon)` : null,
+        ...give.armor.map((a) => `${a.name} power ${a.power} (${a.slot})`)].filter(Boolean).join(", ") +
+        ". Armor specials' boosts depend on the fight (health missing, kills, mana, hits, nearby mobs): set the % you expect."
+      : "Your powders give no special: it takes two or more tier IV+ powders of one element on an item, and their tiers set its power."));
+}
+
+async function fetchScenario() {
+  const c = S.cur; if (!c?.scenario) return;
+  const sent = JSON.stringify(editable(c.doc));
+  try {
+    const r = await api("POST", "/api/damage", { doc: editable(c.doc), specials: c.scenario.specials });
+    if (S.cur !== c || JSON.stringify(editable(c.doc)) !== sent || !c.scenario) return;
+    c.scenario.result = r; c.scenario.error = null;
+  } catch (e) { if (c.scenario) c.scenario.error = e.message; }
+  renderDerived();
 }
 
 function renderSets(st) {
@@ -1102,6 +1163,7 @@ const runCheck = debounce(async () => {
     c.doc.status = out.status; c.doc.link = out.link; c.checkError = null;
   } catch (e) { c.checkError = e.message; }
   c.checking = false; renderDerived();
+  if (c.scenario) fetchScenario();
 }, 350);
 
 function edit(mutate, recheck = true) {

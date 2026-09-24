@@ -26,6 +26,7 @@ from .. import inventory as inv_mod
 from .. import settings as settings_mod
 from .. import updates
 from ..codec import SLOTS, TOME_SLOTS
+from ..damage import POWDER_SPECIALS
 from ..data import VERSIONS, GameData
 from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
 from ..presets import PRESETS, preset_weights
@@ -241,7 +242,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                             for k, v in PRESETS.items()],
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
                 "stats": ["eSteal", "poison", "lb", "hp", "mr", "ms", "sdPct", "mdPct",
-                          "spd", "xpb", "hprRaw", "ls"]}
+                          "spd", "xpb", "hprRaw", "ls"],
+                "specials": [{"weapon": sp["weapon"], "element": e, "armor": sp["armor"],
+                              "cap": sp["cap"], "burst": bool(sp["damage"]), "boost": sp["boost"]}
+                             for e, sp in zip("etwfa", POWDER_SPECIALS)]}
 
     def item_summary(it):
         ids = {}
@@ -635,6 +639,22 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
         threading.Thread(target=run, daemon=True).start()
         return {"job": job["id"]}
+
+    @app.post("/api/damage")
+    async def damage_api(request: Request):
+        """Damage for an editor's build under a scenario: {"doc", "specials"}
+        with powder specials switched on."""
+        from ..damage import check_specials, summary
+        body = await request.json()
+        try:
+            b = buildfile.to_build({k: body["doc"][k] for k in EDITABLE if k in body["doc"]}, gd)
+            check_specials(body.get("specials"))
+        except (KeyError, ValueError, NotImplementedError, TypeError) as e:
+            raise HTTPException(422, str(e).strip('"'))
+        out = summary(b, gd, inv(), specials=body.get("specials"))
+        if out is None:
+            raise HTTPException(422, "pick a weapon first")
+        return out
 
     @app.get("/api/inventory")
     def get_inventory():

@@ -95,8 +95,10 @@ def test_damage_floor_is_respected(gd):
     assert r.score <= base.score          # the floor costs poison, never adds it
 
 
-def test_crit_damage_and_strength_scale_like_wynnbuilder():
-    """damage_calc.js step 6: normal x (1+str%) x mults; crit adds (1 + critDamPct%)."""
+def test_crit_damage_and_strength_scale_like_the_developer_guide():
+    """Master modifiers: normal x (1+str%) x mults; a crit is (1 + str% + 100%), and
+    the Critical Damage Bonus ID multiplies that (the developer guide; WynnBuilder's
+    damage_calc.js adds 1 + critDamPct% instead)."""
     from wynntools.damage import calculate_spell_damage
     from wynntools.rules import sp_to_pct
     weapon = {"damages": [[100, 100]] + [[0, 0]] * 5, "present": [True] + [False] * 5,
@@ -106,7 +108,7 @@ def test_crit_damage_and_strength_scale_like_wynnbuilder():
     s = sp_to_pct(50)
     base = 100 * 2.05                           # NORMAL attack speed, 100% neutral
     assert norm == pytest.approx([base * (1 + s) * 1.2] * 2)
-    assert crit == pytest.approx([base * (1 + s + 1.4) * 1.2] * 2)
+    assert crit == pytest.approx([base * (1 + s + 1) * 1.4 * 1.2] * 2)
     norm_nostr, crit_nostr, _, _ = calculate_spell_damage(stats, weapon, [100, 0, 0, 0, 0, 0], True,
                                                           ignore_str=True)
     assert norm_nostr == pytest.approx([base * 1.2] * 2) and crit_nostr == norm_nostr
