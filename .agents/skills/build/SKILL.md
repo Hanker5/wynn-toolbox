@@ -35,18 +35,30 @@ Then collect only what is still missing:
   and confirm when a word is ambiguous (e.g. "greed" is a Major ID, "stealing" is
   the `eSteal` stat; "loot" could mean either Stealing or Loot Bonus).
 - **Hard requirements**: Major IDs they must have (`require_major`), minimum HP,
-  max mana, mana regen, walk speed.
+  max mana, mana regen, walk speed, health regen, elemental defences, final
+  skill points (e.g. "at least 60 Defence"), effective HP.
 - **Weapon situation**: a weapon they must use (`force`), items they can't get
-  (`exclude`), or "no mythics" (`exclude_tiers`).
+  (`exclude`, or `wt own unavailable NAME --reason ...` so every search leaves
+  them out), "no mythics" (`exclude_tiers`), "only one of these"
+  (`at_most_one`), items they'd like if it costs nothing (`prefer`).
 - **Tomes**: which they own, or whether to plan for aspirational ones.
 
 ## 2. Write the spec
 
 Create `builds/specs/<name>.json`. Start from `examples/`. Fields:
 
-    class, level, objective {stat: weight}, floors {hp, mr, spd, mana, weapon_dps},
-    require_major [...], force {slot: item}, exclude [...], exclude_tiers [...],
-    tomes [14 tome names or null, in slot order], topn
+    class, level, objective {stat: weight}, floors {...}, require_major [...],
+    force {slot: item}, exclude [...], exclude_tiers [...], at_most_one [[...]],
+    prefer [...], tomes [14 tome names or null, in slot order], topn
+
+Floors: `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef` ... `aDef`,
+`min_eledef` (every elemental defence), `str` ... `agi` (final skill points),
+and the damage-model ones `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`,
+`puppet_dps`, `summon_dps`, `damage`. Goals: any item stat, `min_eledef`, or a
+derived goal (`ehp`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`,
+`damage:<spell>`) when that is what the player actually wants ("as tanky as
+possible" is `ehp`, not `hp`). Derived goals run the local search and put
+spare skill points where they help; damage goals need `--tree`.
 
 Tome slot order: weapon ×2, armor ×4, guild, lootrun, gatherXp ×2, dungeonXp ×2,
 mobXp ×2. Floors include tome stats and base HP.
@@ -138,11 +150,48 @@ Present the change as a before/after: the slots that changed, and the key
 totals before and after (both from `wt` output, e.g. `wt compare`). Tell the
 player which file changed.
 
+## 4c. When nothing fits
+
+`wt gear` prints why: the smallest set of the player's requirements that can't
+hold together, how close each gets with the others met, and the skill-point
+arithmetic for kept items. Pass that on in plain words and ask which one to
+loosen. Don't drop a requirement yourself.
+
+## 4d. Fixing weaknesses
+
+`wt current` and `status.warnings` in the build file list weaknesses (negative
+elemental defence or Defence/Agility, no health regen, skill points that don't
+fit, damage that can't be worked out), each with a fix. For a search fix,
+re-search into a candidate so the player can compare:
+
+    wt gear --edit builds/<name>.json <spec with the fix's floors> --candidate "<what it fixes>"
+
+Keep the weapon and anything locked (`locked` in the file; `wt edit --lock`).
+Then `wt variants builds/<name>.json` shows both side by side.
+
 ## 5. When goals compete, show the trade-off
 
-Run the spec at 2–4 values of the contested floor (e.g. HP 14k / 17k / 20k) and
-present a short table: floor, goal stat, HP, mana regen, skill points. Point
-out cliffs where one step costs much more than the last.
+Damage against survival: `wt tradeoffs spec.json --damage <melee_dps |
+puppet_dps | summon_dps | damage:<spell>> --tree PRESET` prints a few legal
+builds from max damage to max effective HP with HP, regen, effective HP,
+skill points and puppet DPS side by side. `--parent builds/<name>.json` saves
+them as candidates; after the player picks one, `wt variants
+builds/<name>.json --choose <file>` (and `--trash-rest` if they agree).
+
+For other contests, run the spec at 2–4 values of the contested floor (e.g. HP
+14k / 17k / 20k) and present a short table: floor, goal stat, HP, mana regen,
+skill points. Point out cliffs where one step costs much more than the last.
+
+Powders: `wt powders builds/<name>.json --weapon <damage number or
+special:<name>> --armor <hp | eledef | special:<e|t|w|f|a>>` suggests them
+(weapon and armor separately); `--write` puts them in the build. Say whether
+powder specials were on. A special takes two or more tier IV+ powders of one
+element on an item, and their tiers set its power (`knowledge/mechanics.md`).
+`wt damage --special auto` switches on the one the weapon's powders give;
+WynnBuilder's own numbers leave specials off.
+
+Puppets and other summons are spell damage: spell damage % and raw boost them,
+main-attack IDs don't.
 
 For weapon comparisons, force each candidate weapon with the same spec and
 compare with `wt damage <link>` (spell and melee damage, effective HP), or

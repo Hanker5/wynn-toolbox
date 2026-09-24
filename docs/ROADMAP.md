@@ -4,7 +4,9 @@ Rough priority order. Want to take one? Say so in an issue first; see
 `CONTRIBUTING.md`.
 
 1. ~~**Exact gear solver (MILP).**~~ Done: `wynntools/gear_milp.py`, the default.
-   Damage floors still use the shortlist search.
+   Damage-model floors still use the shortlist search, and derived goals a
+   local search (`wynntools/gear_local.py`); an exact method for those would
+   need a better bound on effective HP and damage.
 2. ~~**Real item rolls.**~~ Done: `wt own --roll` and the Inventory page;
    `wt gear --owned` and `wt upgrades` use them.
 3. **Differential tests for decoding and the tree.** Encoding of powders, skill

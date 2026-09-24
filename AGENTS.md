@@ -36,22 +36,29 @@ questions; you run the commands.
 3. **State the assumptions with every build**, briefly:
    - Item stats are **100% rolls** (the database stores base values; real items
      roll 30–130%). If the player gives real rolls, use them.
-   - Skill points are left on **automatic**. If a mana floor relied on spare
-     points going into Intelligence, say so; WynnBuilder won't do that itself.
+   - Skill points are left on **automatic**, except where a skill-point
+     minimum or a derived goal (effective HP, DPS, ...) needed points set by
+     hand: the output says which, and the build keeps them. If a mana floor
+     relied on spare points going into Intelligence, say so; WynnBuilder won't
+     do that itself.
    - **Aspects are empty** in solver builds; say so. (Players can add them in
      the editor or the build file's `aspects`; they change damage, not totals.)
    - Tomes are **goals to collect** unless the player said they own them.
    - WynnBuilder's page shows **perfect (130%) rolls**; say which one you quote.
    - Crafted items are **ranges**; the middle counts as typical. Mention that
      ingredients have to be collected.
-   - Damage numbers (`wt damage`) are **WynnBuilder's model** with its page
-     defaults: no potions, raid buffs or powder specials; ability sliders at
-     their defaults. Solver builds carry no powders. Puppet damage uses spell
-     scaling there, which conflicts with a player's in-game test
-     (`knowledge/mechanics.md`); say so when puppets matter.
+   - Damage numbers (`wt damage`) follow the developer guide's per-hit steps
+     (WynnBuilder's model, with its Critical Damage Bonus corrected to the
+     guide), at WynnBuilder's page defaults: no potions, raid buffs or powder
+     specials (`--special auto` switches on the one the weapon's powders give;
+     say when you quote those numbers); ability sliders at their defaults;
+     before the target mob's elemental defences. Summons (puppets included)
+     are spell damage. Solver builds carry no powders (`wt powders` suggests
+     some).
 
 4. **Keep facts apart by where they came from** (`knowledge/mechanics.md`):
-   proven by WynnBuilder's data/code, tested in game by a player, or unknown.
+   proven by WynnBuilder's data/code, stated in the developer damage guide,
+   tested in game by a player, or unknown.
    Never present an unknown as fact. Say what in-game test would settle it.
 
 5. **Optimize only what the player asked for.** Stats are not interchangeable:
@@ -74,11 +81,19 @@ questions; you run the commands.
    build list. For trade-off tables, save the option the player picks, or each
    row if they want to compare them in the app.
 
-9. **Know which search ran.** `wt gear` is exact by default: the best build over
-   every usable item, under the spec and the stated assumptions (100% rolls,
-   automatic skill points). With damage floors, or `--shortlists`, it searches
-   per-slot shortlists instead, which can miss the best build; then run
-   `--confirm` and say the result is best-within-shortlists.
+9. **Know which search ran.** `wt gear` prints it; repeat it to the player.
+   - **exact** (the default): the best build over every usable item, under the
+     spec and the stated assumptions. If it says it stopped at the time limit,
+     the build is valid but not proven best; quote the gap it prints.
+   - **shortlist** (damage-model minimums: effective HP, regen with %, DPS,
+     spell damage; or `--shortlists`): can miss the best build; run
+     `--confirm` and say the result is best-within-shortlists.
+   - **local** (a derived goal: `ehp`, `hpr`, `melee_dps`, `puppet_dps`,
+     `summon_dps`, `damage:<spell>`): a good build, not proven best. Say so.
+
+10. **When nothing fits, pass on the explanation.** `wt gear` prints which of
+    the player's requirements conflict and how close each gets. Offer to loosen
+    one of those; don't guess at others.
 
 ---
 
@@ -96,20 +111,28 @@ the sandbox, including the ones that talk to the web app.
 | `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
 | `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
 | `wt gear <spec.json> [--tree PRESET] --save builds/x.json` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, save a build file and open it in the app. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
-| `wt gear --edit builds/x.json [spec.json] [--change SLOTS \| --keep SLOTS] [--save-as builds/y.json]` | Re-search an existing build in place: only the `--change` slots (or all but the `--keep` ones), with the given spec or the one the build was made with. Keeps its name, notes, tree, aspects and powders on unchanged items, and prints what changed. |
-| `wt import <link> builds/x.json` | Save any WynnBuilder link as a build file. |
+| `wt gear --edit builds/x.json [spec.json] [--change SLOTS \| --keep SLOTS] [--save-as builds/y.json \| --candidate NAME]` | Re-search an existing build in place: only the `--change` slots (or all but the `--keep` ones; locked slots always stay), with the given spec or the one the build was made with. Keeps its name, notes, tree, aspects and powders on unchanged items, and prints what changed. `--candidate` saves the result as a candidate instead. |
+| `wt gear spec.json --parent builds/x.json --name NAME` | Save the result as a named candidate of an existing build (`builds/x--name.json`). |
+| `wt tradeoffs spec.json --damage puppet_dps --tree PRESET [--parent builds/x.json]` | A few legal builds from max damage to max effective HP, side by side (HP, regen, EHP, skill points, puppet DPS); `--parent` saves each as a candidate. |
+| `wt variants builds/x.json [--choose builds/x--y.json] [--trash-rest]` | A build's candidates side by side; choose one (its gear goes into the build, which keeps its name) and trash the rest (to `builds/.trash`). |
+| `wt powders builds/x.json --weapon puppet_dps --armor eledef [--write]` | Suggest weapon and armor powders separately: a damage number or `special:<name>` for the weapon; `hp`, `eledef` or `special:<e\|t\|w\|f\|a>` for the armor. |
+| `wt import <link> builds/x.json [--force]` | Save any WynnBuilder link as a build file. Prints what to know first (skill points set by hand for only some skills, retired item ids, items above the level, damage that can't be worked out); a build with problems needs `--force`. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
 | `wt builds` | List the build files (the app's sidebar); `▶` marks the one open in the app. |
 | `wt show builds/x.json` | Open a build in the player's web app. |
-| `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--save-as` makes a variant and leaves the original alone. |
-| `wt damage <link or build file> [--perfect] [--parts]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP. Typical rolls by default; `--perfect` matches the WynnBuilder page. |
+| `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--lock SLOTS] [--auto-sp] [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--lock` keeps slots in later searches; `--auto-sp` puts skill points back to automatic. `--save-as` makes a variant and leaves the original alone. |
+| `wt damage <link or build file> [--perfect] [--parts] [--special auto\|Curse:7] [--armor-boost e=300]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP, elemental defences, and which powder specials the powders give. Typical rolls by default; `--perfect` matches the WynnBuilder page. `--special`/`--armor-boost` switch powder specials on (not WynnBuilder's default). |
 | `wt compare <a> <b> [--perfect]` | Two builds (links or files) side by side: gear, totals, skill points, spell damage, effective HP. The web app's "Compare builds" page shows the same. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. Every class has a generic preset per archetype (`archer-boltslinger`, `warrior-paladin`, `mage-riftwalker`, ...); none is tuned for a particular goal. |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
 | `wt ingredient "Stolen Pearls"` | Which mobs drop an ingredient and where (x, y, z). `wt craft` lists this for every suggested ingredient. |
 | `wt own add\|remove\|list [NAME] [--tome] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes and real roll values. |
+| `wt own unavailable [NAME ...] [--reason TEXT] [--remove]` | Items the player can't or won't get (too expensive, ...): every search leaves them out unless forced. |
 | `wt gear spec.json --tree PRESET` with `"floors": {"damage": {"Ophanim": 15000}}` | Damage minimums: a spell's headline number (melee: average DPS), checked exactly on every candidate with the preset's tree. |
+| spec `floors` | `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef`/`tDef`/`wDef`/`fDef`/`aDef` (raw, as the Summary shows), `min_eledef` (every elemental defence), `str`/`dex`/`int`/`def`/`agi` (final skill points: met with spare points set by hand if the gear falls short), and damage-model ones: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage`. |
+| spec `objective` | Item stats (`eSteal`, `hp`, ...), `min_eledef` (exact), or derived goals: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage:<spell>` (local search; damage ones need `--tree`, or a build's own tree with `--edit`). |
+| spec acquisition keys | `exclude`, `exclude_tiers` (e.g. `["Mythic"]`), `at_most_one` (lists of item names), `prefer` (names: a tiebreak), `force`, and `--owned`. The inventory's unavailable list is always left out. |
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
@@ -121,8 +144,19 @@ the sandbox, including the ones that talk to the web app.
 Player builds live in `builds/*.json` (ignored by git). The player edits them in
 the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
-`level`, `equipment`, `tomes`, `tree`, `powders`, `aspects`, `skillpoints`); `link` and
-`status` are generated, so run `wt link <file> --write` after any edit.
+`level`, `equipment`, `tomes`, `tree`, `powders`, `aspects`, `skillpoints`,
+`locked`); `link` and `status` are generated, so run
+`wt link <file> --write` after any edit. `skillpoints` holds WynnBuilder's
+manual entries: each skill's FINAL total, or null for automatic (not the
+points assigned). `status` also carries `survivability` (final Defence and
+Agility, effective HP, regen, every elemental defence) and `warnings`, each
+with the fix the web app offers.
+
+**Candidates.** A search can save builds as candidates of another build
+(`"parent": "x.json"`, file `x--name.json`): `wt gear --parent`, `wt gear
+--edit --candidate`, `wt tradeoffs --parent`, or the web app's Improve/Fix
+buttons. Show them with `wt variants`; when the player picks one, `wt variants
+x.json --choose <file>` and, if they agree, `--trash-rest`.
 
 `builds/inventory.json` is the player's inventory, not a build. Change it with
 `wt own` (or the web app's Own buttons and Inventory page). When a player asks

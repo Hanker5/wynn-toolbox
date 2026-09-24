@@ -79,11 +79,22 @@ Run `uv run wt --help` (or `wt <command> --help`) for the full list.
 - **Link codec**: decodes and encodes WynnBuilder links, including tomes, powders,
   aspects and the ability tree.
 - **Gear solver**: an exact search (mixed-integer programming) over every usable
-  item under your class, level, required Major IDs, minimum HP/mana/regen/speed,
-  damage floors and weapon constraints. It can also re-search just some slots of
-  an existing build (`wt gear --edit`).
+  item under your class, level, required Major IDs, minimums (HP, mana, regen,
+  speed, elemental defences, final skill points, effective HP, DPS, spell
+  damage), items to leave out, "at most one of these" groups and weapon
+  constraints. Goals can be item stats or numbers WynnBuilder works out
+  (effective HP, main-attack, puppet or summon DPS). When nothing fits, it says
+  which requirements conflict. It can also re-search just some slots of an
+  existing build (`wt gear --edit`), or save results as candidates to compare.
+- **Trade-offs**: a few legal builds from max damage to max survival, side by
+  side (`wt tradeoffs`).
+- **Powders**: suggested weapon and armor powders for damage, health, balanced
+  elemental defence or a powder-special playstyle (`wt powders`).
 - **Damage**: WynnBuilder's right column (melee DPS, every spell's damage or
-  healing, mana costs, effective HP), checked against the live WynnBuilder page.
+  healing, mana costs, effective HP, elemental defences), checked against the
+  live WynnBuilder page and following the developer guide "How Damage Is
+  Calculated - Fruma Edition", with powder specials to compare (the tools
+  work out which one your powders give).
 - **Compare**: two builds side by side: gear, totals, skill points, damage, HP.
 - **Inventory and upgrades**: record the items and tomes you own (with their real
   rolls), build only from those, and rank which unowned item would help most.
@@ -92,8 +103,9 @@ Run `uv run wt --help` (or `wt <command> --help`) for the full list.
   where each ingredient drops; the gear search can include crafted pieces.
 - **Tree solver**: exact ability-tree optimization with WynnBuilder's activation
   rules, with a preset for every archetype.
-- **Verifier**: skill points (negative bonuses included), tree activation order,
-  and link round-trip. No link goes out without passing.
+- **Verifier**: skill points (negative bonuses included, and any set by hand),
+  tree activation order, damage, and link round-trip. No link goes out without
+  passing. Imported links are checked first, with notes on anything unusual.
 
 ## The web app
 
@@ -112,10 +124,14 @@ uv run wt serve --browser    # ...or in your browser, at http://127.0.0.1:8765
   version and reopens it. Developer clones are told to `git pull` instead.
   `wt config check_updates off` turns the check off.
 - **Builds**: open, edit and save builds with item search, tomes, a clickable
-  ability tree and live re-checking. Changes the AI makes to the same files show
-  up within a second.
+  ability tree, skill points you can set by hand, a powder planner and live
+  re-checking. A Survivability panel shows effective HP, regen and every
+  elemental defence, flags weaknesses and offers a fix. Changes the AI makes to
+  the same files show up within a second.
 - **New build from goals**: set what to maximize, your minimums and required
-  Major IDs, then watch the search run with a progress bar.
+  Major IDs, then watch the search run with a progress bar, or show the
+  damage-versus-survival trade-offs. Searches from a build (Improve, Fix) save
+  candidates under it to compare, pick one and trash the rest.
 - **Compare builds** and **Inventory** pages: two builds side by side, and the
   items and tomes you own.
 - **Terminal panel**: a shell in the toolbox folder (PowerShell on Windows).
@@ -139,7 +155,10 @@ what is proven, what was tested in game, and what is still unknown.
 
 - Item stats are 100% rolls; real items roll 30–130%.
 - Damage follows WynnBuilder's model with its page defaults (no potions, raid
-  buffs or powder specials; ability sliders at their defaults).
+  buffs or powder specials unless you switch them on to compare; ability
+  sliders at their defaults).
+- Searches for damage goals and damage minimums are good but not proven the
+  best (they say so); the exact search is proven best.
 - Custom items and old-format (pre-binary) links are not supported yet.
 - Game knowledge beyond WynnBuilder's data comes from player testing; see
   `knowledge/mechanics.md` for what has and hasn't been checked in game.
