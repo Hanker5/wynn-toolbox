@@ -251,8 +251,8 @@ def build_stats(build, gd, roll="max", inventory=None):
     stats["manaMult"] = {}
     weapon = gd.item(weapon_name) if weapon_name else {}
     stats["atkSpd"] = weapon.get("atkSpd")
-    final = build.skillpoints if build.skillpoints else sp.final
-    for s, v in zip(SKILLS, final):
+    from .verify import resolve_skillpoints
+    for s, v in zip(SKILLS, resolve_skillpoints(build, gd).final):
         stats[s] = v
     stats["classDef"] = CLASS_DEFENSE.get(weapon.get("type"))
     return stats

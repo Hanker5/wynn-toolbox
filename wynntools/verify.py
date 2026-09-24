@@ -4,10 +4,12 @@ Each check here exists because the design session produced a wrong answer
 without it; see knowledge/mechanics.md "Mistakes the verifiers catch".
 """
 from .codec import SLOTS, TOME_SLOTS, decode, encode, link_hash
-from .skillpoints import WYNN_ORDER, SPItem, calculate_skillpoints, set_bonus_stats
+from .skillpoints import WYNN_ORDER, SPItem, apply_manual, calculate_skillpoints, set_bonus_stats
 from .rules import SKILLS, base_hp, max_mana, poison_per_second, rolled, skill_points
 
 REQ = [s + "Req" for s in SKILLS]
+SKILL_NAMES = {"str": "Strength", "dex": "Dexterity", "int": "Intelligence", "def": "Defence",
+               "agi": "Agility"}
 STAT_KEYS = ["hp", "maxMana", "mr", "ms", "spd", "eSteal", "lb", "poison", "sdPct",
              "mdPct", "hprRaw", "hprPct", "ls", "xpb", "sdRaw", "mdRaw", "atkTier",
              "eDef", "tDef", "wDef", "fDef", "aDef", "thorns", "ref", "expd"]
@@ -47,9 +49,8 @@ def sp_requirements(items, bonus_sources=()):
     return [max(0, n) for n in need]
 
 
-def build_skillpoints(equipment, tomes, gd):
-    """WynnBuilder's skill-point result for gear (9 names in SLOTS order, None for
-    empty) and tome ids (14, TOME_SLOTS order). See wynntools.skillpoints."""
+def _sp_items(equipment, tomes, gd):
+    """calculate_skillpoints' inputs: the nine equippables in WYNN_ORDER, and the weapon."""
     by_slot = dict(zip(SLOTS, equipment))
     guild_id = tomes[TOME_SLOTS.index("guildTome1")] if tomes else None
     eq = []
@@ -61,7 +62,21 @@ def build_skillpoints(equipment, tomes, gd):
             eq.append(SPItem.of(gd.item(name), gd.set_of.get(name)) if name else SPItem())
     weapon = by_slot.get("weapon")
     w = SPItem.of(gd.item(weapon), gd.set_of.get(weapon)) if weapon else SPItem()
+    return eq, w
+
+
+def build_skillpoints(equipment, tomes, gd):
+    """WynnBuilder's skill-point result for gear (9 names in SLOTS order, None for
+    empty) and tome ids (14, TOME_SLOTS order). See wynntools.skillpoints."""
+    eq, w = _sp_items(equipment, tomes, gd)
     return calculate_skillpoints(eq, w, gd.sets)
+
+
+def resolve_skillpoints(build, gd):
+    """The build's skill points with any set by hand (a ManualSP): automatic
+    ones as WynnBuilder assigns them, manual ones as the link's final totals."""
+    eq, w = _sp_items(build.equipment, build.tomes, gd)
+    return apply_manual(calculate_skillpoints(eq, w, gd.sets), build.skillpoints, eq, w)
 
 
 def sp_feasible(need, level):
@@ -157,7 +172,8 @@ def summarize(build, gd, roll="base", inventory=None):
     items = [with_rolls(gd.item(n), inventory.rolls(n) if inventory else None)
              for n in build.equipment if n is not None]
     tomes = [gd.tome(t) for t in build.tomes if t is not None]
-    sp = build_skillpoints(build.equipment, build.tomes, gd)
+    msp = resolve_skillpoints(build, gd)
+    sp = msp.auto
     set_stats, set_majors = set_bonus_stats(sp.set_counts, gd.sets)
     totals = {k: sum(stat(o, k, roll) for o in (*items, *tomes)) for k in STAT_KEYS}
     totals_max = {k: sum(stat(o, k, "max") for o in (*items, *tomes)) for k in STAT_KEYS}
@@ -173,11 +189,14 @@ def summarize(build, gd, roll="base", inventory=None):
         for k, v in powder.items():
             t[k] += v
         t["hp"] += base_hp(build.level) + set_stats.get("hpBonus", 0)
+    effective = list(msp.final)          # skill points after the tree's bonuses too
     if build.weapon is not None:
         # Stats the ability tree adds (e.g. +5 mana regen), as WynnBuilder's page shows
         from .damage import build_stats, final_stats
         for r, t in ((roll, totals), ("max", totals_max)):
             before, after = build_stats(build, gd, r, inventory), final_stats(build, gd, r, inventory)[0]
+            if r == roll:
+                effective = [after.get(k, 0) for k in SKILLS]
             for k in STAT_KEYS:
                 if k == "hp":
                     d = after.get("hp", 0) + after.get("hpBonus", 0) - before.get("hp", 0) - before.get("hpBonus", 0)
@@ -189,17 +208,23 @@ def summarize(build, gd, roll="base", inventory=None):
             if k in t and k != "hpBonus":
                 t[k] += v
     available = skill_points(build.level)
-    spare = available - sp.total_assigned
-    int_from_items = sp.final[2] - sp.assigned[2]
-    mana_min = max_mana(totals["maxMana"], sp.final[2])
-    mana_spare_int = max_mana(totals["maxMana"],
-                              min(100, sp.assigned[2] + max(spare, 0)) + int_from_items)
+    spare = available - msp.total_assigned
+    int_from_items = msp.final[2] - msp.assigned[2]
+    mana_min = max_mana(totals["maxMana"], msp.final[2])
+    # With Intelligence set by hand the player already chose; don't move points.
+    mana_spare_int = mana_min if msp.manual[2] else \
+        max_mana(totals["maxMana"], min(100, msp.assigned[2] + max(spare, 0)) + int_from_items)
     sets = [{"name": name, "pieces": count, "of": len(gd.sets[name]["items"]),
              "bonus": {k: v for k, v in gd.sets[name]["bonuses"][count - 1].items()}}
             for name, count in sorted(sp.set_counts.items())]
     return {"totals": totals, "totals_max": totals_max, "roll": roll,
-            "sp_need": dict(zip(SKILLS, sp.assigned)), "sp_total": sp.total_assigned,
-            "sp_final": dict(zip(SKILLS, sp.final)), "sp_under_100": sp.under_100,
+            "sp_need": dict(zip(SKILLS, msp.assigned)), "sp_total": msp.total_assigned,
+            "sp_final": dict(zip(SKILLS, msp.final)),
+            "sp_under_100": all(a <= 100 for a in msp.assigned),
+            "sp_manual": dict(zip(SKILLS, msp.manual)), "sp_wearable": msp.wearable,
+            "sp_effective": dict(zip(SKILLS, effective)),
+            "sp_auto_need": dict(zip(SKILLS, sp.assigned)),
+            "sp_auto_final": dict(zip(SKILLS, sp.final)),
             "sp_available": available, "spare_sp": spare,
             "mana_min_int": mana_min, "mana_spare_into_int": mana_spare_int,
             "poison_per_second": poison_per_second(totals["poison"]),
@@ -221,10 +246,18 @@ def check_link(link, gd=None, inventory=None):
         if name and name.startswith("CR-"):
             for p in gd.item(name).get("problems", []):
                 report["problems"].append(f"crafted {slot}: {p}")
+    manual = any(s["sp_manual"].values())
     if s["sp_total"] > s["sp_available"]:
-        report["problems"].append(f"needs {s['sp_total']} skill points, only {s['sp_available']} available")
+        report["problems"].append(f"{'assigns' if manual else 'needs'} {s['sp_total']} skill points, "
+                                  f"only {s['sp_available']} available")
     if not s["sp_under_100"]:
-        report["problems"].append("a skill needs more than 100 assigned points")
+        over = [f"{SKILL_NAMES[k]} {v}" for k, v in s["sp_need"].items() if v > 100]
+        report["problems"].append("more than 100 points assigned to one skill: " + ", ".join(over))
+    if not s["sp_wearable"]:
+        low = [f"{SKILL_NAMES[k]} {s['sp_need'][k]} assigned, the gear needs {s['sp_auto_need'][k]}"
+               for k in SKILLS if s["sp_need"][k] < s["sp_auto_need"][k]]
+        report["problems"].append("skill points set by hand are too low to wear every item: "
+                                  + ", ".join(low))
     if build.weapon is not None:
         from .rules import ability_points
         tree = gd.tree(gd.weapon_class(build.weapon))

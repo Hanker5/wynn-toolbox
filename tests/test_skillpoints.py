@@ -45,3 +45,67 @@ def test_negative_bonus_only_matters_against_a_requirement(gd, links):
     assert build_skillpoints(b.equipment, b.tomes, gd).total_assigned == 160
     b.equipment[8] = "The Watched"                       # needs 30 in every skill
     assert build_skillpoints(b.equipment, b.tomes, gd).total_assigned == 265
+
+
+def _with_manual(links, gd, manual):
+    from wynntools.codec import encode
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.skillpoints = manual
+    return b, encode(b, gd)
+
+
+def test_partial_manual_skill_points_are_final_totals(gd, links):
+    """Regression: a link with only some skills set by hand (null for the rest)
+    crashed the damage calculation while the build still showed as verified.
+    WynnBuilder stores a manual entry as the skill's final total; the points
+    assigned are final - automatic final + automatic assigned."""
+    from wynntools.damage import summary
+    auto = check_link(links["shaman_105_stormdrain"]["hash"], gd)[1]["summary"]
+    target = auto["sp_final"]["int"] + 20
+    b, h = _with_manual(links, gd, [None, None, target, None, None])
+    assert decode(h, gd).skillpoints == [None, None, target, None, None]
+    ok, rep = check_link(h, gd)
+    s = rep["summary"]
+    assert ok, rep["problems"]
+    assert s["sp_final"]["int"] == target and s["sp_manual"]["int"] and not s["sp_manual"]["str"]
+    assert s["sp_need"]["int"] == auto["sp_need"]["int"] + 20
+    assert s["sp_total"] == auto["sp_total"] + 20
+    assert s["sp_final"]["str"] == auto["sp_final"]["str"]           # automatic ones unchanged
+    dmg = summary(b, gd)
+    assert "error" not in dmg
+    auto_cost = summary(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    assert dmg["typical"]["spells"][1]["cost"] < auto_cost["typical"]["spells"][1]["cost"]  # more Int
+
+
+def test_manual_points_too_low_to_wear_the_gear(gd, links):
+    auto = check_link(links["shaman_105_stormdrain"]["hash"], gd)[1]["summary"]
+    _, h = _with_manual(links, gd, [auto["sp_final"]["str"] - 10, None, None, None, None])
+    ok, rep = check_link(h, gd)
+    assert not ok and any("too low to wear" in p and "Strength" in p for p in rep["problems"])
+
+
+def test_manual_points_over_budget_and_over_100(gd, links):
+    auto = check_link(links["shaman_105_stormdrain"]["hash"], gd)[1]["summary"]
+    _, h = _with_manual(links, gd, [None, None, None, None, 101])     # Agi: 0 assigned now
+    ok, rep = check_link(h, gd)
+    assert not ok
+    assert any("more than 100 points" in p and "Agility 101" in p for p in rep["problems"])
+    assert any("assigns 266 skill points" in p for p in rep["problems"]), auto["sp_total"]
+
+
+def test_malformed_skill_points_in_a_build_file_are_rejected(gd, links):
+    import pytest
+    from wynntools import buildfile
+    doc = buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    for bad, msg in (([1, 2, 3], "list of 5"), ([None, "40", None, None, None], "whole number"),
+                     ([None, None, 5000, None, None], "outside"), ({"str": 1}, "list of 5")):
+        with pytest.raises(ValueError, match=msg):
+            buildfile.to_build({**doc, "skillpoints": bad}, gd)
+
+
+def test_damage_failure_is_never_verified(gd, links, monkeypatch):
+    from wynntools import buildfile, damage
+    doc = buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)
+    monkeypatch.setattr(damage, "summary", lambda *a, **k: {"error": "TypeError: boom"})
+    st = buildfile.refresh(doc, gd)["status"]
+    assert not st["verified"] and any("damage could not be calculated" in p for p in st["problems"])

@@ -12,7 +12,8 @@ are names, not ids, so people can edit them by hand:
       "powders": [[...], ...],          # optional, 5 lists of names like "t6"
                                         # (helmet, chestplate, leggings, boots, weapon)
       "aspects": [["Aspect of ...", 3], null, ...],   # optional, 5 [name, tier] or null
-      "skillpoints": null,              # optional; null = automatic
+      "skillpoints": null,              # optional; null = automatic, else 5 FINAL
+                                        # totals (null entries automatic), as in links
       "spec": {...}, "tree_preset": "...",   # optional: how it was generated
       "link": "...", "status": {...}    # written by the tools, do not edit
     }
@@ -28,6 +29,9 @@ from .data import LATEST
 from .verify import check_link
 
 GENERATED = ("link", "status")
+# Skill-point fields of the check's summary that a build's status carries.
+SP_STATUS = ("sp_need", "sp_total", "sp_available", "sp_final", "sp_manual", "sp_wearable",
+             "sp_auto_need", "sp_auto_final", "sp_effective")
 
 
 def _powder_id(name):
@@ -41,6 +45,8 @@ def to_build(doc, gd):
         + [None] * (len(TOME_SLOTS) - len(tomes))
     if doc.get("powders"):
         b.powders = [[_powder_id(p) for p in slot] for slot in doc["powders"]]
+    from .skillpoints import check_manual
+    check_manual(doc.get("skillpoints"))
     b.skillpoints = doc.get("skillpoints")
     if doc.get("aspects") and any(doc["aspects"]):
         if b.weapon is None:
@@ -93,14 +99,18 @@ def refresh(doc, gd, inventory=None):
     link = to_link(to_build(doc, gd), gd)
     ok, rep = check_link(link, gd, inventory=inventory)
     s = rep["summary"]
-    status = {"verified": ok, "problems": rep["problems"],
-              "totals": s["totals"], "totals_max": s["totals_max"], "sp_need": s["sp_need"], "sp_total": s["sp_total"],
-              "sp_available": s["sp_available"], "sp_final": s["sp_final"],
+    damage = damage_summary(rep["build"], gd, inventory)
+    problems = list(rep["problems"])
+    if damage and "error" in damage:     # never verified while damage can't be worked out
+        problems.append(f"damage could not be calculated ({damage['error']})")
+    status = {"verified": not problems, "problems": problems,
+              "totals": s["totals"], "totals_max": s["totals_max"],
+              **{k: s[k] for k in SP_STATUS},
               "sets": s["sets"], "set_majors": s["set_majors"],
               "mana_min_int": s["mana_min_int"], "mana_spare_into_int": s["mana_spare_into_int"],
               "poison_per_second": s["poison_per_second"],
               "ap": list(rep.get("ap", (0, 0))), "tree_failed": rep.get("tree_failed", []),
-              "damage": damage_summary(rep["build"], gd, inventory),
+              "damage": damage,
               "checked": datetime.datetime.now().isoformat(timespec="seconds")}
     return {**{k: v for k, v in doc.items() if k not in GENERATED},
             "link": link, "status": status}

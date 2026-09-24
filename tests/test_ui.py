@@ -771,3 +771,23 @@ def test_update_prompt_waits_for_the_setup_wizard(fresh):
     assert pg.locator("#update").is_hidden()
     pg.click("#setup .setup-x")
     pg.wait_for_selector("#update[open]")
+
+
+# ------------------------------------------------------------ skill points, survivability, candidates
+def test_manual_skill_points_in_the_editor(page, app):
+    open_build(page, "shaman_105_stormdrain")
+    settle(page)
+    left = int(page.inner_text("#sp-left"))
+    page.fill("input[data-skill=int]", str(52 + 10))
+    page.press("input[data-skill=int]", "Enter")
+    page.wait_for_function(f"document.querySelector('#sp-left').textContent === '{left - 10}'", timeout=20000)
+    assert "manual" in page.get_attribute("input[data-skill=int]", "class")
+    page.fill("input[data-skill=str]", "10")                  # below what the gear needs
+    page.press("input[data-skill=str]", "Enter")
+    page.wait_for_selector("#ed-banners .banner.bad:has-text('too low to wear')", timeout=20000)
+    page.click("#sp-auto-all")
+    page.wait_for_function(f"document.querySelector('#sp-left').textContent === '{left}'", timeout=20000)
+    page.click("#ed-save")
+    page.wait_for_selector("#ed-badge .badge.ok", timeout=20000)
+    assert json.loads((Path(app.builds_dir) / "stormdrain.json").read_text())["skillpoints"] is None
+    assert not page.errors

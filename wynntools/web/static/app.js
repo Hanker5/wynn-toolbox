@@ -934,7 +934,9 @@ function renderChecks(st) {
     statRow("Skill points", `${fmt(st.sp_total)} / ${fmt(st.sp_available)}`, st.sp_total > st.sp_available ? "neg" : ""),
     statRow("Ability points", `${ap[0]} / ${ap[1]}`, ap[0] > ap[1] ? "neg" : ""),
     crafted ? statRow("Crafted items", `${crafted}`, "", h("span", { class: "muted" }, "  (ranges)")) : null,
-    h("p", { class: "hint" }, "Skill points are assigned automatically in the link. " +
+    h("p", { class: "hint" }, (Object.values(st.sp_manual || {}).some(Boolean)
+      ? "Some skill points are set by hand; the link keeps them, as WynnBuilder does. "
+      : "Skill points are assigned automatically in the link. ") +
       ((c.doc.aspects || []).some(Boolean) ? "" : "No aspects set.")));
 }
 
@@ -1008,19 +1010,62 @@ function renderSets(st) {
   $("#ed-sets").replaceChildren(...out);
 }
 
+// js/build_utils.js skillPointsToPercentage, and what each skill's percentage does
+// (builder_graph.js: skillpoint_final_mult and skp_effects).
+const spToPct = (sp) => (sp <= 0 ? 0 : (0.9908 / (1 - 0.9908)) * (1 - 0.9908 ** Math.min(sp, 150)) / 100);
+const SP_EFFECT = { str: [1, "damage"], dex: [1, "crit"], int: [0.5 / spToPct(150), "cost red."],
+  def: [0.867, "resist"], agi: [0.951, "dodge"] };
+
+// Skill points as WynnBuilder keeps them: a skill set by hand stores its FINAL
+// total in the link (null = automatic), and the points assigned follow from it.
+// Players think in assigned points, so that's what the boxes edit.
+function setAssigned(skill, assigned) {
+  const st = S.cur.doc.status || {}, k = SKILLS.indexOf(skill);
+  edit((x) => {
+    const sp = [...(x.skillpoints || [null, null, null, null, null])];
+    sp[k] = assigned === null ? null
+      : assigned - (st.sp_auto_need?.[skill] ?? 0) + (st.sp_auto_final?.[skill] ?? 0);
+    x.skillpoints = sp.some((v) => v !== null) ? sp : null;
+  });
+}
+
 function renderSP(st) {
-  const need = st.sp_need || {};
-  $("#ed-sp").replaceChildren(...SKILLS.map((s) => {
-    const e = ELEMENTS[s], v = need[s] ?? 0;
-    return h("div", { class: "sp-box" + (v > 100 ? " over" : "") },
+  const need = st.sp_need || {}, manual = st.sp_manual || {}, min = st.sp_auto_need || {};
+  const box = $("#ed-sp");
+  const focused = box.contains(document.activeElement) ? document.activeElement.dataset.skill : null;
+  box.replaceChildren(...SKILLS.map((s) => {
+    const e = ELEMENTS[s], v = need[s] ?? 0, final = st.sp_final?.[s] ?? v, eff = st.sp_effective?.[s] ?? final;
+    const low = v < (min[s] ?? 0), over = v > 100;
+    const input = h("input", { type: "number", class: "sp-in" + (manual[s] ? " manual" : ""), value: v,
+      "aria-label": `${e.name} assigned`, title: manual[s] ? "Set by hand" : "Automatic: the fewest points this gear needs" });
+    input.dataset.skill = s;
+    input.addEventListener("change", () => {
+      if (input.value.trim() === "") { setAssigned(s, null); return; }
+      const n = Math.round(+input.value);
+      if (Number.isFinite(n)) setAssigned(s, n);
+    });
+    const [mult, what] = SP_EFFECT[s];
+    return h("div", { class: "sp-box" + (over || low ? " over" : "") + (manual[s] ? " is-manual" : "") },
       h("div", { class: `sp-h ${e.cls}` }, `${e.sym} ${e.name}`),
-      h("div", { class: "sp-v" }, fmt(v)),
-      h("div", { class: "bar" }, h("i", { style: `width:${Math.min(100, v)}%` })),
-      h("div", { class: "sp-sub" }, `assign · total ${fmt(st.sp_final?.[s] ?? v)}`));
+      h("div", { class: "sp-edit" }, input,
+        manual[s] ? h("button", { class: "mini sp-auto", title: "Back to automatic", "aria-label": `${e.name} automatic`,
+          onclick: () => setAssigned(s, null) }, "Auto") : h("span", { class: "sp-tag muted" }, "auto")),
+      h("div", { class: "bar" }, h("i", { style: `width:${Math.max(0, Math.min(100, v))}%` })),
+      h("div", { class: "sp-sub" }, `gear needs ${fmt(min[s] ?? 0)}`),
+      h("div", { class: "sp-sub" }, "final ", h("strong", { class: final < 0 ? "neg" : "" }, fmt(final)),
+        eff !== final ? h("span", {}, ` · tree ${fmt(eff)}`) : null),
+      h("div", { class: "sp-sub" }, `${(spToPct(eff) * 100 * mult).toFixed(1)}% ${what}`),
+      low ? h("div", { class: "sp-warn neg" }, `below the ${fmt(min[s])} the gear needs`) : null,
+      over ? h("div", { class: "sp-warn neg" }, "over 100 in one skill") : null);
   }));
+  if (focused) box.querySelector(`input[data-skill="${focused}"]`)?.focus();
   const left = (st.sp_available ?? 0) - (st.sp_total ?? 0);
-  $("#ed-sp-foot").replaceChildren("Assigned ", h("strong", {}, fmt(st.sp_total)), " skill points. Remaining: ",
-    h("strong", { class: left < 0 ? "neg" : "pos" }, fmt(left)));
+  const anyManual = Object.values(manual).some(Boolean);
+  setKids($("#ed-sp-foot"), h("span", { class: "grow" }, "Assigned ", h("strong", {}, fmt(st.sp_total)),
+      ` of ${fmt(st.sp_available)}. Remaining: `, h("strong", { class: left < 0 ? "neg" : "pos", id: "sp-left" }, fmt(left)),
+      anyManual ? h("span", { class: "muted" }, " · some set by hand") : h("span", { class: "muted" }, " · automatic")),
+    h("button", { class: "mini", id: "sp-auto-all", disabled: !anyManual, title: "Let WynnBuilder assign every skill (the fewest points the gear needs)",
+      onclick: () => edit((x) => { x.skillpoints = null; }) }, "Auto"));
 }
 
 function renderDerived() {

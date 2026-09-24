@@ -56,9 +56,27 @@ def _print_report(ok, rep, gd):
     for st in s["sets"]:
         bonus = ", ".join(f"{k} {v:+}" if isinstance(v, int) else f"{k} {v}" for k, v in st["bonus"].items())
         print(f"Set {st['name']} ({st['pieces']}/{st['of']}): {bonus or 'no bonus at this count'}")
-    print(f"Skill points: {s['sp_total']}/{s['sp_available']} to assign {s['sp_need']}")
+    _print_skillpoints(s)
     print("Note: totals above are 100% rolls; real items roll 30-130%.")
     print("VERIFIED OK" if ok else "PROBLEMS:\n  - " + "\n  - ".join(rep["problems"]))
+
+
+SKILL_SHORT = {"str": "Str", "dex": "Dex", "int": "Int", "def": "Def", "agi": "Agi"}
+ELEMENT_NAMES = {"e": "Earth", "t": "Thunder", "w": "Water", "f": "Fire", "a": "Air"}
+
+
+def _print_skillpoints(s):
+    """Assigned and final skill points, marking any set by hand."""
+    manual = [k for k, v in s["sp_manual"].items() if v]
+    how = (f"set by hand: {', '.join(SKILL_SHORT[k] for k in manual)}; the rest automatic"
+           if manual else "automatic")
+    print(f"Skill points: {s['sp_total']}/{s['sp_available']} assigned ({how})")
+    mark = lambda k: "*" if s["sp_manual"][k] else ""
+    print("  assigned   " + " · ".join(f"{SKILL_SHORT[k]} {v}{mark(k)}" for k, v in s["sp_need"].items()))
+    print("  final      " + " · ".join(f"{SKILL_SHORT[k]} {v}" for k, v in s["sp_final"].items())
+          + "  (with gear and set bonuses)")
+    if s["sp_effective"] != s["sp_final"]:
+        print("  with tree  " + " · ".join(f"{SKILL_SHORT[k]} {v}" for k, v in s["sp_effective"].items()))
 
 
 def _print_damage(dmg, parts=False, label="typical rolls"):

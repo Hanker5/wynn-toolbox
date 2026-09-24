@@ -185,6 +185,97 @@ def calculate_skillpoints(equipment, weapon, sets):
                     item_total=total_item, under_100=best["under_100"])
 
 
+SP_LIMIT = 2048          # manual entries are 12-bit two's complement in links (MAX_SP_BITLEN)
+
+
+def check_manual(manual):
+    """Raise ValueError unless `manual` is None or 5 entries of int/None, as a
+    link stores them. Build files are edited by hand, so say what's wrong."""
+    if manual is None:
+        return
+    if not isinstance(manual, list) or len(manual) != 5:
+        raise ValueError("skillpoints must be null (automatic) or a list of 5 entries "
+                         "(Strength, Dexterity, Intelligence, Defence, Agility), each a number or null")
+    for s, v in zip(("Strength", "Dexterity", "Intelligence", "Defence", "Agility"), manual):
+        if v is None:
+            continue
+        if isinstance(v, bool) or not isinstance(v, int):
+            raise ValueError(f"skillpoints: {s} must be a whole number or null, not {v!r}")
+        if not -SP_LIMIT <= v < SP_LIMIT:
+            raise ValueError(f"skillpoints: {s} {v} is outside what a link can hold "
+                             f"({-SP_LIMIT} to {SP_LIMIT - 1})")
+
+
+@dataclass
+class ManualSP:
+    """Skill points with WynnBuilder's manual entries applied on top of the
+    automatic result. A link's manual entry is the skill's FINAL total (what
+    WynnBuilder's skill-point inputs hold), None where the skill stays automatic
+    (build_encode_decode.js encodeSp). The points assigned to a skill are then
+    final - automatic final + automatic assigned (DisplayBuildWarningsNode)."""
+    auto: SPResult
+    manual: list             # 5 bools: set by hand
+    final: list              # total per skill after gear and set bonuses (before the tree)
+    assigned: list           # points the player assigns per skill
+    total_assigned: int
+    wearable: bool           # every item's requirement holds with these points
+
+
+def can_wear(equipment, weapon, assigned):
+    """Whether some equip order lets every item be worn with `assigned` base
+    points, under WynnBuilder's rules (skillpoints.py docstring): a non-crafted
+    item's bonus helps only items equipped after it; the weapon and crafts go on
+    last and help nobody; no item may rely on its own bonus (the pop rule)."""
+    normal = [i for i, it in enumerate(equipment) if not it.crafted]
+    crafted = [it for it in equipment if it.crafted]
+    full = (1 << len(equipment)) - 1
+    seen = set()
+
+    def points(mask):
+        sp = list(assigned)
+        for i in normal:
+            if mask >> i & 1:
+                sp = _vadd5(sp, equipment[i].skillpoints)
+        return sp
+
+    def search(mask):
+        if mask in seen:
+            return False
+        seen.add(mask)
+        if all(mask >> i & 1 for i in normal):
+            sp = points(mask)
+            for it in [*crafted, weapon]:
+                if not _can_equip(sp, it):
+                    return False
+            for i in normal:           # the pop rule: own bonus doesn't count
+                it = equipment[i]
+                own = [it.reqs[j] + it.skillpoints[j] if it.reqs[j] > 0 else 0 for j in range(5)]
+                if any(own[j] > sp[j] for j in range(5) if it.reqs[j] > 0):
+                    return False
+            return True
+        sp = points(mask)
+        return any(search(mask | 1 << i) for i in normal
+                   if not mask >> i & 1 and _can_equip(sp, equipment[i]))
+    return search(0) if normal else search(full)
+
+
+def apply_manual(auto, manual, equipment=None, weapon=None):
+    """ManualSP for automatic result `auto` and link entries `manual` (see
+    check_manual). With `equipment` and `weapon` (as for calculate_skillpoints)
+    it also checks the items can still be worn."""
+    check_manual(manual)
+    entries = manual or [None] * 5
+    is_manual = [v is not None for v in entries]
+    final = [auto.final[j] if v is None else v for j, v in enumerate(entries)]
+    assigned = [auto.assigned[j] + final[j] - auto.final[j] for j in range(5)]
+    wearable = True
+    if any(is_manual) and equipment is not None:
+        wearable = all(assigned[j] >= auto.assigned[j] for j in range(5)) or \
+            can_wear(equipment, weapon, assigned)
+    return ManualSP(auto=auto, manual=is_manual, final=final, assigned=assigned,
+                    total_assigned=sum(assigned), wearable=wearable)
+
+
 def set_bonus_stats(set_counts, sets):
     """Stats added by active set bonuses (Build.initBuildStats): everything except
     skill points, which calculate_skillpoints already added. Returns (stats, majors)."""
