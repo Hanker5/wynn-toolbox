@@ -1857,8 +1857,23 @@ async function boot() {
     let file = slug(name || "imported") + ".json", n = 2;
     while (S.builds.some((b) => b.file === file)) file = `${slug(name || "imported")}-${n++}.json`;
     try {
-      await api("POST", "/api/import", { link, name, file });
-      $("#import-msg").textContent = "Imported."; $("#import-link").value = ""; $("#import-name").value = "";
+      $("#import-msg").textContent = "Checking the link…";
+      const pv = await api("POST", "/api/import", { link, name, file, preview: true });
+      if (!pv.readable) { $("#import-msg").textContent = pv.findings[0]?.message || "Couldn't read that link."; return; }
+      const notable = pv.findings.filter((f) => f.level !== "info");
+      if (notable.length) {
+        const list = h("ul", { class: "findings" }, pv.findings.map((f) =>
+          h("li", { class: f.level }, h("strong", {}, { error: "Problem: ", warn: "Note: ", info: "" }[f.level]), f.message)));
+        const errors = notable.some((f) => f.level === "error");
+        const go = await ask(errors ? "This build has problems" : "Before you import", [list,
+          errors ? "You can still import it and fix it in the editor; it won't show as verified until then." : ""],
+          [{ label: "Import", value: true, primary: !errors }, { label: "Cancel", value: false }]);
+        if (!go) { $("#import-msg").textContent = "Not imported."; return; }
+      }
+      const out = await api("POST", "/api/import", { link, name, file });
+      $("#import-msg").replaceChildren("Imported.", ...out.findings.filter((f) => f.level === "info")
+        .map((f) => h("div", { class: "hint" }, f.message)));
+      $("#import-link").value = ""; $("#import-name").value = "";
       await loadList(); openBuild(file);
     } catch (e) { $("#import-msg").textContent = e.message; }
   };

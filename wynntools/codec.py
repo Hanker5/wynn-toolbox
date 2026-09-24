@@ -32,6 +32,8 @@ class Build:
     aspects: list | None = None         # None, or 5 entries of (aspect id, tier) / None
     atree: set = field(default_factory=set)  # active ability node ids, root included
     version: int = LATEST
+    remapped: list = field(default_factory=list)   # decode: slots whose item id was retired
+                                                   # and redirected to today's item
 
     @property
     def weapon(self):
@@ -88,14 +90,19 @@ def decode(link, gd=None):
     gd = gd if gd is not None and gd.version == version else GameData(version)
     enc = gd.enc
 
-    equipment, powders = [], []
+    equipment, powders, remapped = [], [], []
+    current_ids = {it["id"] for it in gd.items}
     for i in range(enc["EQUIPMENT_NUM"]):
         kind = r.read_flag(enc["EQUIPMENT_KIND"])
         if kind == enc["EQUIPMENT_KIND"]["CRAFTED"]:
             equipment.append(encode_craft_hash(read_craft(r, gd.crafts), gd.crafts))
         elif kind == enc["EQUIPMENT_KIND"]["NORMAL"]:
             iid = r.read(enc["ITEM_ID_BITLEN"])
+            if iid and iid - 1 not in gd.item_by_id:
+                raise KeyError(f"no item with id {iid - 1} in slot {SLOTS[i]} (removed from the game?)")
             equipment.append(None if iid == 0 else gd.name(gd.item_by_id[iid - 1]))
+            if iid and iid - 1 not in current_ids:
+                remapped.append(SLOTS[i])
         else:
             raise NotImplementedError(f"custom item in slot {SLOTS[i]} is not supported")
         if i in POWDERABLE:
@@ -150,7 +157,7 @@ def decode(link, gd=None):
                     walk(c)
         walk(root)
 
-    return Build(equipment, level, powders, tomes, skillpoints, aspects, atree, version)
+    return Build(equipment, level, powders, tomes, skillpoints, aspects, atree, version, remapped)
 
 
 # ---------------------------------------------------------------- encoding

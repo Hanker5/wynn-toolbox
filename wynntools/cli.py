@@ -532,11 +532,20 @@ def cmd_gear(a):
 
 
 def cmd_import(a):
+    from .diagnose import diagnose_link
     gd = GameData()
-    from .codec import decode
-    b = decode(a.link, gd)
-    doc = buildfile.refresh({"name": a.name or Path(a.path).stem, "notes": "",
-                             **buildfile.from_build(b, gd)}, gd)
+    report = diagnose_link(a.link, gd, inv_mod.load(a.inventory), a.name or Path(a.path).stem)
+    marks = {"error": "PROBLEM", "warn": "note", "info": "info"}
+    for f in report["findings"]:
+        print(f"  {marks[f['level']]}: {f['message']}")
+    doc = report["doc"]
+    if doc is None:
+        print("not saved: the link can't be read")
+        return 1
+    if not report["ok"] and not a.force:
+        print("not saved: fix the problems above, or pass --force to save it anyway "
+              "(it won't show as verified)")
+        return 1
     buildfile.write(a.path, doc)
     print(f"saved {a.path} ({'verified' if doc['status']['verified'] else 'HAS PROBLEMS'})")
     if not a.no_show:
@@ -1361,6 +1370,8 @@ def main(argv=None):
     s.add_argument("path")
     s.add_argument("--name")
     s.add_argument("--no-show", action="store_true", help="don't open it in the web app")
+    s.add_argument("--force", action="store_true", help="save even when the build has problems")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_import)
     s = sub.add_parser("link", help="verify a build file and print its link")
     s.add_argument("build")

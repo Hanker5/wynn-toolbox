@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from wynntools import buildfile
 from wynntools.cli import main
-from wynntools.codec import decode
+from wynntools.codec import decode, to_link
 from wynntools.web.server import create_app
 
 PORT, TOKEN = 8765, "test-token"
@@ -27,6 +27,20 @@ def wait(client, job):
                     if j["state"] != "running":
                         return j
     raise AssertionError("job never finished")
+
+
+def test_import_preview_warns_and_saves_nothing(client, tmp_path, gd, links):
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.skillpoints = [None, None, 80, None, None]
+    r = client.post("/api/import", json={"link": to_link(b, gd), "file": "p.json", "preview": True}).json()
+    assert r["ok"] and r["readable"] and any(f["code"] == "sp_partial" for f in r["findings"])
+    assert not (tmp_path / "p.json").exists()
+    r = client.post("/api/import", json={"link": to_link(b, gd), "file": "p.json"}).json()
+    doc = client.get("/api/builds/p.json").json()
+    assert doc["skillpoints"] == [None, None, 80, None, None] and doc["status"]["verified"]
+    assert "error" not in doc["status"]["damage"]
+    bad = client.post("/api/import", json={"link": "nonsense", "file": "q.json"})
+    assert bad.status_code == 422 and "can't read" in bad.json()["detail"]
 
 
 def test_solve_failure_comes_with_an_explanation(client):
@@ -90,6 +104,20 @@ def test_locks_are_editable(client, links):
     doc = client.get("/api/builds/l.json").json()
     out = client.put("/api/builds/l.json", json={**doc, "locked": ["weapon", "helmet"]}).json()
     assert out["locked"] == ["weapon", "helmet"]
+
+
+# ------------------------------------------------------------ the command line
+def test_wt_import_refuses_a_broken_build_without_force(tmp_path, gd, links, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.skillpoints = [10, None, None, None, None]
+    with pytest.raises(SystemExit) as e:
+        main(["import", to_link(b, gd), "x.json", "--no-show"])
+    assert e.value.code == 1 and not (tmp_path / "x.json").exists()
+    assert "PROBLEM" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["import", to_link(b, gd), "x.json", "--no-show", "--force"])
+    assert (tmp_path / "x.json").exists()
 
 
 def test_wt_own_unavailable_and_gear_leave_it_out(tmp_path, capsys, monkeypatch):

@@ -485,19 +485,23 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
     @app.post("/api/import")
     async def import_link(request: Request):
-        from ..codec import decode
+        """{"link", "file", "name", "preview"}: with "preview", only the
+        diagnostics (nothing is saved). Otherwise the build is saved, unless the
+        link can't be read at all."""
+        from ..diagnose import diagnose_link
         body = await request.json()
         p = path_for(body["file"])
-        if p.exists():
+        if p.exists() and not body.get("preview"):
             raise HTTPException(409, f"{p.name} already exists")
-        try:
-            b = decode(body["link"], gd)
-        except (ValueError, KeyError, NotImplementedError) as e:
-            raise HTTPException(422, f"could not read that link: {e}")
-        doc = checked({"name": body.get("name") or p.stem, "notes": "",
-                       **buildfile.from_build(b, gd)})
-        buildfile.write(p, doc)
-        return {"file": p.name}
+        report = await asyncio.to_thread(diagnose_link, body["link"], gd, inv(),
+                                         body.get("name") or p.stem)
+        if body.get("preview"):
+            return {"ok": report["ok"], "findings": report["findings"], "readable": report["doc"] is not None}
+        if report["doc"] is None:
+            raise HTTPException(422, report["findings"][0]["message"] if report["findings"]
+                                else "could not read that link")
+        buildfile.write(p, report["doc"])
+        return {"file": p.name, "findings": report["findings"]}
 
     @app.get("/api/events")
     async def events(request: Request):

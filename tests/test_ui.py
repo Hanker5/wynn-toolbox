@@ -793,6 +793,45 @@ def test_manual_skill_points_in_the_editor(page, app):
     assert not page.errors
 
 
+def test_fix_a_weakness_makes_a_candidate_and_it_can_be_chosen(page, app):
+    open_build(page, "shaman_105_stormdrain")
+    assert "Air Defence" in page.inner_text("#ed-surv .srow.lowest")
+    page.click(".fix-btn[data-code=neg_adef]")
+    page.wait_for_selector("#solver-from")
+    assert page.get_by_role("spinbutton", name="Every elemental defence").input_value() == "0"
+    page.wait_for_selector("#solver-run:not([disabled])")
+    page.click("#solver-run")
+    page.wait_for_selector("#editor:not([hidden]) #ed-cand-banner", timeout=300000)
+    settle(page)
+    assert "-" not in page.inner_text("#ed-surv .srow.lowest .sv")           # nothing negative now
+    assert page.locator("#build-list li.cand").count() == 1
+    page.click("#ed-cand-banner >> text=Open the build")
+    page.wait_for_selector("#ed-cands-panel:not([hidden]) table")
+    page.click("#ed-cands >> text=Use this one")
+    page.locator("#ask").get_by_role("button", name="Use it", exact=True).click()
+    page.wait_for_function("!document.querySelector('#build-list li.cand')", timeout=20000)
+    doc = json.loads((Path(app.builds_dir) / "stormdrain.json").read_text())
+    assert min(doc["status"]["survivability"]["typical"]["eledefs"].values()) >= 0
+    assert not page.errors
+
+
+def test_import_preview_lists_what_to_know(page, gd, links):
+    from wynntools.codec import to_link
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.skillpoints = [None, None, 80, None, None]
+    page.click("text=Import a WynnBuilder link")
+    page.fill("#import-link", to_link(b, gd))
+    page.fill("#import-name", "partial sp")
+    page.click("#import-go")
+    page.wait_for_selector("#ask[open] ul.findings")
+    assert "set by hand in WynnBuilder" in page.inner_text("#ask")
+    page.locator("#ask").get_by_role("button", name="Import", exact=True).click()
+    page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=20000)
+    assert page.input_value("input[data-skill=int]") != "" and "manual" in page.get_attribute("input[data-skill=int]", "class")
+    assert "error" not in page.inner_text("#ed-damage").lower()
+    assert not page.errors
+
+
 def test_specials_scenario_and_powder_planner(page):
     open_build(page, "shaman_105_stormdrain")
     settle(page)
@@ -830,26 +869,4 @@ def test_tradeoffs_from_the_form(page):
     assert "max damage" in rows.first.inner_text() and "max survival" in rows.last.inner_text()
     rows.first.locator("text=Save").click()
     page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=30000)
-    assert not page.errors
-
-
-def test_fix_a_weakness_makes_a_candidate_and_it_can_be_chosen(page, app):
-    open_build(page, "shaman_105_stormdrain")
-    assert "Air Defence" in page.inner_text("#ed-surv .srow.lowest")
-    page.click(".fix-btn[data-code=neg_adef]")
-    page.wait_for_selector("#solver-from")
-    assert page.get_by_role("spinbutton", name="Every elemental defence").input_value() == "0"
-    page.wait_for_selector("#solver-run:not([disabled])")
-    page.click("#solver-run")
-    page.wait_for_selector("#editor:not([hidden]) #ed-cand-banner", timeout=300000)
-    settle(page)
-    assert "-" not in page.inner_text("#ed-surv .srow.lowest .sv")           # nothing negative now
-    assert page.locator("#build-list li.cand").count() == 1
-    page.click("#ed-cand-banner >> text=Open the build")
-    page.wait_for_selector("#ed-cands-panel:not([hidden]) table")
-    page.click("#ed-cands >> text=Use this one")
-    page.locator("#ask").get_by_role("button", name="Use it", exact=True).click()
-    page.wait_for_function("!document.querySelector('#build-list li.cand')", timeout=20000)
-    doc = json.loads((Path(app.builds_dir) / "stormdrain.json").read_text())
-    assert min(doc["status"]["survivability"]["typical"]["eledefs"].values()) >= 0
     assert not page.errors

@@ -412,3 +412,5 @@ label.boost { display: flex; flex-direction: column; font-size: 11px; color: var
 .sv.special { color: var(--warn); }
 .plan { background: var(--panel-2); border-radius: 6px; padding: 6px 8px; margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
 .plan button { align-self: flex-start; }
+ul.findings { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+ul.findings li.error strong { color: var(--bad); } ul.findings li.warn strong { color: var(--warn); }

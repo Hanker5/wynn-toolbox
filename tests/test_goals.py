@@ -1,6 +1,6 @@
-"""New floors, derived goals, acquisition constraints, explanations and
-trade-offs; and the damage engine against the developer guide. Every build a
-search returns must pass WynnBuilder's checks."""
+"""New floors, derived goals, acquisition constraints, explanations, trade-offs,
+survivability, powder specials and planner, puppet models, candidates and
+import diagnostics. Every build a search returns must pass WynnBuilder's checks."""
 import dataclasses
 
 import pytest
@@ -9,6 +9,7 @@ from wynntools import buildfile, variants
 from wynntools.codec import Build, decode, to_link
 from wynntools.damage import check_specials, damage_report
 from wynntools.derived import metrics
+from wynntools.diagnose import diagnose_link
 from wynntools.explain import explain
 from wynntools.gear_milp import GearModel, solve_gear_exact
 from wynntools.gear_solver import Spec, solve_gear
@@ -32,6 +33,7 @@ def verified(gd, spec, r, atree=()):
     return rep["summary"]
 
 
+# ------------------------------------------------------------ floors (exact search)
 def test_sum_floors_hold(gd):
     spec = dataclasses.replace(STORM, floors={"hprRaw": 300, "fDef": 150, "min_eledef": 0})
     r = solve_gear_exact(spec, gd)
@@ -123,6 +125,7 @@ def test_derived_floor_in_the_shortlist_search(gd):
     assert m["ehp"] >= 20000
 
 
+# ------------------------------------------------------------ derived goals (local search)
 def test_effective_hp_goal(gd):
     from wynntools.gear_local import LocalSearch
     spec = dataclasses.replace(STORM, objective={"ehp": 1}, floors={"hp": 15000}, atree=set())
@@ -156,6 +159,7 @@ def test_puppet_goal_and_tradeoffs(gd):
         assert o["hp"] >= 12000
 
 
+# ------------------------------------------------------------ explanations
 def test_explains_a_skill_point_conflict(gd):
     spec = Spec(cls="Shaman", level=105, objective={"hp": 1}, force={"weapon": "Sunstar"},
                 floors={"def": 120, "int": 120, "mr": 30, "hp": 15000})
@@ -175,6 +179,17 @@ def test_explains_an_impossible_floor(gd):
     ex = explain(spec, gd)
     assert ex["conflict"] == ["Health at least 60,000"]
     assert "the most any legal build reaches is" in ex["lines"][0]
+
+
+# ------------------------------------------------------------ survivability, specials, puppets
+def test_survivability_and_warnings(gd, links):
+    doc = buildfile.refresh(buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd), gd)
+    sv = doc["status"]["survivability"]["typical"]
+    assert sv["lowest"]["element"] == "a" and sv["eledefs"]["a"] < 0
+    assert sv["ehp"] > sv["hp"] * 0.5 and sv["def"] == doc["status"]["sp_effective"]["def"]
+    w = {x["code"]: x for x in doc["status"]["warnings"]}
+    assert w["neg_adef"]["fix"] == {"action": "search", "floors": {"min_eledef": 0},
+                                    "why": "no negative elemental defence"}
 
 
 def test_powder_specials_follow_wynnbuilder(gd, links):
@@ -266,33 +281,7 @@ def test_whirlwind_strike_follows_the_guides_steps(gd):
     assert got["crit"] == pytest.approx(2 * non_crit, rel=1e-3)       # +100% on crit
 
 
-def test_survivability_and_warnings(gd, links):
-    doc = buildfile.refresh(buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd), gd)
-    sv = doc["status"]["survivability"]["typical"]
-    assert sv["lowest"]["element"] == "a" and sv["eledefs"]["a"] < 0
-    assert sv["ehp"] > sv["hp"] * 0.5 and sv["def"] == doc["status"]["sp_effective"]["def"]
-    w = {x["code"]: x for x in doc["status"]["warnings"]}
-    assert w["neg_adef"]["fix"] == {"action": "search", "floors": {"min_eledef": 0},
-                                    "why": "no negative elemental defence"}
-
-
-def test_candidates_choose_and_trash(gd, links, tmp_path):
-    doc = buildfile.refresh({"name": "Main", "notes": "keep me", "locked": ["weapon"],
-                             **buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)}, gd)
-    buildfile.write(tmp_path / "main.json", doc)
-    for name, key in (("a", "shaman_105_resonance"), ("b", "shaman_105_cryoseism")):
-        c = buildfile.from_build(decode(links[key]["hash"], gd), gd)
-        buildfile.write(tmp_path / f"main--{name}.json",
-                        buildfile.refresh({"name": f"Main: {name}", "parent": "main.json", **c}, gd))
-    assert [p.name for p in variants.candidates(tmp_path / "main.json")] == ["main--a.json", "main--b.json"]
-    new, trash = variants.choose(tmp_path / "main.json", tmp_path / "main--a.json", gd)
-    assert new["name"] == "Main" and new["notes"] == "keep me" and new["locked"] == ["weapon"]
-    assert new["equipment"] == buildfile.from_build(decode(links["shaman_105_resonance"]["hash"], gd), gd)["equipment"]
-    assert (tmp_path / ".trash" / trash).exists() and "parent" not in new
-    moved = variants.trash_candidates(tmp_path / "main.json")
-    assert [f for f, _ in moved] == ["main--b.json"] and not variants.candidates(tmp_path / "main.json")
-
-
+# ------------------------------------------------------------ powder planner
 def test_armor_powders_balance_elemental_defence(gd, links):
     b = decode(links["shaman_105_stormdrain"]["hash"], gd)
     r = plan_armor(b, gd, "eledef")
@@ -310,3 +299,63 @@ def test_weapon_powders_raise_damage(gd, links):
     assert len(r["powders"]) == gd.item("Stormdrain")["slots"] and r["value"] >= r["before"]
     q = plan_weapon(b, gd, "special:Wind Prison", measure="puppet_dps")
     assert all(p.startswith("a") for p in q["powders"]) and q["special"] == {"weapon": ["Wind Prison", 7]}
+
+
+# ------------------------------------------------------------ candidates
+def test_candidates_choose_and_trash(gd, links, tmp_path):
+    doc = buildfile.refresh({"name": "Main", "notes": "keep me", "locked": ["weapon"],
+                             **buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)}, gd)
+    buildfile.write(tmp_path / "main.json", doc)
+    for name, key in (("a", "shaman_105_resonance"), ("b", "shaman_105_cryoseism")):
+        c = buildfile.from_build(decode(links[key]["hash"], gd), gd)
+        buildfile.write(tmp_path / f"main--{name}.json",
+                        buildfile.refresh({"name": f"Main: {name}", "parent": "main.json", **c}, gd))
+    assert [p.name for p in variants.candidates(tmp_path / "main.json")] == ["main--a.json", "main--b.json"]
+    new, trash = variants.choose(tmp_path / "main.json", tmp_path / "main--a.json", gd)
+    assert new["name"] == "Main" and new["notes"] == "keep me" and new["locked"] == ["weapon"]
+    assert new["equipment"] == buildfile.from_build(decode(links["shaman_105_resonance"]["hash"], gd), gd)["equipment"]
+    assert (tmp_path / ".trash" / trash).exists() and "parent" not in new
+    moved = variants.trash_candidates(tmp_path / "main.json")
+    assert [f for f, _ in moved] == ["main--b.json"] and not variants.candidates(tmp_path / "main.json")
+
+
+# ------------------------------------------------------------ import diagnostics
+def test_import_diagnostics(gd, links):
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.skillpoints = [None, None, 80, None, None]
+    r = diagnose_link(to_link(b, gd), gd)
+    codes = {f["code"]: f["level"] for f in r["findings"]}
+    assert r["ok"] and codes["sp_partial"] == "warn" and "puppets" not in codes
+    b.powders[4] = [6, 6]                                  # two Earth VII on the weapon: Quake 7
+    r = diagnose_link(to_link(b, gd), gd)
+    assert any(f["code"] == "specials" and "Quake power 7" in f["message"] for f in r["findings"])
+    b.powders[4] = []
+    b.skillpoints = [10, None, None, None, None]          # below what the gear needs
+    r = diagnose_link(to_link(b, gd), gd)
+    assert not r["ok"] and any(f["code"] == "sp" and "too low" in f["message"] for f in r["findings"])
+    r = diagnose_link(to_link(b, gd), gd, Inventory(unavailable={"Stormdrain": "sold"}))
+    assert any(f["code"] == "unavailable" and "(sold)" in f["message"] for f in r["findings"])
+    r = diagnose_link("https://wynnbuilder.github.io/builder/#not-a-link", gd)
+    assert not r["ok"] and r["doc"] is None
+
+
+def test_retired_item_ids_are_flagged(gd, links):
+    current = {it["id"] for it in gd.items}
+    slot_of = {"helmet": 0, "chestplate": 1, "leggings": 2, "boots": 3, "bracelet": 6, "necklace": 7}
+    old = next(i for i, it in gd.item_by_id.items() if i not in current and it.get("type") in slot_of)
+    target = gd.name(gd.item_by_id[old])
+    slot = slot_of[gd.item_by_id[old]["type"]]
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.equipment[slot] = target
+    item = gd.item_by_name[target]
+    real = item["id"]
+    item["id"] = old                         # encode the retired id, as an old link would
+    try:
+        link = to_link(b, gd)
+    finally:
+        item["id"] = real
+    from wynntools.codec import SLOTS
+    assert decode(link, gd).remapped == [SLOTS[slot]]
+    r = diagnose_link(link, gd)
+    assert any(f["code"] == "retired_id" for f in r["findings"])
+    assert not any("round-trip" in f["message"] for f in r["findings"])
