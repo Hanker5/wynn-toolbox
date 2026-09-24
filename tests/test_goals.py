@@ -5,6 +5,7 @@ import dataclasses
 
 import pytest
 
+from wynntools import buildfile
 from wynntools.codec import Build, decode, to_link
 from wynntools.damage import check_specials, damage_report
 from wynntools.derived import metrics
@@ -262,3 +263,13 @@ def test_whirlwind_strike_follows_the_guides_steps(gd):
     non_crit = sum((lo + hi) / 2 for lo, hi in (N, E, T, W, A))
     assert got["non_crit"] == pytest.approx(non_crit, rel=1e-3)
     assert got["crit"] == pytest.approx(2 * non_crit, rel=1e-3)       # +100% on crit
+
+
+def test_survivability_and_warnings(gd, links):
+    doc = buildfile.refresh(buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd), gd)
+    sv = doc["status"]["survivability"]["typical"]
+    assert sv["lowest"]["element"] == "a" and sv["eledefs"]["a"] < 0
+    assert sv["ehp"] > sv["hp"] * 0.5 and sv["def"] == doc["status"]["sp_effective"]["def"]
+    w = {x["code"]: x for x in doc["status"]["warnings"]}
+    assert w["neg_adef"]["fix"] == {"action": "search", "floors": {"min_eledef": 0},
+                                    "why": "no negative elemental defence"}

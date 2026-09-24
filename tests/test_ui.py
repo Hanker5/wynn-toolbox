@@ -825,3 +825,18 @@ def test_tradeoffs_from_the_form(page):
     rows.first.locator("text=Save").click()
     page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=30000)
     assert not page.errors
+
+
+def test_fix_a_weakness_opens_the_search_and_saves_a_candidate(page, app):
+    open_build(page, "shaman_105_stormdrain")
+    assert "Air Defence" in page.inner_text("#ed-surv .srow.lowest")
+    page.click(".fix-btn[data-code=neg_adef]")
+    page.wait_for_selector("#solver-from")
+    assert page.get_by_role("spinbutton", name="Every elemental defence").input_value() == "0"
+    page.wait_for_selector("#solver-run:not([disabled])")
+    page.click("#solver-run")
+    page.wait_for_selector("#editor:not([hidden]) .name", timeout=300000)
+    page.wait_for_function("document.querySelector('#editor .name').value.includes('no negative elemental defence')", timeout=300000)
+    settle(page)
+    assert "-" not in page.inner_text("#ed-surv .srow.lowest .sv")           # nothing negative now
+    assert not page.errors

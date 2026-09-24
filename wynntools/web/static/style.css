@@ -394,3 +394,12 @@ table.cmp.trade th:last-child { width: 8%; }
 select.inline { width: auto; }
 button.lock.on { border-color: var(--accent); color: var(--accent); }
 select.inline { width: auto; }
+
+/* ------------------------------------------------------------------ survivability */
+.srow.lowest { background: rgba(255, 85, 85, .08); border-radius: 4px; }
+.tag-low { font-size: 10px; margin-left: 6px; padding: 0 5px; border-radius: 3px; background: var(--panel-3); color: var(--warn); }
+.sv.big { font-size: 16px; font-weight: 700; }
+.warns { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.warn-row { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 5px 7px; border-radius: 4px;
+  border-left: 3px solid var(--warn); background: rgba(255, 183, 74, .08); }
+.warn-row.bad { border-left-color: var(--bad); background: rgba(255, 85, 85, .1); }

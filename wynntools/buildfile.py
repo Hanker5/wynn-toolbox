@@ -114,6 +114,9 @@ def refresh(doc, gd, inventory=None):
               "ap": list(rep.get("ap", (0, 0))), "tree_failed": rep.get("tree_failed", []),
               "damage": damage,
               "checked": datetime.datetime.now().isoformat(timespec="seconds")}
+    from .derived import survivability, warnings
+    status["survivability"] = survivability(status)
+    status["warnings"] = warnings(status)
     return {**{k: v for k, v in doc.items() if k not in GENERATED},
             "link": link, "status": status}
 

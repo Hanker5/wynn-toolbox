@@ -440,7 +440,9 @@ async function renderEditor() {
         tomesPanel, aspectsPanel,
         h("section", { class: "panel" }, h("div", { class: "panel-h", id: "ed-tree-h" }), h("div", { id: "ed-tree" }))),
       h("aside", { class: "ed-side" },
-        h("section", { class: "panel" }, h("div", { class: "panel-h" }, h("span", {}, "Summary"), rollToggle()),
+        h("section", { class: "panel", id: "ed-surv-panel" }, h("div", { class: "panel-h" }, h("span", {}, "Survivability"), rollToggle()),
+          h("div", { id: "ed-surv", class: "summary" })),
+        h("section", { class: "panel" }, h("div", { class: "panel-h" }, h("span", {}, "Summary")),
           h("div", { id: "ed-tiles", class: "summary" })),
         h("section", { class: "panel", id: "ed-damage-panel", hidden: true },
           h("div", { class: "panel-h" }, h("span", { id: "ed-damage-h" }, "Damage")),
@@ -934,6 +936,41 @@ function renderSummary(st) {
       : "Typical rolls: every rolled stat at 100%. Switch to Perfect to match WynnBuilder."));
 }
 
+const ELEM_OF = { e: "str", t: "dex", w: "int", f: "def", a: "agi" };
+
+function renderSurvival(st) {
+  const box = $("#ed-surv"); if (!box) return;
+  const sv = (st.survivability || {})[S.roll === "perfect" ? "perfect" : "typical"];
+  if (!sv) { box.replaceChildren(h("p", { class: "hint" }, "Checking…")); return; }
+  const n = (v) => (v == null ? "—" : fmt(Math.round(v)));
+  const skill = (k, pct, what) => {
+    const e = ELEMENTS[k], v = sv[k];
+    return statRow(h("span", {}, elemTag(k), `${e.name} (final)`), fmt(v), v < 0 ? "neg" : "",
+      pct == null ? null : h("span", { class: "muted" }, `  ${pct.toFixed(1)}% ${what}`));
+  };
+  const low = sv.lowest?.element;
+  const eledef = Object.entries(sv.eledefs).map(([e, v]) => {
+    const key = ELEM_OF[e];
+    return h("div", { class: "srow" + (e === low ? " lowest" : "") },
+      h("span", { class: "sl" }, elemTag(key), `${ELEMENTS[key].el} Defence`, e === low ? h("span", { class: "tag-low" }, "lowest") : null),
+      h("span", { class: "sv " + (v < 0 ? "neg" : v > 0 ? "pos" : "") }, v > 0 ? `+${n(v)}` : n(v)));
+  });
+  const warns = (st.warnings || []).map((w) => h("div", { class: `warn-row ${w.level}` },
+    h("span", { class: "grow" }, w.message),
+    w.fix ? h("button", { class: "mini fix-btn", "data-code": w.code, title: w.fix.why ? `Search for ${w.fix.why}` : "Set skill points back to automatic",
+      onclick: () => fixBuild(w) }, w.fix.action === "auto_sp" ? "Auto skill points" : "Fix…") : null));
+  setKids(box,
+    statRow(h("span", {}, h("span", { class: "hp" }, "♥ "), "Health"), n(sv.hp)),
+    statRow("Effective HP", n(sv.ehp), "big", sv.ehp == null ? h("span", { class: "muted" }, "  (pick a weapon)") : null),
+    statRow("Effective HP (no agility)", n(sv.ehp_no_agi)),
+    statRow("Health regen", n(sv.hpr), sv.hpr != null && sv.hpr <= 0 ? "neg" : ""),
+    skill("def", sv.def_pct, "resist"), skill("agi", sv.agi_pct, "dodge"),
+    h("div", { class: "sep" }), ...eledef,
+    warns.length ? h("div", { class: "warns", id: "ed-warnings" }, warns) : null,
+    h("p", { class: "hint" }, "Elemental defences include % bonuses, as WynnBuilder shows them. " +
+      "Effective HP is WynnBuilder's: health against defence, agility and class, not elemental defences."));
+}
+
 function renderChecks(st) {
   const c = S.cur;
   const ap = st.ap || [0, 0];
@@ -1011,8 +1048,6 @@ function renderDamage(st) {
       (knobs.length ? `; ability sliders at WynnBuilder's defaults (${knobs.join(", ")})` : "") + "."),
   ].filter(Boolean));
 }
-
-const ELEM_OF = { e: "str", t: "dex", w: "int", f: "def", a: "agi" };
 
 // Powder specials, as a scenario next to WynnBuilder's default (off): a weapon
 // special at a power, and the armor specials' damage boosts.
@@ -1156,7 +1191,7 @@ function renderDerived() {
   else if (st.problems?.length) banners.append(h("div", { class: "banner bad" },
     h("div", {}, h("strong", {}, "Problems"), h("ul", {}, st.problems.map((p) => h("li", {}, p))))));
 
-  renderSP(st); renderSummary(st); renderDamage(st); renderSets(st); renderChecks(st);
+  renderSP(st); renderSurvival(st); renderSummary(st); renderDamage(st); renderSets(st); renderChecks(st);
   const filled = (d.tomes || []).filter(Boolean).length;
   const sum = $("#ed-tomes-sum"); if (sum) sum.textContent = `Tomes · ${filled}/14 filled`;
   const title = $("#ed-tree-title");

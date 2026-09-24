@@ -683,6 +683,12 @@ def cmd_current(a):
     dmg = summary(rep["build"], gd, inventory)
     if dmg:
         _print_damage(dmg.get("typical", dmg))
+    status = buildfile.refresh({k: v for k, v in doc.items()}, gd, inventory)["status"]
+    for w in status["warnings"]:
+        fix = w["fix"]
+        how = "" if not fix else " (fix: skill points back to automatic, `wt edit --auto-sp`)" \
+            if fix["action"] == "auto_sp" else f" (fix: search with {json.dumps(fix['floors'])})"
+        print(f"Warning: {w['message']}{how}")
     print(link)
     return 0 if ok else 1
 
