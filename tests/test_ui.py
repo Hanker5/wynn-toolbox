@@ -807,3 +807,21 @@ def test_specials_scenario(page):
     settle(page)
     page.wait_for_selector("#ed-powders-give:has-text('Quake power 7 (weapon)')", timeout=20000)
     assert not page.errors
+
+
+def test_tradeoffs_from_the_form(page):
+    page.click("#new-build")
+    page.get_by_role("combobox", name="Class").select_option("Shaman")
+    page.get_by_role("combobox", name="Tree preset").select_option("shaman-summoner")
+    page.get_by_role("textbox", name="Weapon (optional)").fill("Stormdrain")
+    page.get_by_role("spinbutton", name="Health", exact=True).fill("12000")
+    page.wait_for_selector("#solver-trade:not([disabled])")
+    page.select_option("select[aria-label='Damage to trade']", "puppet_dps")
+    page.click("#solver-trade")
+    page.wait_for_selector("#tradeoffs table", timeout=600000)
+    rows = page.locator("#tradeoffs tbody tr")
+    assert rows.count() >= 2
+    assert "max damage" in rows.first.inner_text() and "max survival" in rows.last.inner_text()
+    rows.first.locator("text=Save").click()
+    page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=30000)
+    assert not page.errors

@@ -1,9 +1,178 @@
-"""The damage engine against the developer guide ("How Damage Is Calculated -
-Fruma Edition") and WynnBuilder: powder specials, crits, conversions."""
+"""New floors, derived goals, acquisition constraints, explanations and
+trade-offs; and the damage engine against the developer guide. Every build a
+search returns must pass WynnBuilder's checks."""
+import dataclasses
+
 import pytest
 
-from wynntools.codec import Build, decode
+from wynntools.codec import Build, decode, to_link
 from wynntools.damage import check_specials, damage_report
+from wynntools.derived import metrics
+from wynntools.explain import explain
+from wynntools.gear_milp import GearModel, solve_gear_exact
+from wynntools.gear_solver import Spec, solve_gear
+from wynntools.inventory import Inventory
+from wynntools.rules import skill_points
+from wynntools.search import kind_for, spec_from
+from wynntools.verify import build_skillpoints, check_link, summarize
+
+STORM = Spec(cls="Shaman", level=105, objective={"hp": 1}, force={"weapon": "Stormdrain"})
+
+
+def build_of(spec, r, gd, atree=()):
+    return Build(equipment=r.equipment, level=spec.level, skillpoints=r.skillpoints,
+                 tomes=list(spec.tomes) + [None] * (14 - len(spec.tomes)), atree=set(atree))
+
+
+def verified(gd, spec, r, atree=()):
+    ok, rep = check_link(to_link(build_of(spec, r, gd, atree), gd), gd)
+    assert ok, rep["problems"]
+    return rep["summary"]
+
+
+def test_sum_floors_hold(gd):
+    spec = dataclasses.replace(STORM, floors={"hprRaw": 300, "fDef": 150, "min_eledef": 0})
+    r = solve_gear_exact(spec, gd)
+    s = verified(gd, spec, r)
+    t = s["totals"]
+    assert t["hprRaw"] >= 300 and t["fDef"] >= 150
+    assert min(t[k] for k in ("eDef", "tDef", "wDef", "fDef", "aDef")) >= 0
+
+
+def test_skill_floor_assigns_points_and_keeps_them(gd):
+    spec = dataclasses.replace(STORM, floors={"def": 90, "agi": 60, "int": 100})
+    r = solve_gear_exact(spec, gd)
+    auto = build_skillpoints(r.equipment, [None] * 14, gd)
+    assert auto.final[2] < 100 and r.skillpoints[2] == 100     # the gear alone falls short: points set by hand
+    s = verified(gd, spec, r)
+    assert s["sp_final"]["def"] >= 90 and s["sp_final"]["agi"] >= 60 and s["sp_final"]["int"] == 100
+    assert s["sp_manual"]["int"]
+    assert s["sp_total"] <= skill_points(105)
+
+
+def test_lowest_elemental_defence_goal_is_exact(gd):
+    spec = dataclasses.replace(STORM, objective={"min_eledef": 1}, floors={"hp": 15000})
+    r = solve_gear_exact(spec, gd)
+    t = verified(gd, spec, r)["totals"]
+    low = min(t[k] for k in ("eDef", "tDef", "wDef", "fDef", "aDef"))
+    assert r.score == pytest.approx(low)
+    plain = solve_gear_exact(dataclasses.replace(spec, objective={"hp": 1}), gd)
+    t2 = summarize(build_of(spec, plain, gd), gd)["totals"]
+    assert low >= min(t2[k] for k in ("eDef", "tDef", "wDef", "fDef", "aDef"))
+
+
+def test_at_most_one_group_and_exclusions(gd):
+    base = solve_gear_exact(dataclasses.replace(STORM, objective={"eSteal": 1}), gd)
+    pair = [n for n in base.equipment[:8] if n][:2]
+    spec = dataclasses.replace(STORM, objective={"eSteal": 1}, at_most_one=[pair])
+    r = solve_gear_exact(spec, gd)
+    assert sum(n in pair for n in r.equipment) <= 1
+    verified(gd, spec, r)
+    r2 = solve_gear(dataclasses.replace(spec, topn=4), gd)       # the shortlist search too
+    assert sum(n in pair for n in r2.equipment) <= 1
+
+
+def test_unavailable_items_are_left_out(gd):
+    inv = Inventory(unavailable={"Leo": "too expensive"})
+    raw = {"class": "Shaman", "level": 105, "objective": {"hp": 1}, "force": {"weapon": "Stormdrain"}}
+    spec = spec_from(raw, gd, inv)
+    assert "Leo" in spec.exclude
+    assert "Leo" not in solve_gear_exact(spec, gd).equipment
+    forced = spec_from({**raw, "force": {**raw["force"], "chestplate": "Leo"}}, gd, inv)
+    assert "Leo" not in forced.exclude                 # forcing an item wins
+
+
+def test_preferred_item_breaks_a_tie_without_changing_the_score(gd):
+    spec = dataclasses.replace(STORM, objective={"eSteal": 1})
+    r = solve_gear_exact(spec, gd)
+    model = GearModel(spec, gd)
+    # any other ring that can replace ring 2 at the same score gets preferred
+    for v in model.by_kind["ring"]:
+        it = model.var_item[v]
+        name = gd.name(it)
+        if name in r.equipment or model.stat(it, "eSteal") != model.stat(gd.item(r.equipment[5]), "eSteal"):
+            continue
+        r2 = solve_gear_exact(dataclasses.replace(spec, prefer={name: 0}), gd)
+        assert r2.score == pytest.approx(r.score)
+        break
+
+
+def test_spec_validation_names_the_choices(gd):
+    raw = {"class": "Mage", "level": 105, "objective": {"hp": 1}}
+    with pytest.raises(ValueError, match="unknown goal"):
+        spec_from({**raw, "objective": {"tankiness": 1}}, gd)
+    with pytest.raises(ValueError, match="unknown minimum 'hpregen'"):
+        spec_from({**raw, "floors": {"hpregen": 5}}, gd)
+    with pytest.raises(KeyError):
+        spec_from({**raw, "exclude": ["Not An Item"]}, gd)
+
+
+def test_search_kind(gd):
+    assert kind_for(STORM) == "exact"
+    assert kind_for(dataclasses.replace(STORM, floors={"ehp": 1})) == "shortlists"
+    assert kind_for(dataclasses.replace(STORM, objective={"ehp": 1})) == "local"
+
+
+def test_derived_floor_in_the_shortlist_search(gd):
+    spec = dataclasses.replace(STORM, objective={"eSteal": 1}, floors={"ehp": 20000}, topn=4, atree=set())
+    r = solve_gear(spec, gd)
+    assert r is not None and r.metrics["ehp"] >= 20000
+    m = metrics(build_of(spec, r, gd), gd)
+    assert m["ehp"] >= 20000
+
+
+def test_effective_hp_goal(gd):
+    from wynntools.gear_local import LocalSearch
+    spec = dataclasses.replace(STORM, objective={"ehp": 1}, floors={"hp": 15000}, atree=set())
+    ls = LocalSearch(spec, gd)
+    r = ls.run()
+    verified(gd, spec, r)
+    got = metrics(build_of(spec, r, gd), gd)["ehp"]
+    assert got == pytest.approx(r.score)
+    # at least as good as simply maximizing health
+    hp = solve_gear_exact(dataclasses.replace(spec, objective={"hp": 1}), gd)
+    assert got >= metrics(build_of(spec, hp, gd), gd)["ehp"]
+    assert all(tuple(k) in ls.legal or ls.evaluated[k] is None or k[:8] == (None,) * 8
+               for k in ls.evaluated)
+
+
+@pytest.mark.slow
+def test_puppet_goal_and_tradeoffs(gd):
+    from wynntools.presets import preset_weights
+    from wynntools.rules import ability_points
+    from wynntools.tradeoffs import tradeoffs
+    from wynntools.tree_solver import solve_tree
+    tree = set(solve_tree(gd.tree("Shaman"), preset_weights("shaman-summoner", gd), ability_points(105)))
+    spec = dataclasses.replace(STORM, objective={"puppet_dps": 1}, floors={"hp": 12000}, atree=tree)
+    out = tradeoffs(spec, gd, "puppet_dps")
+    opts = out["options"]
+    assert len(opts) >= 2 and opts[0]["label"] == "max damage" and opts[-1]["label"] == "max survival"
+    for a, b in zip(opts, opts[1:]):          # a Pareto set: less damage, more survival
+        assert a["damage"] >= b["damage"] and a["ehp"] <= b["ehp"]
+    for o in opts:
+        verified(gd, spec, o["result"], tree)
+        assert o["hp"] >= 12000
+
+
+def test_explains_a_skill_point_conflict(gd):
+    spec = Spec(cls="Shaman", level=105, objective={"hp": 1}, force={"weapon": "Sunstar"},
+                floors={"def": 120, "int": 120, "mr": 30, "hp": 15000})
+    assert solve_gear_exact(spec, gd) is None
+    ex = explain(spec, gd)
+    assert set(ex["conflict"]) == {"Sunstar in weapon", "Defence at least 120", "Intelligence at least 120"}
+    text = " ".join(ex["lines"])
+    assert "Sunstar alone needs 115" in text and "Dexterity 115" in text
+    for line in ex["lines"]:                      # "best reached" numbers are below what was asked
+        if "reach" in line or "found" in line:
+            got = int(line.split(" is ")[1].split(" ")[0].replace(",", ""))
+            assert got < 120
+
+
+def test_explains_an_impossible_floor(gd):
+    spec = Spec(cls="Mage", level=105, objective={"poison": 1}, floors={"hp": 60000})
+    ex = explain(spec, gd)
+    assert ex["conflict"] == ["Health at least 60,000"]
+    assert "the most any legal build reaches is" in ex["lines"][0]
 
 
 def test_powder_specials_follow_wynnbuilder(gd, links):

@@ -348,7 +348,7 @@ async function loadList() {
 }
 
 // ------------------------------------------------------------------ build editor
-const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects", "skillpoints"];
+const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects", "skillpoints", "locked"];
 const editable = (doc) => Object.fromEntries(EDITABLE.filter((k) => k in doc).map((k) => [k, doc[k]]));
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -428,6 +428,8 @@ async function renderEditor() {
       h("span", { id: "ed-badge" }),
       h("button", { id: "ed-delete", class: "danger", title: "Delete this build (it goes to builds/.trash)",
         onclick: deleteBuild }, "Delete"),
+      h("button", { id: "ed-improve", title: "Search for a better build from this one (results become candidates)",
+        onclick: () => (c.dirty ? toast("Save (or revert) your changes first") : openSolverFor(c)) }, "Improve…"),
       h("button", { id: "ed-revert", onclick: () => openBuild(c.file) }, "Revert"),
       h("button", { id: "ed-save", class: "primary", onclick: save }, "Save")),
     h("div", { id: "ed-banners" }),
@@ -486,6 +488,14 @@ function slotView(slot) {
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
     onclick: () => openCraft(slot, i, craftBox, refresh) }, "Craft…");
   const ownBtn = ownButton(() => cur());
+  const locked = () => (S.cur.doc.locked || []).includes(slot);
+  const lockBtn = h("button", { class: "mini lock", title: "Locked items stay when you search from this build (Improve, Fix)" });
+  const drawLock = () => { lockBtn.textContent = locked() ? "🔒 Locked" : "Lock"; lockBtn.classList.toggle("on", locked()); lockBtn.setAttribute("aria-pressed", String(locked())); };
+  lockBtn.onclick = () => {
+    edit((x) => { const l = new Set(x.locked || []); l.has(slot) ? l.delete(slot) : l.add(slot); x.locked = [...l]; }, false);
+    drawLock();
+  };
+  drawLock();
   const ac = autocomplete(input,
     // Weapons are not class-filtered so picking one can switch the class.
     (q) => api("GET", `/api/items?slot=${slot}&level=${S.cur.doc.level}` +
@@ -505,7 +515,7 @@ function slotView(slot) {
   return h("div", { class: "slot" }, icon,
     h("div", { class: "eq-body" },
       h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)),
-        h("span", { class: "row tight" }, ownBtn, craftBtn)),
+        h("span", { class: "row tight" }, lockBtn, ownBtn, craftBtn)),
       ac, meta, powderBox, craftBox));
 }
 
@@ -1194,68 +1204,187 @@ async function copyLink() {
 }
 
 // ------------------------------------------------------------------ solver
-function renderSolver() {
+// Minimums, grouped as the form shows them. Keys are the spec's "floors" (AGENTS.md).
+const FLOOR_GROUPS = [
+  ["Survival", [["hp", "Health", "e.g. 17000"], ["ehp", "Effective HP", "e.g. 40000"],
+    ["hprRaw", "HP regen (raw)", "e.g. 200"], ["hpr", "HP regen (with %)", "e.g. 300"],
+    ["min_eledef", "Every elemental defence", "e.g. 0"],
+    ["eDef", "Earth defence", ""], ["tDef", "Thunder defence", ""], ["wDef", "Water defence", ""],
+    ["fDef", "Fire defence", ""], ["aDef", "Air defence", ""]]],
+  ["Skill points (final, after gear)", SKILLS.map((s) => [s, ELEMENTS[s].name, ""])],
+  ["Mana and movement", [["mr", "Mana regen", "e.g. 20"], ["mana", "Max mana", "e.g. 113"], ["spd", "Walk speed %", "e.g. 0"]]],
+  ["Damage", [["weapon_dps", "Weapon DPS (listed)", "e.g. 700"], ["melee_dps", "Main-attack DPS", ""],
+    ["puppet_dps", "Puppet DPS", ""], ["summon_dps", "Total summon DPS", ""]]],
+];
+const DERIVED_FLOORS = ["ehp", "hpr", "melee_dps", "puppet_dps", "summon_dps"];
+
+/** Open the solver for an open build: its class, level, spec and tree, the weapon and
+ * locked items kept, results saved as candidates. `fix`: a Survivability warning's fix. */
+async function openSolverFor(c, fix = null) {
+  const d = c.doc, spec = d.spec || {};
+  const keep = { weapon: d.equipment[8] };
+  for (const slot of d.locked || []) { const n = d.equipment[S.meta.slots.indexOf(slot)]; if (n) keep[slot] = n; }
+  const objective = Object.keys(spec.objective || {}).length ? spec.objective : { ehp: 1 };
+  renderSolver({ from: c.file, name: `${d.name || c.file}: ${fix?.why || "improved"}`,
+    cls: weaponClass(d.equipment[8]), level: d.level, objective,
+    floors: { ...(spec.floors || {}), ...(fix?.floors || {}) }, force: { ...(spec.force || {}), ...keep },
+    locked: Object.keys(keep), tree: d.tree || [], tomes: d.tomes, exclude: spec.exclude || [],
+    exclude_tiers: spec.exclude_tiers || [], require_major: spec.require_major || [],
+    at_most_one: spec.at_most_one || [], prefer: spec.prefer || {}, why: fix?.why,
+    defaultGoal: !Object.keys(spec.objective || {}).length });
+  show("solver");
+}
+
+async function fixBuild(w) {
+  if (w.fix.action === "auto_sp") {
+    edit((x) => { x.skillpoints = null; });
+    toast("Skill points set back to automatic. Save to keep it.");
+    return;
+  }
+  if (S.cur.dirty) { toast("Save (or revert) your changes first: the search starts from the saved build."); return; }
+  await openSolverFor(S.cur, w.fix);
+}
+
+/** A chip list of item names with an item search box, e.g. items to leave out. */
+function itemChips(label, names, onChange) {
+  const box = h("div", { class: "chips" });
+  const draw = () => box.replaceChildren(...[...names].map((n) =>
+    h("span", { class: "chip on", title: "remove", onclick: () => { names.delete(n); draw(); onChange?.(); } }, `${n} ✕`)));
+  const input = h("input", { placeholder: "Search an item…", "aria-label": label });
+  const ac = autocomplete(input, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
+    (o) => { names.add(o.name); input.value = ""; draw(); onChange?.(); });
+  draw();
+  return h("div", {}, ac, box);
+}
+
+function renderSolver(pre = {}) {
   const m = S.meta, f = {};
-  const field = (label, el) => h("label", {}, label, el);
-  const num = (name, ph) => (f[name] = h("input", { type: "number", placeholder: ph }));
-  f.name = h("input", { placeholder: "e.g. Stealing Summoner" });
+  const field = (label, el, title) => h("label", { title }, label, el);
+  const num = (name, ph) => (f[name] = h("input", { type: "number", placeholder: ph || "" }));
+  f.name = h("input", { placeholder: "e.g. Stealing Summoner", value: pre.name || "" });
   f.cls = h("select", {}, m.classes.map((c) => h("option", { value: c }, c)));
-  f.level = h("input", { type: "number", value: 105, min: 1, max: 121 });
-  f.goal = h("select", {}, m.stats.map((s) => h("option", { value: s }, idLabel(s)[0])));
+  if (pre.cls) f.cls.value = pre.cls;
+  f.level = h("input", { type: "number", value: pre.level || 105, min: 1, max: 121 });
+  f.goal = h("select", { "aria-label": "Maximize" });
   f.tie = h("select", {}, h("option", { value: "" }, "none"), m.stats.map((s) => h("option", { value: s }, idLabel(s)[0])));
-  f.weapon = h("input", { placeholder: "any" });
-  f.mythic = h("input", { type: "checkbox" });
+  f.weapon = h("input", { placeholder: "any", value: pre.force?.weapon || "" });
+  f.mythic = h("input", { type: "checkbox", checked: (pre.exclude_tiers || []).includes("Mythic") });
   f.crafted = h("input", { type: "checkbox" });
   f.owned = h("input", { type: "checkbox" });
   f.exact = h("input", { type: "checkbox", checked: true });
   f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
+  if (pre.from) f.tomesFrom.value = pre.from;
   f.preset = h("select", { "aria-label": "Tree preset" });
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
-  const majors = new Set();
+  f.asCandidate = h("input", { type: "checkbox", checked: !!pre.from });
+  const majors = new Set(pre.require_major || []);
+  const exclude = new Set(pre.exclude || []);
+  const prefer = new Set(Object.keys(pre.prefer || {}));
+  const groups = (pre.at_most_one || []).map((g) => [...g]);
+  const kept = { ...(pre.force || {}) }; delete kept.weapon;
   const majorChips = h("div", { class: "chips" });
   const drawMajors = () => majorChips.replaceChildren(...[...majors].map((k) =>
     h("span", { class: "chip on", title: "remove", onclick: () => { majors.delete(k); drawMajors(); } }, `${k} ✕`)));
   const majorIn = h("select", {}, h("option", { value: "" }, "Add a required major ID…"),
     m.majors.map(([k, name]) => h("option", { value: k }, name)));
   majorIn.onchange = () => { if (majorIn.value) majors.add(majorIn.value); majorIn.value = ""; drawMajors(); };
+  drawMajors();
+
+  // "At most one of these": build a group, then add it.
+  const draft = new Set();
+  const groupBox = h("div");
+  const drawGroups = () => groupBox.replaceChildren(...groups.map((g, i) => h("div", { class: "chips" },
+    h("span", { class: "muted" }, "at most one of:"), ...g.map((n) => h("span", { class: "chip" }, n)),
+    h("button", { class: "mini", onclick: () => { groups.splice(i, 1); drawGroups(); } }, "remove"))));
+  const draftChips = itemChips("Add to an 'at most one' group", draft);
+  const addGroup = h("button", { class: "mini", onclick: () => {
+    if (draft.size < 2) { toast("Pick at least two items for a group"); return; }
+    groups.push([...draft]); draft.clear(); draftChips.querySelector(".chips").replaceChildren(); drawGroups();
+  } }, "Add group");
+  drawGroups();
+
   const syncPresets = () => {
-    f.preset.replaceChildren(h("option", { value: "" }, "none (gear only)"),
+    const own = pre.tree?.length && pre.cls === f.cls.value;
+    f.preset.replaceChildren(h("option", { value: "" }, own ? "this build's own tree" : "none (gear only)"),
       ...m.presets.filter((p) => p.class === f.cls.value).map((p) => h("option", { value: p.name, title: p.about }, p.name)));
   };
   f.dmgSpell = h("select", { "aria-label": "Spell for the damage minimum" });
+  let spells = [];
+  const syncGoals = () => {
+    const keep = f.goal.value || Object.keys(pre.objective || {})[0] || "eSteal";
+    const shaman = f.cls.value === "Shaman";
+    const derived = m.derived.filter((g) => shaman || !["puppet_dps", "summon_dps"].includes(g.key));
+    setKids(f.goal,
+      h("optgroup", { label: "Item stats" }, m.stats.map((s) => h("option", { value: s }, idLabel(s)[0]))),
+      h("optgroup", { label: "Worked out by WynnBuilder's model" }, derived.map((g) =>
+        h("option", { value: g.key }, g.label + (g.damage ? " (needs a tree)" : "")))),
+      spells.length ? h("optgroup", { label: "Spell damage (needs a tree)" }, spells.filter((sp) => !sp.melee).map((sp) =>
+        h("option", { value: `damage:${sp.name}` }, sp.name))) : null);
+    f.goal.value = [...f.goal.options].some((o) => o.value === keep) ? keep : "eSteal";
+    f.tdamage.replaceChildren(...[["melee_dps", "Main-attack DPS"], ...(shaman ? [["puppet_dps", "Puppet DPS"], ["summon_dps", "Total summon DPS"]] : []),
+      ...spells.filter((sp) => !sp.melee).map((sp) => [`damage:${sp.name}`, sp.name])].map(([k, l]) => h("option", { value: k }, l)));
+    for (const k of ["puppet_dps", "summon_dps"]) if (f[k]) f[k].closest("label").hidden = !shaman;
+  };
   const syncSpells = async () => {
     const keep = f.dmgSpell.value;
-    if (!f.preset.value) {
-      f.dmgSpell.replaceChildren(h("option", { value: "" }, "pick a tree preset first"));
-      f.dmgSpell.disabled = true; return;
-    }
-    const spells = await api("GET", `/api/spells?cls=${f.cls.value}&preset=${encodeURIComponent(f.preset.value)}&level=${+f.level.value || 105}`);
-    f.dmgSpell.replaceChildren(h("option", { value: "" }, "none"),
+    const preset = f.preset.value || m.presets.find((p) => p.class === f.cls.value)?.name;
+    spells = f.preset.value || pre.tree?.length
+      ? await api("GET", `/api/spells?cls=${f.cls.value}&preset=${encodeURIComponent(preset || "")}&level=${+f.level.value || 105}`) : [];
+    f.dmgSpell.replaceChildren(h("option", { value: "" }, spells.length ? "none" : "pick a tree preset first"),
       ...spells.map((sp) => h("option", { value: sp.name }, sp.melee ? `${sp.name} (DPS)` : sp.name)));
-    f.dmgSpell.disabled = false;
+    f.dmgSpell.disabled = !spells.length;
     if (spells.some((sp) => sp.name === keep)) f.dmgSpell.value = keep;
+    syncGoals();
   };
+  f.tdamage = h("select", { "aria-label": "Damage to trade", class: "inline" });
+  f.ttank = h("select", { "aria-label": "Survival to trade", class: "inline" }, h("option", { value: "ehp" }, "Effective HP"),
+    h("option", { value: "ehp_no_agi" }, "Effective HP (no agility)"));
   f.cls.onchange = () => { syncPresets(); syncSpells(); }; syncPresets();
-  f.preset.onchange = syncSpells; f.level.addEventListener("change", syncSpells); syncSpells();
+  f.preset.onchange = syncSpells; f.level.addEventListener("change", syncSpells);
   const weaponAc = autocomplete(f.weapon, (q) => api("GET", `/api/items?slot=weapon&cls=${f.cls.value}&level=${f.level.value}&q=${encodeURIComponent(q)}`), () => {});
 
-  const bar = h("i"), status = h("div", { class: "hint" }), cancelBtn = h("button", { class: "danger", hidden: true }, "Cancel");
-  const runBtn = h("button", { class: "primary" }, "Find the best build");
+  const floorCards = FLOOR_GROUPS.map(([title, rows]) => h("div", { class: "floor-group" },
+    h("div", { class: "fg-h" }, title),
+    h("div", { class: "form" }, rows.map(([k, label, ph]) =>
+      field(label, num(k, ph), DERIVED_FLOORS.includes(k) ? "Worked out by WynnBuilder's model: uses the shortlist search" : null)))));
+  for (const [k, v] of Object.entries(pre.floors || {})) if (f[k] && typeof v === "number") f[k].value = v;
+  const firstDamage = Object.entries(pre.floors?.damage || {})[0];
+
+  const bar = h("i"), status = h("div", { class: "hint", id: "solver-status" }), cancelBtn = h("button", { class: "danger", hidden: true }, "Cancel");
+  const runBtn = h("button", { class: "primary", id: "solver-run" }, "Find the best build");
+  const tradeBtn = h("button", { id: "solver-trade", title: "A few legal builds from max damage to max survival, side by side" }, "Show trade-offs");
+  const upBtn = h("button", { title: "Rank items you don't own by how much each would improve your best owned-only build" },
+    "What should I get next?");
+  const resultBox = h("div", { id: "solver-result" });
+
   async function readForm() {
     const floors = {};
-    for (const k of ["hp", "mr", "spd", "mana", "weapon_dps"]) if (f[k].value !== "") floors[k] = +f[k].value;
+    for (const [, rows] of FLOOR_GROUPS) for (const [k] of rows) if (f[k].value !== "") floors[k] = +f[k].value;
     if (f.dmgSpell.value && f.dmg_min.value !== "") floors.damage = { [f.dmgSpell.value]: +f.dmg_min.value };
     const objective = { [f.goal.value]: 1 };
     if (f.tie.value && f.tie.value !== f.goal.value) objective[f.tie.value] = 0.01;
     let tomes = [];
     if (f.tomesFrom.value) tomes = (await api("GET", `/api/builds/${encodeURIComponent(f.tomesFrom.value)}`)).tomes || [];
+    const force = { ...kept };
+    if (f.weapon.value) force.weapon = f.weapon.value;
     return { class: f.cls.value, level: +f.level.value, objective, floors,
-      require_major: [...majors], force: f.weapon.value ? { weapon: f.weapon.value } : {},
+      require_major: [...majors], force, exclude: [...exclude], at_most_one: groups,
+      prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
       exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
   }
-  function follow(job, onDone) {
-    runBtn.disabled = upBtn.disabled = true; cancelBtn.hidden = false;
+  const treeArgs = () => ({ tree_preset: f.preset.value || null,
+    tree: !f.preset.value && pre.tree?.length && pre.cls === f.cls.value ? pre.tree : null });
+  const parentFile = () => (f.asCandidate.checked && pre.from ? pre.from : null);
+  const fileFor = (name) => {
+    const short = pre.name && name.startsWith(pre.name.split(": ")[0] + ": ") ? name.slice(name.indexOf(": ") + 2) : name;
+    const stem = parentFile() ? `${parentFile().replace(/\.json$/, "")}--${slug(short)}` : slug(name);
+    let file = `${stem}.json`, n = 2;
+    while (S.builds.some((b) => b.file === file)) file = `${stem}-${n++}.json`;
+    return file;
+  };
+  function follow(job, onDone, onFail) {
+    runBtn.disabled = upBtn.disabled = tradeBtn.disabled = true; cancelBtn.hidden = false;
     S.job = job;                // the app window's close button warns while it runs
     cancelBtn.onclick = () => api("POST", `/api/jobs/${job}/cancel`);
     const es = new EventSource(`/api/jobs/${job}/events`);
@@ -1263,39 +1392,101 @@ function renderSolver() {
       const j = JSON.parse(ev.data), p = j.progress;
       if (p) {
         const mm = Math.floor(p.elapsed / 60), ss = String(Math.floor(p.elapsed % 60)).padStart(2, "0");
-        if (p.exact) {       // the exact search has rounds, not a known fraction
+        const time = p.elapsed ? ` · ${mm}:${ss}` : "";
+        if (p.fraction == null) {       // rounds or builds checked, not a known fraction
           bar.parentElement.classList.add("busy");
-          status.textContent = `Exact search · round ${p.nodes} · best possible ${p.best}` + (p.elapsed ? ` · ${mm}:${ss}` : "");
+          status.textContent = (p.text || (p.exact ? `Exact search · round ${p.nodes} · best possible ${p.best}` : "Searching…")) + time;
         } else {
+          bar.parentElement.classList.remove("busy");
           bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
-          status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}` +
-            (p.elapsed ? ` · ${mm}:${ss}` : "");
+          status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${p.text || `${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}`}${time}`;
         }
       }
       if (j.state !== "running") {
-        es.close(); runBtn.disabled = upBtn.disabled = false; cancelBtn.hidden = true;
+        es.close(); runBtn.disabled = upBtn.disabled = tradeBtn.disabled = false; cancelBtn.hidden = true;
         S.job = null;
         bar.parentElement.classList.remove("busy");
-        if (j.state === "done") { bar.style.width = "100%"; await onDone(j); }
-        else status.textContent = j.state === "cancelled" ? "Cancelled." : `Failed: ${j.error}`;
+        if (j.state === "done") { bar.style.width = "100%"; status.textContent = j.note ? `Done: ${j.note}.` : "Done."; await onDone(j); }
+        else if (j.state === "cancelled") status.textContent = "Cancelled.";
+        else { status.textContent = ""; (onFail || showFailure)(j); }
       }
     };
   }
+  function showFailure(j) {
+    const ex = j.explanation;
+    setKids(resultBox, h("div", { class: "card explain", id: "solver-explain" },
+      h("h3", {}, "Why no build fits"),
+      h("p", { class: "neg" }, ex?.summary || j.error || "No build satisfies these constraints."),
+      ex?.lines?.length ? h("ul", {}, ex.lines.map((l) => h("li", {}, l))) : null,
+      ex?.conflict?.length > 1 ? h("p", { class: "hint" }, "Loosen any one of these and try again.") : null,
+      ex?.unsure ? h("p", { class: "hint" }, "Some checks ran out of time.") : null));
+  }
   runBtn.onclick = async () => {
     const spec = await readForm();
-    const name = f.name.value.trim() || `${f.cls.value} ${idLabel(f.goal.value)[0]}`;
-    let file = slug(name) + ".json", n = 2;
-    while (S.builds.some((b) => b.file === file)) file = `${slug(name)}-${n++}.json`;
+    const name = f.name.value.trim() || `${f.cls.value} ${f.goal.selectedOptions[0]?.textContent || "build"}`;
+    const file = fileFor(name);
     try {
-      const { job } = await api("POST", "/api/solve", { spec, file, name, tree_preset: f.preset.value || null,
-        owned_only: f.owned.checked, exact: f.exact.checked });
-      upgradesBox.replaceChildren();
-      follow(job, async (j) => { toast("Build found"); await loadList(); openBuild(j.file); });
+      const { job, search } = await api("POST", "/api/solve", { spec, file, name, ...treeArgs(),
+        owned_only: f.owned.checked, exact: f.exact.checked, parent: parentFile() });
+      resultBox.replaceChildren();
+      status.textContent = search === "local" ? "Local search: this takes a minute or more…" : "Searching…";
+      follow(job, async (j) => { toast(parentFile() ? "Candidate saved" : "Build found"); await loadList(); openBuild(j.file); });
     } catch (e) { status.textContent = e.message; }
   };
+  tradeBtn.onclick = async () => {
+    const spec = await readForm();
+    try {
+      const { job } = await api("POST", "/api/tradeoffs", { spec, damage: f.tdamage.value, tank: f.ttank.value,
+        ...treeArgs(), owned_only: f.owned.checked });
+      resultBox.replaceChildren(h("div", { class: "hint" }, "Searching from all-out damage to all-out survival (a few minutes)…"));
+      follow(job, async (j) => renderTradeoffs(j.result, spec));
+    } catch (e) { status.textContent = e.message; }
+  };
+  function renderTradeoffs(r, spec) {
+    if (!r.options.length) { resultBox.replaceChildren(h("p", { class: "neg" }, "No legal build found for these goals.")); return; }
+    const shaman = f.cls.value === "Shaman";
+    const dmgLabel = f.tdamage.selectedOptions[0]?.textContent || r.damage;
+    const baseName = f.name.value.trim() || `${f.cls.value} trade-off`;
+    const save = async (o, parent) => {
+      const name = `${baseName}: ${o.label}`;
+      const stem = parent ? `${parent.replace(/\.json$/, "")}--${slug(o.label)}` : slug(name);
+      let file = `${stem}.json`, n = 2;
+      while (S.builds.some((b) => b.file === file)) file = `${stem}-${n++}.json`;
+      const out = await api("POST", "/api/candidates", { file, name, spec: { ...spec, objective: { [r.damage]: 1 } },
+        equipment: o.equipment, skillpoints: o.skillpoints, ...treeArgs(), parent });
+      await loadList();
+      return out.file;
+    };
+    const rows = r.options.map((o) => h("tr", {},
+      h("td", {}, h("strong", {}, o.label)),
+      h("td", {}, fmt(Math.round(o.damage))), h("td", {}, fmt(Math.round(o.ehp))), h("td", {}, fmt(Math.round(o.hp))),
+      h("td", { class: o.hpr <= 0 ? "neg" : "" }, fmt(Math.round(o.hpr))),
+      h("td", { title: o.skillpoints ? "Some skill points set by hand" : "Automatic" }, `${o.sp_total}${o.skillpoints ? " *" : ""}`),
+      shaman ? h("td", {}, fmt(Math.round(o.puppet_dps))) : null,
+      h("td", {}, h("button", { class: "mini", onclick: async (e) => {
+        e.target.disabled = true;
+        try { const file = await save(o, parentFile()); toast(`Saved ${file}`); openBuild(file); } catch (err) { toast(err.message); e.target.disabled = false; }
+      } }, "Save"))));
+    const saveAll = h("button", { onclick: async () => {
+      saveAll.disabled = true;
+      try {
+        let parent = parentFile();
+        const opts = [...r.options];
+        if (!parent) parent = await save(opts.splice(Math.min(1, opts.length - 1), 1)[0], null);  // balanced is the parent
+        for (const o of opts) await save(o, parent);
+        toast("Saved as candidates"); openBuild(parent);
+      } catch (err) { toast(err.message); saveAll.disabled = false; }
+    } }, parentFile() ? "Save all as candidates" : "Save all (balanced as the build, the rest as its candidates)");
+    setKids(resultBox, h("div", { class: "card", id: "tradeoffs" }, h("h3", {}, "Trade-offs"),
+      h("table", { class: "cmp trade" },
+        h("thead", {}, h("tr", {}, h("th", {}, ""), h("th", {}, dmgLabel), h("th", {}, "Effective HP"), h("th", {}, "Health"),
+          h("th", {}, "Health regen"), h("th", {}, "Skill points"), shaman ? h("th", {}, "Puppet DPS") : null, h("th", {}, ""))),
+        h("tbody", {}, rows)),
+      h("div", { class: "row" }, saveAll),
+      h("p", { class: "hint" }, `Every row is a legal build (${r.checked} checked); none beats another on both damage and effective HP. ` +
+        "Typical rolls; * = some skill points set by hand to reach these numbers. Found by local search: good builds, not proven the best.")));
+  }
   const upgradesBox = h("div", { id: "upgrades" });
-  const upBtn = h("button", { title: "Rank items you don't own by how much each would improve your best owned-only build" },
-    "What should I get next?");
   upBtn.onclick = async () => {
     const spec = await readForm();
     try {
@@ -1322,36 +1513,61 @@ function renderSolver() {
             return row;
           })) : h("p", { class: "muted" }, "No single item you don't own improves on that."),
           h("p", { class: "hint" }, "Each item is tried alone, added to everything you own; gains don't add up across items."));
-      });
+      }, (j) => { upgradesBox.replaceChildren(h("p", { class: "neg" }, j.error || "Failed")); });
     } catch (e) { upgradesBox.replaceChildren(h("p", { class: "neg" }, e.message)); }
   };
 
-  $("#solver").replaceChildren(
-    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "New build from goals")),
+  const keptList = Object.entries(kept);
+  setKids($("#solver"),
+    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, pre.from ? "Search from this build" : "New build from goals")),
+    pre.from ? h("div", { class: "banner warn", id: "solver-from" },
+      h("span", { class: "grow" }, `Starting from ${pre.from}` + (pre.why ? `, to get ${pre.why}` : "") +
+        `. Kept: ${[pre.force?.weapon && `weapon (${pre.force.weapon})`, ...keptList.map(([s, n]) => `${s} (${n})`)].filter(Boolean).join(", ") || "nothing"}.` +
+        (pre.defaultGoal ? " This build has no saved goal, so the search maximizes effective HP: change Maximize below if you want something else." : "")),
+      h("label", { class: "check" }, f.asCandidate, " Save results as candidates of this build")) : null,
     h("div", { class: "card" }, h("h3", {}, "Who and what"),
       h("div", { class: "form" }, field("Name", f.name), field("Class", f.cls), field("Level", f.level),
-        field("Maximize", f.goal), field("Tiebreaker (tiny weight)", f.tie), field("Tree preset", f.preset))),
+        field("Maximize", f.goal), field("Tiebreaker (tiny weight)", f.tie), field("Tree", f.preset)),
+      h("p", { class: "hint" }, "Goals worked out by WynnBuilder's model (effective HP, DPS, …) use a local search: good builds, not proven the best. " +
+        "Spare skill points then go where they help the goal, set by hand in the build.")),
     h("div", { class: "card" }, h("h3", {}, "Minimums (leave blank for none)"),
-      h("div", { class: "form" }, field("Health", num("hp", "e.g. 17000")), field("Mana regen", num("mr", "e.g. 20")),
-        field("Walk speed %", num("spd", "e.g. 0")), field("Max mana", num("mana", "e.g. 113")),
-        field("Weapon DPS", num("weapon_dps", "e.g. 700")),
-        field("Spell", f.dmgSpell), field("Spell damage at least", num("dmg_min", "e.g. 15000"))),
-      h("p", { class: "hint" }, "Health and mana include base stats and the tomes below. Max mana assumes spare skill points go into Intelligence. " +
-        "Spell damage is the spell's headline number as WynnBuilder shows it (melee: average DPS), with the preset's tree and no powders.")),
-    h("div", { class: "card" }, h("h3", {}, "Requirements"),
+      ...floorCards,
+      h("div", { class: "form", style: "margin-top:8px" }, field("Spell", f.dmgSpell), field("Spell damage at least", num("dmg_min", "e.g. 15000"))),
+      h("p", { class: "hint" }, "Health, regen and defences count gear, tomes and set bonuses (raw elemental defences, as the Summary shows). " +
+        "Skill-point minimums are met with spare points if the gear falls short; the build keeps them set by hand. Max mana assumes spare points go into Intelligence. " +
+        "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search.")),
+    h("div", { class: "card" }, h("h3", {}, "Items"),
       h("div", { class: "form" }, field("Required major IDs", majorIn), field("Weapon (optional)", weaponAc),
         field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),
         h("label", { class: "check" }, f.mythic, "No mythics"),
         h("label", { class: "check" }, f.crafted, "Include crafted items"),
         h("label", { class: "check" }, f.owned, "Only items I own"),
-        h("label", { class: "check", title: "Finds the best build over every usable item. With a spell damage minimum the shortlist search is used instead." },
+        h("label", { class: "check", title: "Finds the best build over every usable item. With a damage-model minimum the shortlist search is used instead." },
           f.exact, "Exact search (every item)")),
-      majorChips),
+      majorChips,
+      h("div", { class: "form", style: "margin-top:10px" },
+        field("Leave out (unavailable, too expensive…)", itemChips("Leave out", exclude)),
+        field("Prefer when it costs nothing", itemChips("Prefer", prefer)),
+        field("At most one of", h("div", {}, draftChips, addGroup, groupBox))),
+      h("p", { class: "hint" }, `Items on your Inventory page's unavailable list are always left out${Object.keys(S.inv.unavailable || {}).length ? ` (${Object.keys(S.inv.unavailable).length} now)` : ""}.`)),
     h("div", { class: "card" }, h("h3", {}, "Run"), h("div", { class: "progress" }, bar), status,
       h("div", { class: "row", style: "margin-top:10px" }, runBtn, upBtn, cancelBtn),
+      h("div", { class: "row", style: "margin-top:10px" }, tradeBtn, h("span", { class: "muted" }, "trade"), f.tdamage,
+        h("span", { class: "muted" }, "against"), f.ttank),
       h("p", { class: "hint" }, "Stats are 100% rolls (or your real rolls for items you own). The exact search finds the best build over every usable item. " +
-        "With a spell damage minimum (or Exact search unticked) it searches per-slot shortlists instead; raise the shortlist size to double-check those."),
-      upgradesBox));
+        "With a damage-model minimum (or Exact search unticked) it searches per-slot shortlists instead; raise the shortlist size to double-check those."),
+      resultBox, upgradesBox));
+  runBtn.disabled = tradeBtn.disabled = upBtn.disabled = true;      // until the goal list is in
+  syncSpells().finally(() => { if (!S.job) runBtn.disabled = tradeBtn.disabled = upBtn.disabled = false; }).then(() => {
+    if (pre.objective) {
+      const [goal, ...rest] = Object.keys(pre.objective);
+      if ([...f.goal.options].some((o) => o.value === goal)) f.goal.value = goal;
+      if (rest[0] && [...f.tie.options].some((o) => o.value === rest[0])) f.tie.value = rest[0];
+    }
+    if (firstDamage && [...f.dmgSpell.options].some((o) => o.value === firstDamage[0])) {
+      f.dmgSpell.value = firstDamage[0]; f.dmg_min.value = firstDamage[1];
+    }
+  });
 }
 
 // ------------------------------------------------------------------ compare

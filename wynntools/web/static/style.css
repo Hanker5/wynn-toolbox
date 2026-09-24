@@ -384,3 +384,13 @@ details.specials .row { margin-top: 6px; }
 .boosts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; margin-top: 6px; }
 label.boost { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
 .sv.special { color: var(--warn); }
+
+/* ------------------------------------------------------------------ solver groups, trade-offs */
+.floor-group { margin-bottom: 10px; }
+.fg-h { font-size: 12px; font-weight: 700; color: var(--text); margin: 4px 0 6px; }
+.card.explain ul { margin: 6px 0 0; padding-left: 18px; }
+table.cmp.trade th:first-child { width: 14%; }
+table.cmp.trade th:last-child { width: 8%; }
+select.inline { width: auto; }
+button.lock.on { border-color: var(--accent); color: var(--accent); }
+select.inline { width: auto; }

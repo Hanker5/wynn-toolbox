@@ -17,9 +17,16 @@ class ProgressBar:
         self.last_decile = -1
 
     def __call__(self, p):
+        m, s = divmod(int(p["elapsed"]), 60)
+        if p.get("fraction") is None:          # a search that can't tell how far along it is
+            text = p.get("text") or f"{p['nodes']:,} checked"
+            client.report(None, text)
+            if self.tty:
+                self.stream.write(f"\r{self.label}: {text}  {m}:{s:02d}\033[K")
+                self.stream.flush()
+            return
         pct = p["fraction"] * 100
         best = "—" if p["best"] is None else f"{p['best']:g}"
-        m, s = divmod(int(p["elapsed"]), 60)
         info = f"{pct:5.1f}%  {p['nodes']:,} checked  best {best}  {m}:{s:02d}"
         client.report(p["fraction"], f"{p['nodes']:,} checked · best {best}")
         if self.tty:

@@ -8,7 +8,7 @@ from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link
 from .data import LATEST, VERSIONS, GameData, fetch
 from . import buildfile
 from . import inventory as inv_mod
-from .gear_solver import Spec, solve_gear, upgrades
+from .gear_solver import upgrades
 from .progress import ProgressBar
 from .presets import PRESETS, preset_weights, summoner_hits_per_sec
 from .rules import ability_points
@@ -238,26 +238,38 @@ def _build_from(spec, equipment, tree_preset, gd):
     return b
 
 
-def _damage_tree(spec, preset, gd):
-    """Damage floors are checked on a fixed tree: the preset's, solved up front."""
-    if not spec.floors.get("damage"):
+def _search_tree(spec, preset, gd, doc=None):
+    """The tree the damage model uses while searching: the preset's, or (re-searching
+    a build) the build's own. Only damage goals and minimums insist on one."""
+    from .search import needs_tree, uses_tree
+    if not uses_tree(spec):
         return
-    if not preset:
-        raise SystemExit("damage floors need a tree: add --tree PRESET")
-    if PRESETS[preset]["class"] != spec.cls:
-        raise SystemExit(f"preset {preset} is for {PRESETS[preset]['class']}")
-    spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
-                                ability_points(spec.level)))
+    if preset:
+        if PRESETS[preset]["class"] != spec.cls:
+            raise SystemExit(f"preset {preset} is for {PRESETS[preset]['class']}")
+        spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
+                                    ability_points(spec.level)))
+        return
+    weapon = (doc or {}).get("equipment", [None] * 9)[8]
+    if doc and doc.get("tree") and weapon and gd.weapon_class(weapon) == spec.cls:
+        tree = gd.tree(spec.cls)
+        ids = {n["display_name"]: n["id"] for n in tree}
+        root = next(n["id"] for n in tree if not n["parents"])
+        spec.atree = {root} | {ids[x] for x in doc["tree"] if x in ids}
+        print("(damage numbers use the build's own ability tree)")
+        return
+    if needs_tree(spec):
+        raise SystemExit("damage goals and minimums need a tree: add --tree PRESET")
+    spec.atree = set()
+    print("(no tree given: effective HP and regen leave out ability-tree bonuses)")
 
 
-def _spec_from(raw, gd):
-    return Spec(cls=raw["class"], level=raw["level"], objective=raw["objective"],
-                floors=raw.get("floors", {}), require_major=raw.get("require_major", []),
-                force=raw.get("force", {}), exclude=set(raw.get("exclude", [])),
-                exclude_tiers=set(raw.get("exclude_tiers", [])),
-                tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes", [])],
-                topn=raw.get("topn", 8), crafted=bool(raw.get("crafted")),
-                roll=raw.get("roll", "base"))
+def _spec_from(raw, gd, inventory=None):
+    from .search import spec_from
+    try:
+        return spec_from(raw, gd, inventory)
+    except (KeyError, ValueError) as e:
+        raise SystemExit(f"bad spec: {str(e).strip(chr(34))}")
 
 
 def _slot_list(text):
@@ -287,8 +299,14 @@ def _edit_spec(a, doc, gd):
         raw["tomes"] = doc["tomes"]
     if a.keep and a.change:
         raise SystemExit("pass --keep or --change, not both")
+    locked = [s for s in doc.get("locked") or [] if s in SLOTS]
+    if a.change and set(_slot_list(a.change)) & set(locked):
+        both = ", ".join(sorted(set(_slot_list(a.change)) & set(locked)))
+        raise SystemExit(f"{both} {'is' if ',' not in both else 'are'} locked in {a.edit}; "
+                         f"unlock in the editor first, or leave it out of --change")
     keep = _slot_list(a.keep) if a.keep else \
         [s for s in SLOTS if s not in _slot_list(a.change)] if a.change else []
+    keep += [s for s in locked if s not in keep and equipment[SLOTS.index(s)]]
     force = dict(raw.get("force") or {})
     for slot in keep:
         item = equipment[SLOTS.index(slot)]
@@ -309,11 +327,13 @@ def _same_ring_order(new, old):
         new[r1], new[r2] = new[r2], new[r1]
 
 
-def _merge_into(doc, new, gd, tree_preset=None):
+def _merge_into(doc, new, gd, tree_preset=None, skillpoints=None):
     """The re-searched build `new` written over `doc`. Name and notes carry over,
     and so do powders on unchanged items, and aspects and the tree while the
-    class stays the same (unless `tree_preset` re-solves the tree). Returns the
-    doc and lines describing what changed."""
+    class stays the same (unless `tree_preset` re-solves the tree). Skill points
+    become `skillpoints` when the search set some by hand; otherwise manual ones
+    go back to automatic if the items changed. Returns the doc and lines
+    describing what changed."""
     old_eq = list(doc.get("equipment") or [None] * len(SLOTS))
     new_eq = new["equipment"]
     out = {**doc, "level": new["level"], "equipment": new_eq, "tomes": new["tomes"]}
@@ -341,34 +361,83 @@ def _merge_into(doc, new, gd, tree_preset=None):
         if doc.get("tree") and out["tree"] != doc["tree"]:
             lines.append(f"  tree        re-solved with {tree_preset}" if tree_preset else
                          "  tree        cleared: the weapon's class changed (add --tree PRESET)")
-    if doc.get("skillpoints") and old_eq != new_eq:
+    if skillpoints:
+        out["skillpoints"] = skillpoints
+        if skillpoints != doc.get("skillpoints"):
+            lines.append("  skill points  set by hand for the goal and minimums (see above)")
+    elif doc.get("skillpoints") and old_eq != new_eq:
         lines.append("  skill points  back to automatic: the items changed")
         out["skillpoints"] = None
     return out, lines
 
 
+def _slug(text):
+    import re
+    return re.sub(r"[^a-z0-9]+", "-", (text or "").lower()).strip("-") or "candidate"
+
+
+def _candidate_path(parent, name):
+    """builds/<parent>--<name>.json, numbered if taken."""
+    parent = Path(parent)
+    base = f"{parent.stem}--{_slug(name)}"
+    path, n = parent.with_name(base + ".json"), 2
+    while path.exists():
+        path, n = parent.with_name(f"{base}-{n}.json"), n + 1
+    return path
+
+
+def _print_goal(spec, r):
+    """The goal and the numbers the search worked out, for derived goals and minimums."""
+    from .derived import DERIVED
+    m = r.metrics
+    if not m:
+        return
+    keys = [k for k in (*spec.objective, *spec.derived_floors()) if k in DERIVED or k.startswith("damage:")]
+    shown = []
+    for k in dict.fromkeys(keys):
+        if k.startswith("damage:"):
+            v = m["spells"].get(k[len("damage:"):])
+            shown.append(f"{k[len('damage:'):]} {v:,.0f}" if v is not None else f"{k[7:]} —")
+        else:
+            shown.append(f"{DERIVED[k][0]} {m[k]:,.0f}")
+    if shown:
+        print("Goal numbers (typical rolls): " + " · ".join(shown))
+
+
 def cmd_gear(a):
+    from .search import describe_explanation, kind_for
+    from .search import run as run_search
     gd = GameData()
+    inventory = inv_mod.load(a.inventory)
+    old_doc = None
     if a.edit:
         if a.save:
             raise SystemExit("--edit writes back into the build; use --save-as for a variant, not --save")
-        _refuse_if_unsaved(a.edit, a.force or bool(a.save_as))
+        if a.parent:
+            raise SystemExit("with --edit, use --candidate NAME to save the result as a candidate")
+        writes_back = not (a.save_as or a.candidate)
+        _refuse_if_unsaved(a.edit, a.force or not writes_back)
         if a.save_as and Path(a.save_as).exists() and not a.force:
             raise SystemExit(f"{a.save_as} already exists; pick another name or pass --force")
         old_doc = buildfile.read(a.edit)
         raw = _edit_spec(a, old_doc, gd)
-    elif a.save_as or a.keep or a.change:
-        raise SystemExit("--save-as, --keep and --change go with --edit builds/<name>.json")
+    elif a.save_as or a.keep or a.change or a.candidate:
+        raise SystemExit("--save-as, --keep, --change and --candidate go with --edit builds/<name>.json")
     elif not a.spec:
         raise SystemExit("give a spec file, or --edit builds/<name>.json to re-search a build")
     else:
         raw = json.load(open(a.spec, encoding="utf-8"))
-    spec = _spec_from(raw, gd)
-    _damage_tree(spec, a.tree, gd)
+    if a.parent and not Path(a.parent).exists():
+        raise SystemExit(f"no build {a.parent} to add a candidate to")
+    spec = _spec_from(raw, gd, inventory)
+    _search_tree(spec, a.tree, gd, old_doc)
+    left_out = sorted(set(inventory.unavailable) - set(spec.force.values()))
+    if left_out:
+        print(f"(leaving out {len(left_out)} item{'s' if len(left_out) != 1 else ''} marked unavailable "
+              f"in {a.inventory}: {', '.join(left_out[:6])}{', ...' if len(left_out) > 6 else ''})")
     if a.owned:
-        inv = inv_mod.load(a.inventory)
-        spec.only, spec.inventory, spec.crafted = inv.names(), inv, False
-        print(f"Searching only the {len(inv.names())} items in {a.inventory} (real rolls where given).")
+        spec.only, spec.inventory, spec.crafted = inventory.names(), inventory, False
+        print(f"Searching only the {len(inventory.names())} items in {a.inventory} (real rolls where given).")
     if a.edit:
         from .gear_solver import _usable
         pools = _usable(gd, spec)
@@ -377,43 +446,39 @@ def cmd_gear(a):
         if unusable:
             raise SystemExit(f"the search can't use these kept items: {', '.join(unusable)} (above the "
                              f"level, excluded, not owned, or for another class); --change those slots")
-    exact = not a.shortlists and not spec.floors.get("damage")
-    if not a.shortlists and not exact:
-        print("(damage floors use the shortlist search; the exact search can't check them)")
-    if exact:
-        from .gear_milp import solve_gear_exact
-        from .web import client
-
-        def rounds(p):
-            client.report(None, f"round {p['round']} · best bound {p['best']:g}")
-            if not a.quiet:
-                print(f"\r  exact search: round {p['round']}, best bound {p['best']:g}, "
-                      f"{p['elapsed']:.0f}s", end="", file=sys.stderr, flush=True)
-        try:
-            r = solve_gear_exact(spec, gd, progress=rounds)
-        except (ValueError, TimeoutError) as e:
-            raise SystemExit(str(e))
-        if not a.quiet:
-            print(file=sys.stderr)
-    else:
-        r = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("gear search"))
+    kind = kind_for(spec, a.shortlists)
+    if kind == "shortlists" and not a.shortlists:
+        print("(damage-model minimums use the shortlist search; the exact search can't check them)")
+    if kind == "local":
+        print("(a derived goal: running the local search, which takes a minute or more)")
+    try:
+        out = run_search(spec, gd, kind, progress=None if a.quiet else ProgressBar("gear search"),
+                         confirm=a.confirm, time_limit=a.time_limit)
+    except (ValueError, TimeoutError) as e:
+        raise SystemExit(str(e))
+    if not a.quiet:
+        print(file=sys.stderr)
+    r = out.result
     if r is None:
         print("No build satisfies these constraints.")
+        for line in describe_explanation(out.explanation):
+            print(line)
         return 1
-    if exact:
-        print("(exact search: the best build over every usable item)")
-    elif a.confirm:
-        spec.topn += 3
-        r2 = solve_gear(spec, gd, progress=None if a.quiet else ProgressBar("confirm search"))
-        if r2 and r2.score > r.score + 1e-9:
-            print(f"(confirm: larger shortlists found a better build, {r2.score:g} > {r.score:g})")
-            r = r2
-        else:
-            print(f"(confirm: larger shortlists found nothing better)")
+    print(f"({out.note})")
+    if out.confirm:
+        print(f"(confirm: {out.confirm})")
     print(f"Search took {r.seconds:.0f}s; objective {r.score:g}")
+    _print_goal(spec, r)
     if a.edit:
         _same_ring_order(r.equipment, old_doc.get("equipment") or [None] * len(SLOTS))
     b = _build_from(raw, r.equipment, a.tree, gd)
+    if not a.tree and spec.atree and b.weapon and gd.weapon_class(b.weapon) == spec.cls:
+        b.atree = set(spec.atree) | b.atree
+    b.skillpoints = r.skillpoints
+    if r.skillpoints:
+        hand = ", ".join(f"{SKILL_SHORT[k]} {v}" for k, v in zip(SKILL_SHORT, r.skillpoints) if v is not None)
+        print(f"Skill points set by hand to meet the goal and minimums (final totals): {hand}. "
+              f"The build keeps them; WynnBuilder shows them the same way.")
     link = to_link(b, gd)
     ok, rep = check_link(link, gd)
     _print_report(ok, rep, gd)
@@ -422,15 +487,21 @@ def cmd_gear(a):
     if dmg:
         _print_damage(dmg.get("typical", dmg))
     print(link)
+    saved_spec = {k: v for k, v in raw.items() if not k.startswith("_")}
     if a.edit:
-        doc, lines = _merge_into(old_doc, buildfile.from_build(b, gd), gd, a.tree)
-        doc["spec"] = {k: v for k, v in raw.items() if not k.startswith("_")}
-        if a.name:
-            doc["name"] = a.name
-        elif a.save_as:
-            doc["name"] = Path(a.save_as).stem
+        doc, lines = _merge_into(old_doc, buildfile.from_build(b, gd), gd, a.tree, r.skillpoints)
+        doc["spec"] = saved_spec
+        if a.candidate:
+            out_path = _candidate_path(a.edit, a.candidate)
+            doc["name"] = a.name or f"{old_doc.get('name') or Path(a.edit).stem}: {a.candidate}"
+            doc["parent"] = Path(a.edit).name
+        else:
+            out_path = a.save_as or a.edit
+            if a.name:
+                doc["name"] = a.name
+            elif a.save_as:
+                doc["name"] = Path(a.save_as).stem
         doc = buildfile.refresh(doc, gd)
-        out = a.save_as or a.edit
         print("changes:" if lines else "(no changes: the build's gear is already the best for this spec)")
         for line in lines:
             print(line)
@@ -439,19 +510,22 @@ def cmd_gear(a):
             print("with what the build already had (powders, aspects, tree):")
             _print_report(ok, rep, gd)
             print(doc["link"])
-        buildfile.write(out, doc)
-        print(f"{'saved' if a.save_as else 'updated'} {out}")
+        buildfile.write(out_path, doc)
+        print(f"{'updated' if out_path == a.edit else 'saved'} {out_path}"
+              + (f" (a candidate of {a.edit})" if a.candidate else ""))
         if not a.no_show:
-            _show_in_app(out)
-    elif a.save:
-        doc = {"name": a.name or Path(a.save).stem,
+            _show_in_app(out_path)
+    elif a.save or a.parent:
+        path = Path(a.save) if a.save else _candidate_path(a.parent, a.name or "candidate")
+        doc = {"name": a.name or path.stem,
                "notes": raw.get("_about", ""), **buildfile.from_build(b, gd),
-               "spec": {k: v for k, v in raw.items() if not k.startswith("_")},
-               "tree_preset": a.tree}
-        buildfile.write(a.save, buildfile.refresh(doc, gd))
-        print(f"saved {a.save}")
+               "spec": saved_spec, "tree_preset": a.tree}
+        if a.parent:
+            doc["parent"] = Path(a.parent).name
+        buildfile.write(path, buildfile.refresh(doc, gd))
+        print(f"saved {path}" + (f" (a candidate of {a.parent})" if a.parent else ""))
         if not a.no_show:
-            _show_in_app(a.save)
+            _show_in_app(path)
     else:
         print("(not saved: add --save builds/<name>.json to put it in the player's build list)")
     return 0 if ok else 1
@@ -502,7 +576,7 @@ ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build
             "upgrades": "Ranking upgrades", "import": "Importing a build",
             "link": "Checking a build", "edit": "Editing a build",
             "craft": "Finding crafted items", "compare": "Comparing builds",
-            "ingredient": "Looking up an ingredient"}
+            "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival"}
 NO_PROGRESS = {"serve", "update"}      # the app itself, and replacing it
 
 
@@ -704,6 +778,13 @@ def cmd_edit(a):
         doc["name"] = Path(a.save_as).stem
     if a.notes is not None:
         doc["notes"] = a.notes
+    for slot in _slot_list(a.lock):
+        doc["locked"] = sorted(set(doc.get("locked") or []) | {slot}, key=SLOTS.index)
+    for slot in _slot_list(a.unlock):
+        doc["locked"] = [x for x in doc.get("locked") or [] if x != slot]
+    if a.auto_sp:
+        doc["skillpoints"] = None
+
     if a.tree_preset:
         if not doc["equipment"][8]:
             raise SystemExit("a tree preset needs a weapon (it decides the class)")
@@ -735,11 +816,69 @@ def cmd_edit(a):
     return 0 if ok else 1
 
 
+def cmd_tradeoffs(a):
+    """A few legal builds from max damage to max survival (wynntools.tradeoffs)."""
+    from .tradeoffs import tradeoffs
+    gd = GameData()
+    inventory = inv_mod.load(a.inventory)
+    raw = json.load(open(a.spec, encoding="utf-8"))
+    raw = {**raw, "objective": raw.get("objective") or {a.damage: 1}}
+    spec = _spec_from(raw, gd, inventory)
+    spec.objective = {a.damage: 1}
+    parent_doc = buildfile.read(a.parent) if a.parent else None
+    _search_tree(spec, a.tree, gd, parent_doc)
+    if a.parent and not Path(a.parent).exists():
+        raise SystemExit(f"no build {a.parent}")
+    print("(local searches for max damage, max survival and points between: a few minutes)")
+    out = tradeoffs(spec, gd, a.damage, a.tank, show=a.show,
+                    progress=None if a.quiet else ProgressBar("trade-offs"))
+    if not a.quiet:
+        print(file=sys.stderr)
+    if not out["options"]:
+        print("No legal build found for these goals.")
+        return 1
+    from .derived import DERIVED
+    dname = DERIVED.get(a.damage, (a.damage[len("damage:"):] if a.damage.startswith("damage:") else a.damage,))[0]
+    shaman = spec.cls == "Shaman" and a.damage != "puppet_dps"
+    head = f"{'':<14}{dname[:18]:>18}{'Eff. HP':>11}{'Health':>9}{'Regen':>8}{'SP':>6}" + (f"{'Puppet DPS':>12}" if shaman else "")
+    print(head)
+    for o in out["options"]:
+        print(f"{o['label']:<14}{o['damage']:>18,.0f}{o['ehp']:>11,.0f}{o['hp']:>9,.0f}{o['hpr']:>8,.0f}"
+              f"{str(o['sp_total']) + ('*' if o['skillpoints'] else ''):>6}" + (f"{o['puppet_dps']:>12,.0f}" if shaman else ""))
+    print(f"(typical rolls; {out['checked']} legal builds checked; none of these beats another on both "
+          f"damage and effective HP; * = some skill points set by hand. Local search: not proven best.)")
+    rc = 0
+    for o in out["options"]:
+        r = o["result"]
+        b = _build_from(raw, r.equipment, a.tree, gd)
+        if not a.tree and spec.atree:
+            b.atree = set(spec.atree) | b.atree
+        b.skillpoints = r.skillpoints
+        link = to_link(b, gd)
+        ok, rep = check_link(link, gd)
+        print(f"\n{o['label']}: {' / '.join(n or '—' for n in r.equipment)}")
+        print(f"  {'VERIFIED OK' if ok else 'PROBLEMS: ' + '; '.join(rep['problems'])}  {link}")
+        rc |= 0 if ok else 1
+        if a.parent:
+            path = _candidate_path(a.parent, o["label"])
+            doc = {"name": f"{parent_doc.get('name') or Path(a.parent).stem}: {o['label']}", "notes": "",
+                   **buildfile.from_build(b, gd), "spec": {k: v for k, v in raw.items() if not k.startswith("_")},
+                   "tree_preset": a.tree, "parent": Path(a.parent).name}
+            buildfile.write(path, buildfile.refresh(doc, gd, inventory))
+            print(f"  saved {path} (a candidate of {a.parent})")
+    if a.parent and not a.no_show:
+        _show_in_app(a.parent)
+    return rc
+
+
 def cmd_upgrades(a):
     gd = GameData()
-    spec = _spec_from(json.load(open(a.spec, encoding="utf-8")), gd)
-    _damage_tree(spec, a.tree, gd)
     inv = inv_mod.load(a.inventory)
+    spec = _spec_from(json.load(open(a.spec, encoding="utf-8")), gd, inv)
+    _search_tree(spec, a.tree, gd)
+    if spec.derived_objective():
+        raise SystemExit("`wt upgrades` ranks by item-stat goals; for a derived goal compare "
+                         "candidates with `wt gear --owned` instead")
     if not inv.names():
         print(f"{a.inventory} is empty. Add items with: uv run wt own add \"Item Name\"")
         return 1
@@ -764,6 +903,22 @@ def cmd_upgrades(a):
 def cmd_own(a):
     gd = GameData()
     inv = inv_mod.load(a.inventory)
+    if a.action == "unavailable":
+        if not a.names:
+            for n, why in sorted(inv.unavailable.items()):
+                print(f"  {n}" + (f"  ({why})" if why else ""))
+            if not inv.unavailable:
+                print("Nothing is marked unavailable.")
+            return 0
+        for name in a.names:
+            if a.remove:
+                inv.unavailable.pop(name, None)
+            else:
+                gd.item(name)                                # raises on typos
+                inv.unavailable[name] = a.reason or ""
+        inv_mod.save(inv, a.inventory)
+        print(f"{a.inventory}: {len(inv.unavailable)} item(s) every search leaves out")
+        return 0
     if a.action == "list":
         for n in sorted(inv.items):
             r = inv.rolls(n)
@@ -1034,12 +1189,31 @@ def main(argv=None):
                    help="use the older shortlist search instead of the exact one (automatic with damage floors)")
     s.add_argument("--confirm", action="store_true", help="with shortlists: re-run with larger ones")
     s.add_argument("--save", metavar="PATH", help="write the result as a build file")
+    s.add_argument("--parent", metavar="BUILD",
+                   help="save the result as a named candidate of this build (see `wt variants`)")
+    s.add_argument("--candidate", metavar="NAME",
+                   help="with --edit: save the result as a candidate of the build instead of changing it")
     s.add_argument("--no-show", action="store_true", help="don't open the saved build in the web app")
     s.add_argument("--name", help="display name for the saved build")
     s.add_argument("--quiet", action="store_true", help="no progress output")
     s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.add_argument("--time-limit", type=int, default=600, metavar="SECONDS",
+                   help="stop searching after this long (default 600); the exact search then "
+                        "returns its best valid build, marked not proven")
     s.set_defaults(fn=cmd_gear)
+    s = sub.add_parser("tradeoffs", help="a few legal builds from max damage to max survival, side by side")
+    s.add_argument("spec", help="class, level, floors, items... (the objective is --damage)")
+    s.add_argument("--damage", default="melee_dps",
+                   help="melee_dps, puppet_dps, summon_dps or damage:<spell name> (default melee_dps)")
+    s.add_argument("--tank", default="ehp", choices=["ehp", "ehp_no_agi"])
+    s.add_argument("--tree", choices=sorted(PRESETS), help="tree preset (damage needs a tree)")
+    s.add_argument("--parent", metavar="BUILD", help="save every option as a candidate of this build")
+    s.add_argument("--show", type=int, default=4, help="how many options (default 4)")
+    s.add_argument("--no-show", action="store_true")
+    s.add_argument("--quiet", action="store_true")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_tradeoffs)
     s = sub.add_parser("upgrades", help="rank items you don't own by how much each would help")
     s.add_argument("spec")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
@@ -1049,8 +1223,12 @@ def main(argv=None):
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(fn=cmd_upgrades)
     s = sub.add_parser("own", help="manage your inventory (items, tomes, crafts you own)")
-    s.add_argument("action", choices=["add", "remove", "list"])
+    s.add_argument("action", choices=["add", "remove", "list", "unavailable"],
+                   help="unavailable: items every search leaves out (too expensive, can't get); "
+                        "list them with no names, --remove to take one off")
     s.add_argument("names", nargs="*")
+    s.add_argument("--reason", help="unavailable: why (e.g. \"too expensive\")")
+    s.add_argument("--remove", action="store_true", help="unavailable: take the names off the list")
     s.add_argument("--tome", action="store_true", help="the names are tomes")
     s.add_argument("--roll", action="append", metavar="ID=VALUE", help="real roll, e.g. poison=20640")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
@@ -1087,6 +1265,9 @@ def main(argv=None):
     s.add_argument("--name")
     s.add_argument("--notes")
     s.add_argument("--tree-preset", choices=sorted(PRESETS), help="re-solve the ability tree")
+    s.add_argument("--lock", metavar="SLOTS", help="lock slots: searches from this build keep them (comma-separated)")
+    s.add_argument("--unlock", metavar="SLOTS", help="unlock slots")
+    s.add_argument("--auto-sp", action="store_true", help="skill points back to automatic")
     s.add_argument("--save-as", metavar="PATH", help="write a new build file instead of changing this one")
     s.add_argument("--force", action="store_true",
                    help="write even if the player has unsaved edits, or --save-as exists")

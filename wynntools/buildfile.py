@@ -14,6 +14,8 @@ are names, not ids, so people can edit them by hand:
       "aspects": [["Aspect of ...", 3], null, ...],   # optional, 5 [name, tier] or null
       "skillpoints": null,              # optional; null = automatic, else 5 FINAL
                                         # totals (null entries automatic), as in links
+      "locked": ["weapon", ...],        # optional: slots searches from this build keep
+      "parent": "x.json",               # optional: this is a candidate for x.json
       "spec": {...}, "tree_preset": "...",   # optional: how it was generated
       "link": "...", "status": {...}    # written by the tools, do not edit
     }

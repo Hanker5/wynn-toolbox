@@ -5,12 +5,17 @@ Stored as builds/inventory.json, shared by the CLI, the web app and the AI:
     {
       "items": {"Galleon": {}, "Leo": {"rolls": {"hprRaw": 180}}},
       "tomes": ["Tome of Scavenging Expertise III", ...],
-      "crafts": ["CR-..."]
+      "crafts": ["CR-..."],
+      "unavailable": {"Stardew": "too expensive", "Warp": ""}
     }
 
 An item with "rolls" uses those values for the listed IDs instead of the 100%
 base roll (and they don't change with the Typical/Perfect switch, since they are
 real). IDs not listed still follow the chosen roll.
+
+"unavailable" lists items the player can't or won't get (too expensive, not on
+the market, ...), with an optional reason. Every search leaves them out unless
+the player forces one into a slot.
 """
 import copy
 import json
@@ -25,6 +30,7 @@ class Inventory:
     items: dict = field(default_factory=dict)     # name -> {"rolls": {id: value}}
     tomes: list = field(default_factory=list)     # tome names (repeat a name to own two)
     crafts: list = field(default_factory=list)    # crafted item hashes ("CR-...")
+    unavailable: dict = field(default_factory=dict)   # name -> reason ("" if none given)
 
     def owns(self, name):
         return name in self.items or name in self.crafts
@@ -36,7 +42,8 @@ class Inventory:
         return (self.items.get(name) or {}).get("rolls") or {}
 
     def to_json(self):
-        return {"items": self.items, "tomes": self.tomes, "crafts": self.crafts}
+        return {"items": self.items, "tomes": self.tomes, "crafts": self.crafts,
+                "unavailable": self.unavailable}
 
 
 def load(path=DEFAULT):
@@ -45,7 +52,7 @@ def load(path=DEFAULT):
         return Inventory()
     raw = json.loads(path.read_text(encoding="utf-8"))
     return Inventory(items=raw.get("items") or {}, tomes=raw.get("tomes") or [],
-                     crafts=raw.get("crafts") or [])
+                     crafts=raw.get("crafts") or [], unavailable=raw.get("unavailable") or {})
 
 
 def save(inv, path=DEFAULT):
@@ -66,6 +73,7 @@ def validate(inv, gd):
     """Names that don't exist in the data (typos, removed items)."""
     bad = [n for n in inv.items if n not in gd.item_by_name]
     bad += [t for t in inv.tomes if t not in gd.tome_by_name]
+    bad += [n for n in inv.unavailable if n not in gd.item_by_name and not n.startswith("CR-")]
     for c in inv.crafts:
         try:
             gd.item(c)

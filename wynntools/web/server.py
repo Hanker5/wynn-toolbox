@@ -28,7 +28,8 @@ from .. import updates
 from ..codec import SLOTS, TOME_SLOTS
 from ..damage import POWDER_SPECIALS
 from ..data import VERSIONS, GameData
-from ..gear_solver import CLASS_WEAPON, Spec, solve_gear, upgrades
+from ..derived import DAMAGE_KEYS, DERIVED
+from ..gear_solver import CLASS_WEAPON, upgrades
 from ..presets import PRESETS, preset_weights
 from ..rules import ability_points
 from ..tree_solver import solve_tree
@@ -42,7 +43,7 @@ STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
 TRASH_DIR = ".trash"          # deleted builds go here (builds/.trash), not away
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
-            "skillpoints")
+            "skillpoints", "locked")
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
 
 
@@ -193,7 +194,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 out.append({
                     "file": p.name, "name": doc.get("name") or p.stem,
                     "level": doc.get("level"), "weapon": weapon, "class": cls,
-                    "verified": st.get("verified"),
+                    "verified": st.get("verified"), "parent": doc.get("parent"),
                     "totals": {k: (st.get("totals") or {}).get(k, 0) for k in SUMMARY_STATS},
                     "mtime": version(p)})
             except (ValueError, KeyError, OSError) as e:
@@ -243,6 +244,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
                 "stats": ["eSteal", "poison", "lb", "hp", "mr", "ms", "sdPct", "mdPct",
                           "spd", "xpb", "hprRaw", "ls"],
+                # goals WynnBuilder's damage model works out (wynntools.derived)
+                "derived": [{"key": k, "label": v[0], "damage": k in DAMAGE_KEYS}
+                            for k, v in DERIVED.items() if k != "min_eledef"]
+                           + [{"key": "min_eledef", "label": "Lowest elemental defence", "damage": False}],
                 "specials": [{"weapon": sp["weapon"], "element": e, "armor": sp["armor"],
                               "cap": sp["cap"], "burst": bool(sp["damage"]), "boost": sp["boost"]}
                              for e, sp in zip("etwfa", POWDER_SPECIALS)]}
@@ -571,65 +576,105 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         return {"ok": True, "file": p.name}
 
     # ------------------------------------------------------------ solver jobs
-    @app.post("/api/solve")
-    async def solve(request: Request):
-        body = await request.json()
-        raw = body["spec"]
-        p = path_for(body["file"])
-        try:
-            spec = Spec(cls=raw["class"], level=int(raw["level"]), objective=raw["objective"],
-                        floors=raw.get("floors") or {},
-                        require_major=raw.get("require_major") or [],
-                        force={k: v for k, v in (raw.get("force") or {}).items() if v},
-                        exclude=set(raw.get("exclude") or []),
-                        exclude_tiers=set(raw.get("exclude_tiers") or []),
-                        tomes=[gd.tome(t)["id"] if t else None for t in raw.get("tomes") or []],
-                        topn=int(raw.get("topn") or 8), crafted=bool(raw.get("crafted")),
-                        roll=raw.get("roll") or "base")
-        except (KeyError, ValueError, TypeError) as e:
-            raise HTTPException(422, f"bad spec: {e}")
+    def spec_for(raw, owned_only=False):
+        from ..search import spec_from
         owned = inv()
-        if body.get("owned_only"):
+        try:
+            spec = spec_from(raw, gd, owned)
+        except (KeyError, ValueError, TypeError) as e:
+            raise HTTPException(422, f"bad spec: {str(e).strip(chr(34))}")
+        if owned_only:
             spec.only, spec.inventory, spec.crafted = owned.names(), owned, False
-        preset = body.get("tree_preset") or None
+        return spec, owned
+
+    def search_tree(spec, preset, tree_names=None):
+        """The tree the damage model searches with: the preset's, or a build's own
+        (node names). Damage goals and minimums need one."""
+        from ..search import needs_tree, uses_tree
         if preset and preset not in PRESETS:
             raise HTTPException(422, f"unknown tree preset {preset!r}")
         if preset and PRESETS[preset]["class"] != spec.cls:
             raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
-        # Exact search by default; damage minimums need the shortlist search.
-        exact = body.get("exact", True) and not spec.floors.get("damage")
-        damage_tree(spec, preset)
-        job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None,
-               "file": p.name, "error": None, "search": "exact" if exact else "shortlists", "cancel": False, "started": time.time()}
-        jobs[job["id"]] = job
+        if not uses_tree(spec):
+            return
+        if preset:
+            spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
+                                        ability_points(spec.level)))
+        elif tree_names:
+            tree = gd.tree(spec.cls)
+            ids = {n["display_name"]: n["id"] for n in tree}
+            root = next(n["id"] for n in tree if not n["parents"])
+            spec.atree = {root} | {ids[x] for x in tree_names if x in ids}
+        elif needs_tree(spec):
+            raise HTTPException(422, "damage goals and minimums need a tree preset")
+        else:
+            spec.atree = set()
 
+    def new_job(**extra):
+        job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None, "file": None,
+               "error": None, "cancel": False, "result": None, "explanation": None, "note": None,
+               "started": time.time(), **extra}
+        jobs[job["id"]] = job
+        return job
+
+    def progress_for(job):
         def on_progress(pr):
             job["progress"] = pr
             if job["cancel"]:
                 raise Cancelled()
+        return on_progress
+
+    def build_doc(raw, spec, equipment, skillpoints, name, notes="", preset=None, tree_names=None,
+                  parent=None):
+        """A build file for a search result."""
+        tomes = [t or None for t in raw.get("tomes") or []]
+        doc = {"name": name, "notes": notes, "level": spec.level, "equipment": list(equipment),
+               "tomes": tomes + [None] * (len(TOME_SLOTS) - len(tomes)),
+               "skillpoints": skillpoints, "spec": raw, "tree_preset": preset}
+        if parent:
+            doc["parent"] = parent
+        if preset:
+            b = buildfile.to_build({**doc, "tree": []}, gd)
+            b.atree = solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
+                                 ability_points(spec.level))
+            doc["tree"] = buildfile.from_build(b, gd)["tree"]
+        elif tree_names:
+            doc["tree"] = list(tree_names)
+        return doc
+
+    @app.post("/api/solve")
+    async def solve(request: Request):
+        """{"spec", "file", "name", "notes", "tree_preset", "tree" (node names, when no
+        preset: a build's own tree), "owned_only", "exact", "parent"}. With a
+        parent the result is saved as its candidate."""
+        from ..search import kind_for
+        from ..search import run as run_search
+        body = await request.json()
+        raw = body["spec"]
+        p = path_for(body["file"])
+        parent = body.get("parent")
+        if parent and not path_for(parent).exists():
+            raise HTTPException(404, f"no build {parent}")
+        spec, owned = spec_for(raw, body.get("owned_only"))
+        preset = body.get("tree_preset") or None
+        search_tree(spec, preset, body.get("tree"))
+        kind = kind_for(spec, shortlists=body.get("exact") is False)
+        job = new_job(file=p.name, search=kind)
+        on_progress = progress_for(job)
 
         def run():
             try:
-                if exact:
-                    from ..gear_milp import solve_gear_exact
-                    r = solve_gear_exact(spec, gd, progress=lambda p: on_progress(
-                        {"fraction": None, "nodes": p["round"], "best": round(p["best"], 2),
-                         "elapsed": p["elapsed"], "exact": True}))
-                else:
-                    r = solve_gear(spec, gd, progress=on_progress)
+                out = run_search(spec, gd, kind, progress=on_progress,
+                                 time_limit=int(body.get("time_limit") or 600))
+                job["note"] = out.note
+                r = out.result
                 if r is None:
-                    job["state"], job["error"] = "failed", "no build satisfies these constraints"
+                    job["explanation"] = out.explanation
+                    job["state"] = "failed"
+                    job["error"] = (out.explanation or {}).get("summary") or "no build satisfies these constraints"
                     return
-                tomes = [t or None for t in raw.get("tomes") or []]
-                doc = {"name": body.get("name") or p.stem, "notes": body.get("notes", ""),
-                       "level": spec.level, "equipment": r.equipment,
-                       "tomes": tomes + [None] * (len(TOME_SLOTS) - len(tomes)),
-                       "spec": raw, "tree_preset": preset}
-                if preset:
-                    b = buildfile.to_build({**doc, "tree": []}, gd)
-                    b.atree = solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
-                                         ability_points(spec.level))
-                    doc["tree"] = buildfile.from_build(b, gd)["tree"]
+                doc = build_doc(raw, spec, r.equipment, r.skillpoints, body.get("name") or p.stem,
+                                body.get("notes", ""), preset, body.get("tree"), parent)
                 buildfile.write(p, buildfile.refresh(doc, gd, owned))
                 job["state"] = "done"
             except Cancelled:
@@ -638,12 +683,60 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 job["state"], job["error"] = "failed", f"{type(e).__name__}: {e}"
 
         threading.Thread(target=run, daemon=True).start()
+        return {"job": job["id"], "search": kind}
+
+    @app.post("/api/tradeoffs")
+    async def tradeoffs_api(request: Request):
+        """{"spec", "damage", "tank", "tree_preset", "tree", "owned_only"}: a few legal
+        builds from max damage to max survival (wynntools.tradeoffs)."""
+        from ..tradeoffs import tradeoffs
+        body = await request.json()
+        raw = body["spec"]
+        spec, _ = spec_for(raw, body.get("owned_only"))
+        damage, tank = body.get("damage") or "melee_dps", body.get("tank") or "ehp"
+        spec.objective = {damage: 1}
+        search_tree(spec, body.get("tree_preset") or None, body.get("tree"))
+        job = new_job()
+        on_progress = progress_for(job)
+
+        def run():
+            try:
+                out = tradeoffs(spec, gd, damage, tank, progress=on_progress)
+                job["result"] = {
+                    "damage": out["damage"], "tank": out["tank"], "checked": out["checked"],
+                    "options": [{k: v for k, v in o.items() if k != "result"} |
+                                {"equipment": o["result"].equipment} for o in out["options"]]}
+                job["state"] = "done"
+            except Cancelled:
+                job["state"] = "cancelled"
+            except Exception as e:
+                job["state"], job["error"] = "failed", f"{type(e).__name__}: {e}"
+
+        threading.Thread(target=run, daemon=True).start()
         return {"job": job["id"]}
+
+    @app.post("/api/candidates")
+    async def save_candidate(request: Request):
+        """Save one search result (e.g. a trade-off row) as a build: {"file", "name",
+        "spec", "equipment", "skillpoints", "tree_preset", "tree", "parent"}."""
+        body = await request.json()
+        p = path_for(body["file"])
+        if p.exists():
+            raise HTTPException(409, f"{p.name} already exists")
+        parent = body.get("parent")
+        if parent and not path_for(parent).exists():
+            raise HTTPException(404, f"no build {parent}")
+        spec, owned = spec_for(body["spec"])
+        doc = build_doc(body["spec"], spec, body["equipment"], body.get("skillpoints"),
+                        body.get("name") or p.stem, body.get("notes", ""),
+                        body.get("tree_preset") or None, body.get("tree"), parent)
+        buildfile.write(p, checked(doc))
+        return {"file": p.name}
 
     @app.post("/api/damage")
     async def damage_api(request: Request):
-        """Damage for an editor's build under a scenario: {"doc", "specials"}
-        with powder specials switched on."""
+        """Damage for an editor's build under a scenario: {"doc", "specials",
+        } with powder specials switched on."""
         from ..damage import check_specials, summary
         body = await request.json()
         try:
@@ -700,19 +793,6 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         inv_mod.save(i, inv_path)
         return i.to_json()
 
-    def damage_tree(spec, preset):
-        """Damage minimums are checked on a fixed tree: the preset's."""
-        if not spec.floors.get("damage"):
-            return
-        if not preset:
-            raise HTTPException(422, "damage minimums need a tree preset")
-        if preset not in PRESETS:
-            raise HTTPException(422, f"unknown tree preset {preset!r}")
-        if PRESETS[preset]["class"] != spec.cls:
-            raise HTTPException(422, f"preset {preset} is for {PRESETS[preset]['class']}")
-        spec.atree = set(solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
-                                    ability_points(spec.level)))
-
     @app.get("/api/spells")
     def spells_api(cls: str, preset: str = "", level: int = 105):
         """Spell names a preset's tree gives (for damage minimums)."""
@@ -728,28 +808,15 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     @app.post("/api/upgrades")
     async def upgrades_api(request: Request):
         body = await request.json()
-        raw = body["spec"]
-        try:
-            spec = Spec(cls=raw["class"], level=int(raw["level"]), objective=raw["objective"],
-                        floors=raw.get("floors") or {}, require_major=raw.get("require_major") or [],
-                        force={k: v for k, v in (raw.get("force") or {}).items() if v},
-                        exclude_tiers=set(raw.get("exclude_tiers") or []),
-                        tomes=[gd.tome(t)["id"] if t else None for t in raw.get("tomes") or []],
-                        topn=int(raw.get("topn") or 8))
-        except (KeyError, ValueError, TypeError) as e:
-            raise HTTPException(422, f"bad spec: {e}")
-        damage_tree(spec, body.get("tree_preset") or None)
+        spec, _ = spec_for(body["spec"])
+        if spec.derived_objective():
+            raise HTTPException(422, "\"What should I get next?\" ranks by item-stat goals; pick one of those")
+        search_tree(spec, body.get("tree_preset") or None)
         owned = inv()
         if not owned.names():
             raise HTTPException(422, "your inventory is empty; mark some items as owned first")
-        job = {"id": uuid.uuid4().hex[:10], "state": "running", "progress": None, "file": None,
-               "error": None, "cancel": False, "result": None, "started": time.time()}
-        jobs[job["id"]] = job
-
-        def on_progress(pr):
-            job["progress"] = pr
-            if job["cancel"]:
-                raise Cancelled()
+        job = new_job()
+        on_progress = progress_for(job)
 
         def run():
             try:
@@ -783,8 +850,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         async def stream():
             while not await request.is_disconnected():
                 j = jobs[jid]
-                yield "data: " + json.dumps({k: j.get(k) for k in ("state", "progress", "file",
-                                                                   "error", "result")}) + "\n\n"
+                yield "data: " + json.dumps({k: j.get(k) for k in ("state", "progress", "file", "error",
+                                                                   "result", "explanation", "note",
+                                                                   "search")}) + "\n\n"
                 if j["state"] != "running":
                     return
                 await asyncio.sleep(0.25)
