@@ -336,14 +336,24 @@ async function loadList() {
   S.builds = await api("GET", "/api/builds");
   const ul = $("#build-list"); ul.replaceChildren();
   if (!S.builds.length) ul.append(h("li", { class: "muted" }, "No builds yet."));
-  for (const b of S.builds) {
+  const files = new Set(S.builds.map((b) => b.file));
+  const kids = (f) => S.builds.filter((b) => b.parent === f);
+  const item = (b, cand) => {
     const t = b.totals || {};
     const key = t.poison ? `poison ${fmt(t.poison)}` : t.eSteal ? `Stealing ${t.eSteal}%` : `♥ ${fmt(t.hp)}`;
-    ul.append(h("li", { class: S.cur?.file === b.file ? "active" : "", onclick: () => openBuild(b.file) },
-      itemIcon(CLASS_WEAPON[b.class] || "", 28),
+    const n = kids(b.file).length;
+    return h("li", { class: (S.cur?.file === b.file ? "active" : "") + (cand ? " cand" : ""), onclick: () => openBuild(b.file) },
+      itemIcon(CLASS_WEAPON[b.class] || "", cand ? 22 : 28),
       h("div", { class: "bl-text" },
-        h("div", { class: "bl-name" }, h("span", { class: "dot " + (b.error ? "bad" : b.verified ? "ok" : "bad") }), b.name),
-        h("div", { class: "bl-sub" }, b.error ? "can't read file" : `${b.class || "?"} · Lv. ${b.level} · ${key}`))));
+        h("div", { class: "bl-name" }, h("span", { class: "dot " + (b.error ? "bad" : b.verified ? "ok" : "bad") }),
+          cand && b.name.includes(": ") ? b.name.slice(b.name.indexOf(": ") + 2) : b.name,
+          n ? h("span", { class: "badge-count", title: `${n} candidate${n > 1 ? "s" : ""}` }, n) : null),
+        h("div", { class: "bl-sub" }, b.error ? "can't read file" : `${cand ? "candidate · " : `${b.class || "?"} · Lv. ${b.level} · `}${key}`)));
+  };
+  for (const b of S.builds) {
+    if (b.parent && files.has(b.parent)) continue;           // listed under its build
+    ul.append(item(b, false));
+    for (const k of kids(b.file)) ul.append(item(k, true));
   }
 }
 
@@ -356,8 +366,8 @@ const store = {
 };
 S.roll = store.get("wt-roll") === "perfect" ? "perfect" : "typical";
 
-async function openBuild(file, { quiet } = {}) {
-  if (S.cur?.dirty && S.cur.file !== file && !confirm("Discard unsaved changes to this build?")) return;
+async function openBuild(file, { quiet, force } = {}) {
+  if (!force && S.cur?.dirty && S.cur.file !== file && !confirm("Discard unsaved changes to this build?")) return;
   const doc = await api("GET", `/api/builds/${encodeURIComponent(file)}`);
   S.cur = { file, doc, mtime: doc._mtime, dirty: false, conflict: false, checkError: null };
   await Promise.all(doc.equipment.map((n, i) => itemInfo(S.meta.slots[i], n)));
@@ -436,6 +446,9 @@ async function renderEditor() {
     h("div", { class: "ed-grid" },
       h("div", { class: "ed-main" },
         h("section", { class: "panel" }, h("div", { id: "ed-equip", class: "equip" })),
+        h("section", { class: "panel", id: "ed-cands-panel", hidden: true },
+          h("div", { class: "panel-h" }, h("span", {}, "Candidates"), h("span", { class: "actions", id: "ed-cands-actions" })),
+          h("div", { id: "ed-cands" })),
         h("section", { class: "panel" }, h("div", { id: "ed-sp", class: "sp" }), h("div", { id: "ed-sp-foot", class: "sp-foot" })),
         tomesPanel, aspectsPanel,
         h("section", { class: "panel" }, h("div", { class: "panel-h", id: "ed-tree-h" }), h("div", { id: "ed-tree" }))),
@@ -452,6 +465,73 @@ async function renderEditor() {
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Checks"), h("div", { id: "ed-checks", class: "summary" })),
         h("section", { class: "panel" }, h("div", { class: "panel-h" }, "Notes"), notes))));
   renderEquipment(); renderTomes(); await renderTree(); await renderAspects(); renderDerived();
+  renderCandidates();
+}
+
+
+
+// ------------------------------------------------------------------ candidates
+// Builds a search made for this one ("parent" in the file). Compare, use one, trash the rest.
+async function renderCandidates() {
+  const c = S.cur, panel = $("#ed-cands-panel"); if (!panel) return;
+  if (!S.builds.some((b) => b.parent === c.file)) { panel.hidden = true; return; }
+  let r;
+  try { r = await api("GET", `/api/builds/${encodeURIComponent(c.file)}/candidates`); } catch { return; }
+  if (S.cur !== c) return;
+  panel.hidden = !r.candidates.length;
+  const n = (v) => (v == null ? "—" : fmt(Math.round(v)));
+  const pup = [r.parent, ...r.candidates].some((x) => x.row?.puppet_dps != null);
+  const cells = (row) => [n(row.hp), n(row.ehp), n(row.hpr), n(row.lowest_eledef), n(row.sp_total), n(row.melee_dps),
+    ...(pup ? [n(row.puppet_dps)] : [])].map((v) => h("td", {}, v));
+  const rows = [h("tr", { class: "cand-parent" }, h("td", {}, h("strong", {}, "This build")), ...cells(r.parent.row), h("td", {}))];
+  for (const x of r.candidates) {
+    rows.push(h("tr", {}, h("td", { title: x.file }, h("span", { class: "dot " + (x.verified ? "ok" : "bad") }), " ", x.name.replace(`${c.doc.name}: `, "")),
+      ...(x.row ? cells(x.row) : [h("td", { colspan: pup ? 7 : 6, class: "neg" }, x.error)]),
+      h("td", { class: "cand-actions" },
+        h("button", { class: "mini", onclick: () => openBuild(x.file) }, "Open"),
+        h("button", { class: "mini", onclick: () => { S.compare = [c.file, x.file]; renderCompare(); show("compare"); } }, "Compare"),
+        h("button", { class: "mini primary", onclick: () => chooseCandidate(c.file, x.file, x.name) }, "Use this one"),
+        h("button", { class: "mini danger", onclick: () => trashOne(x.file, x.name) }, "Trash"))));
+  }
+  setKids($("#ed-cands"), h("table", { class: "cmp cands" },
+    h("thead", {}, h("tr", {}, ...["", "Health", "Effective HP", "HP regen", "Lowest ele. def.", "Skill points", "Main-attack DPS",
+      ...(pup ? ["Puppet DPS"] : []), ""].map((t) => h("th", {}, t)))),
+    h("tbody", {}, rows)),
+    h("p", { class: "hint" }, "Typical rolls. \"Use this one\" puts that candidate's gear, tree, powders and skill points into this build (its name, notes and locks stay) and moves the candidate to the trash."));
+  setKids($("#ed-cands-actions"), h("button", { class: "mini danger", onclick: () => trashCandidates(c.file) }, `Trash all ${r.candidates.length}`));
+}
+
+async function chooseCandidate(parent, file, name) {
+  if (S.cur?.dirty && S.cur.file === parent) { toast("Save (or revert) this build first"); return; }
+  const go = await ask(`Use “${name}”?`, [`Its gear, tree, powders and skill points replace this build's in ${parent}. The build keeps its name and notes; ${file} goes to the trash.`],
+    [{ label: "Use it", value: true, primary: true }, { label: "Cancel", value: false }]);
+  if (!go) return;
+  try { await api("POST", `/api/builds/${encodeURIComponent(parent)}/choose`, { candidate: file }); }
+  catch (e) { toast(e.message); return; }
+  await loadList();
+  const rest = S.builds.filter((b) => b.parent === parent).length;
+  await openBuild(parent, { force: true });
+  if (rest && await ask("Trash the other candidates?", [`${rest} other candidate${rest > 1 ? "s" : ""} of this build ${rest > 1 ? "are" : "is"} left. They go to builds/.trash, and Undo brings them back.`],
+    [{ label: "Trash them", value: true, danger: true }, { label: "Keep them", value: false }])) await trashCandidates(parent, true);
+  else toast("Done");
+}
+
+async function trashCandidates(parent, noAsk = false) {
+  if (!noAsk && !await ask("Trash all candidates?", ["They go to builds/.trash, and Undo brings them back."],
+    [{ label: "Trash them", value: true, danger: true }, { label: "Cancel", value: false }])) return;
+  const r = await api("POST", `/api/builds/${encodeURIComponent(parent)}/trash-candidates`, {});
+  await loadList(); renderCandidates();
+  toast(`Moved ${r.items.length} candidate${r.items.length === 1 ? "" : "s"} to the trash`, { label: "Undo", onclick: async () => {
+    await api("POST", "/api/trash/restore-many", { items: r.items }); await loadList(); renderCandidates(); toast("Restored");
+  } });
+}
+
+async function trashOne(file, name) {
+  const r = await api("DELETE", `/api/builds/${encodeURIComponent(file)}`);
+  await loadList(); renderCandidates();
+  toast(`Trashed “${name}”`, { label: "Undo", onclick: async () => {
+    await api("POST", "/api/trash/restore", { trash: r.trash, file: r.file }); await loadList(); renderCandidates();
+  } });
 }
 
 function renderEquipment() {
@@ -1183,6 +1263,14 @@ function renderDerived() {
   $("#ed-revert").disabled = !c.dirty;
 
   const banners = $("#ed-banners"); banners.replaceChildren();
+  if (d.parent) {
+    const parent = S.builds.find((b) => b.file === d.parent);
+    banners.append(h("div", { class: "banner cand", id: "ed-cand-banner" },
+      h("span", { class: "grow" }, `A candidate for “${parent?.name || d.parent}”.`),
+      parent ? h("button", { onclick: () => chooseCandidate(d.parent, c.file, d.name || c.file) }, "Use this one") : null,
+      parent ? h("button", { onclick: () => { S.compare = [d.parent, c.file]; renderCompare(); show("compare"); } }, "Compare") : null,
+      parent ? h("button", { onclick: () => openBuild(d.parent) }, "Open the build") : h("span", { class: "muted" }, "(that build is gone)")));
+  }
   if (c.conflict) banners.append(h("div", { class: "banner warn" },
     h("span", { class: "grow" }, "This build was changed on disk (maybe by the AI) while you were editing."),
     h("button", { onclick: () => openBuild(c.file) }, "Load their version"),

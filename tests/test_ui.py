@@ -827,7 +827,7 @@ def test_tradeoffs_from_the_form(page):
     assert not page.errors
 
 
-def test_fix_a_weakness_opens_the_search_and_saves_a_candidate(page, app):
+def test_fix_a_weakness_makes_a_candidate_and_it_can_be_chosen(page, app):
     open_build(page, "shaman_105_stormdrain")
     assert "Air Defence" in page.inner_text("#ed-surv .srow.lowest")
     page.click(".fix-btn[data-code=neg_adef]")
@@ -835,8 +835,15 @@ def test_fix_a_weakness_opens_the_search_and_saves_a_candidate(page, app):
     assert page.get_by_role("spinbutton", name="Every elemental defence").input_value() == "0"
     page.wait_for_selector("#solver-run:not([disabled])")
     page.click("#solver-run")
-    page.wait_for_selector("#editor:not([hidden]) .name", timeout=300000)
-    page.wait_for_function("document.querySelector('#editor .name').value.includes('no negative elemental defence')", timeout=300000)
+    page.wait_for_selector("#editor:not([hidden]) #ed-cand-banner", timeout=300000)
     settle(page)
     assert "-" not in page.inner_text("#ed-surv .srow.lowest .sv")           # nothing negative now
+    assert page.locator("#build-list li.cand").count() == 1
+    page.click("#ed-cand-banner >> text=Open the build")
+    page.wait_for_selector("#ed-cands-panel:not([hidden]) table")
+    page.click("#ed-cands >> text=Use this one")
+    page.locator("#ask").get_by_role("button", name="Use it", exact=True).click()
+    page.wait_for_function("!document.querySelector('#build-list li.cand')", timeout=20000)
+    doc = json.loads((Path(app.builds_dir) / "stormdrain.json").read_text())
+    assert min(doc["status"]["survivability"]["typical"]["eledefs"].values()) >= 0
     assert not page.errors

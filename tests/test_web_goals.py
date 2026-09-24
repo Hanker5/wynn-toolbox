@@ -50,6 +50,25 @@ def test_solve_with_new_floors_saves_a_candidate(client, tmp_path, gd, links):
     assert min(st["totals"][k] for k in ("eDef", "tDef", "wDef", "fDef", "aDef")) >= 0
     listing = {b["file"]: b for b in client.get("/api/builds").json()}
     assert listing["main--safe.json"]["parent"] == "main.json"
+    cands = client.get("/api/builds/main.json/candidates").json()
+    assert [c["file"] for c in cands["candidates"]] == ["main--safe.json"]
+    assert cands["candidates"][0]["row"]["lowest_eledef"] >= 0
+    r = client.post("/api/builds/main.json/choose", json={"candidate": "main--safe.json"}).json()
+    main = client.get("/api/builds/main.json").json()
+    assert main["equipment"] == doc["equipment"] and "parent" not in main
+    assert not (tmp_path / "main--safe.json").exists() and (tmp_path / ".trash" / r["trash"]).exists()
+
+
+def test_trash_candidates_and_undo(client, tmp_path, gd, links):
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "m.json"})
+    for n in ("a", "b"):
+        client.post("/api/import", json={"link": links["shaman_105_resonance"]["hash"], "file": f"m--{n}.json"})
+        doc = buildfile.read(tmp_path / f"m--{n}.json")
+        buildfile.write(tmp_path / f"m--{n}.json", {**doc, "parent": "m.json"})
+    r = client.post("/api/builds/m.json/trash-candidates", json={"keep": ["m--b.json"]}).json()
+    assert [x["file"] for x in r["items"]] == ["m--a.json"] and (tmp_path / "m--b.json").exists()
+    client.post("/api/trash/restore-many", json={"items": r["items"]})
+    assert (tmp_path / "m--a.json").exists()
 
 
 def test_damage_scenario(client, links):

@@ -5,7 +5,7 @@ import dataclasses
 
 import pytest
 
-from wynntools import buildfile
+from wynntools import buildfile, variants
 from wynntools.codec import Build, decode, to_link
 from wynntools.damage import check_specials, damage_report
 from wynntools.derived import metrics
@@ -273,3 +273,20 @@ def test_survivability_and_warnings(gd, links):
     w = {x["code"]: x for x in doc["status"]["warnings"]}
     assert w["neg_adef"]["fix"] == {"action": "search", "floors": {"min_eledef": 0},
                                     "why": "no negative elemental defence"}
+
+
+def test_candidates_choose_and_trash(gd, links, tmp_path):
+    doc = buildfile.refresh({"name": "Main", "notes": "keep me", "locked": ["weapon"],
+                             **buildfile.from_build(decode(links["shaman_105_stormdrain"]["hash"], gd), gd)}, gd)
+    buildfile.write(tmp_path / "main.json", doc)
+    for name, key in (("a", "shaman_105_resonance"), ("b", "shaman_105_cryoseism")):
+        c = buildfile.from_build(decode(links[key]["hash"], gd), gd)
+        buildfile.write(tmp_path / f"main--{name}.json",
+                        buildfile.refresh({"name": f"Main: {name}", "parent": "main.json", **c}, gd))
+    assert [p.name for p in variants.candidates(tmp_path / "main.json")] == ["main--a.json", "main--b.json"]
+    new, trash = variants.choose(tmp_path / "main.json", tmp_path / "main--a.json", gd)
+    assert new["name"] == "Main" and new["notes"] == "keep me" and new["locked"] == ["weapon"]
+    assert new["equipment"] == buildfile.from_build(decode(links["shaman_105_resonance"]["hash"], gd), gd)["equipment"]
+    assert (tmp_path / ".trash" / trash).exists() and "parent" not in new
+    moved = variants.trash_candidates(tmp_path / "main.json")
+    assert [f for f, _ in moved] == ["main--b.json"] and not variants.candidates(tmp_path / "main.json")

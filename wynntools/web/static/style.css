@@ -403,3 +403,11 @@ select.inline { width: auto; }
 .warn-row { display: flex; gap: 8px; align-items: center; font-size: 12px; padding: 5px 7px; border-radius: 4px;
   border-left: 3px solid var(--warn); background: rgba(255, 183, 74, .08); }
 .warn-row.bad { border-left-color: var(--bad); background: rgba(255, 85, 85, .1); }
+
+/* ------------------------------------------------------------------ candidates, locks */
+#build-list li.cand { margin-left: 18px; padding: 3px 8px; font-size: 13px; }
+.badge-count { margin-left: 6px; font-size: 10px; padding: 0 6px; border-radius: 999px; background: var(--accent-2); color: #fff; }
+.banner.cand { background: rgba(79, 209, 224, .08); border: 1px solid rgba(79, 209, 224, .4); }
+table.cmp.cands { table-layout: auto; }
+table.cmp.cands td.cand-actions { white-space: nowrap; }
+table.cmp.cands tr.cand-parent td { background: var(--panel-2); }

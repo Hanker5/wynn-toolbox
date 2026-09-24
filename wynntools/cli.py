@@ -576,7 +576,8 @@ ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build
             "upgrades": "Ranking upgrades", "import": "Importing a build",
             "link": "Checking a build", "edit": "Editing a build",
             "craft": "Finding crafted items", "compare": "Comparing builds",
-            "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival"}
+            "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival",
+            "variants": "Comparing candidates"}
 NO_PROGRESS = {"serve", "update"}      # the app itself, and replacing it
 
 
@@ -875,6 +876,55 @@ def cmd_tradeoffs(a):
     if a.parent and not a.no_show:
         _show_in_app(a.parent)
     return rc
+
+
+def cmd_variants(a):
+    """List a build's candidates side by side; choose one, or trash them."""
+    from . import variants
+    gd = GameData()
+    parent = Path(a.build)
+    if not parent.exists():
+        raise SystemExit(f"no build {a.build}")
+    if a.choose:
+        _refuse_if_unsaved(str(parent), a.force)
+        doc, trash = variants.choose(parent, a.choose, gd, inv_mod.load(a.inventory))
+        print(f"{parent} now has {Path(a.choose).name}'s build; the candidate went to builds/.trash/{trash}")
+        _print_report(doc["status"]["verified"], check_link(doc["link"], gd)[1], gd)
+        print(doc["link"])
+    if a.trash_rest or a.trash_all:
+        moved = variants.trash_candidates(parent)
+        print(f"moved {len(moved)} candidate(s) to builds/.trash" + (": " + ", ".join(f for f, _ in moved) if moved else ""))
+    if a.choose or a.trash_rest or a.trash_all:
+        _show_in_app(str(parent))
+        return 0
+    cands = variants.candidates(parent)
+    if not cands:
+        print(f"{parent} has no candidates. Make some with `wt gear --edit {parent} --candidate NAME` "
+              f"or `wt tradeoffs spec.json --parent {parent}`.")
+        return 0
+    inventory = inv_mod.load(a.inventory)
+    print(f"{'':<34}{'Health':>8}{'Eff. HP':>10}{'Regen':>7}{'Low def':>9}{'SP':>5}{'Melee DPS':>11}{'Puppet DPS':>12}")
+    for p in [parent, *cands]:
+        doc = buildfile.refresh(buildfile.read(p), gd, inventory)
+        st = doc["status"]
+        sv = st["survivability"]["typical"]
+        dmg = (st.get("damage") or {}).get("typical") or {}
+        spells = {sp["name"]: sp for sp in dmg.get("spells") or []}
+        melee = dmg["spells"][0].get("dps") if dmg.get("spells") else None
+        pup = (spells.get("Puppet Damage") or {}).get("summary")
+        fmt = lambda v: "—" if v is None else f"{v:,.0f}"
+        name = doc.get("name") or p.stem
+        pname = buildfile.read(parent).get("name") or ""
+        if p != parent and pname and name.startswith(pname + ": "):
+            name = name[len(pname) + 2:]
+        label = "(this build)" if p == parent else name
+        print(f"{label[:33]:<34}{fmt(sv['hp']):>8}{fmt(sv['ehp']):>10}{fmt(sv['hpr']):>7}"
+              f"{fmt(sv['lowest']['value']):>9}{st['sp_total']:>5}{fmt(melee):>11}{fmt(pup):>12}"
+              + ("" if st["verified"] else "  HAS PROBLEMS"))
+        if p != parent:
+            print(f"{'':<2}{p}")
+    print("(typical rolls. Choose one with --choose FILE; --trash-rest moves the others to builds/.trash)")
+    return 0
 
 
 def cmd_upgrades(a):
@@ -1220,6 +1270,14 @@ def main(argv=None):
     s.add_argument("--quiet", action="store_true")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_tradeoffs)
+    s = sub.add_parser("variants", help="a build's candidates side by side; choose one or trash them")
+    s.add_argument("build")
+    s.add_argument("--choose", metavar="CANDIDATE", help="put this candidate's build into the build")
+    s.add_argument("--trash-rest", action="store_true", help="move the (other) candidates to builds/.trash")
+    s.add_argument("--trash-all", action="store_true", help="same as --trash-rest")
+    s.add_argument("--force", action="store_true", help="choose even if the player has unsaved edits")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_variants)
     s = sub.add_parser("upgrades", help="rank items you don't own by how much each would help")
     s.add_argument("spec")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))

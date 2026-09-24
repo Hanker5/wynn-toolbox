@@ -25,6 +25,7 @@ from .. import buildfile
 from .. import inventory as inv_mod
 from .. import settings as settings_mod
 from .. import updates
+from .. import variants
 from ..codec import SLOTS, TOME_SLOTS
 from ..damage import POWDER_SPECIALS
 from ..data import VERSIONS, GameData
@@ -41,7 +42,7 @@ from .terminal import TerminalSession, available_clis
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
-TRASH_DIR = ".trash"          # deleted builds go here (builds/.trash), not away
+TRASH_DIR = variants.TRASH_DIR          # deleted builds go here (builds/.trash), not away
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
             "skillpoints", "locked")
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
@@ -458,27 +459,29 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         p = path_for(name)
         if not p.exists():
             raise HTTPException(404, "no such build")
-        trash_dir.mkdir(exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        dest, n = trash_dir / f"{p.stem}-{stamp}.json", 1
-        while dest.exists():
-            n += 1
-            dest = trash_dir / f"{p.stem}-{stamp}-{n}.json"
-        os.replace(p, dest)
-        return {"file": p.name, "trash": dest.name}
+        return {"file": p.name, "trash": variants.to_trash(p)}
+
+    def restore(trash, file):
+        src = (trash_dir / str(trash or "")).resolve()
+        if src.parent != trash_dir.resolve() or src.suffix != ".json" or not src.exists():
+            raise HTTPException(404, "that build isn't in the trash")
+        p = path_for(file or "")
+        if p.exists():
+            raise HTTPException(409, f"{p.name} exists again; rename it first")
+        os.replace(src, p)
+        return p.name
 
     @app.post("/api/trash/restore")
     async def restore_build(request: Request):
         """Put a deleted build back under its old name (Undo)."""
         body = await request.json()
-        src = (trash_dir / str(body.get("trash") or "")).resolve()
-        if src.parent != trash_dir.resolve() or src.suffix != ".json" or not src.exists():
-            raise HTTPException(404, "that build isn't in the trash")
-        p = path_for(body.get("file") or "")
-        if p.exists():
-            raise HTTPException(409, f"{p.name} exists again; rename it first")
-        os.replace(src, p)
-        return {"file": p.name}
+        return {"file": restore(body.get("trash"), body.get("file"))}
+
+    @app.post("/api/trash/restore-many")
+    async def restore_builds(request: Request):
+        """Undo for a bulk trash: [{"trash", "file"}, ...]."""
+        body = await request.json()
+        return {"files": [restore(x.get("trash"), x.get("file")) for x in body.get("items") or []]}
 
     @app.post("/api/import")
     async def import_link(request: Request):
@@ -732,6 +735,62 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                         body.get("tree_preset") or None, body.get("tree"), parent)
         buildfile.write(p, checked(doc))
         return {"file": p.name}
+
+    @app.get("/api/builds/{name}/candidates")
+    def list_candidates(name: str):
+        p = path_for(name)
+        if not p.exists():
+            raise HTTPException(404, "no such build")
+        out = []
+        for c in variants.candidates(p):
+            try:
+                doc = buildfile.refresh(buildfile.read(c), gd, inv())
+            except (KeyError, ValueError, NotImplementedError) as e:
+                out.append({"file": c.name, "name": c.stem, "error": str(e)})
+                continue
+            out.append({"file": c.name, "name": doc.get("name") or c.stem,
+                        "equipment": doc["equipment"], "verified": doc["status"]["verified"],
+                        "row": candidate_row(doc)})
+        return {"parent": {"file": p.name, "row": candidate_row(buildfile.refresh(buildfile.read(p), gd, inv()))},
+                "candidates": out}
+
+    def candidate_row(doc):
+        """The numbers the Candidates panel compares."""
+        st = doc["status"]
+        sv = (st.get("survivability") or {}).get("typical") or {}
+        dmg = ((st.get("damage") or {}).get("typical") or {}) if "error" not in (st.get("damage") or {}) else {}
+        spells = {sp["name"]: sp for sp in dmg.get("spells") or []}
+        melee = next(iter(spells.values()), {}) if spells else {}
+        pup = spells.get("Puppet Damage")
+        return {"hp": sv.get("hp"), "ehp": sv.get("ehp"), "hpr": sv.get("hpr"),
+                "lowest_eledef": (sv.get("lowest") or {}).get("value"),
+                "sp_total": st.get("sp_total"), "melee_dps": melee.get("dps"),
+                "puppet_dps": pup.get("summary") if pup else None,
+                "objective": {k: (st.get("totals") or {}).get(k)
+                              for k in (doc.get("spec") or {}).get("objective") or {}
+                              if k in (st.get("totals") or {})}}
+
+    @app.post("/api/builds/{name}/choose")
+    async def choose_candidate(name: str, request: Request):
+        """Put a candidate's build into this build; the candidate goes to the trash."""
+        body = await request.json()
+        p, c = path_for(name), path_for(body.get("candidate") or "")
+        if not p.exists() or not c.exists():
+            raise HTTPException(404, "no such build")
+        try:
+            _, trash = variants.choose(p, c, gd, inv())
+        except (KeyError, ValueError, NotImplementedError) as e:
+            raise HTTPException(422, str(e).strip('"'))
+        return {"file": p.name, "trash": trash, "candidate": c.name}
+
+    @app.post("/api/builds/{name}/trash-candidates")
+    async def trash_candidates(name: str, request: Request):
+        body = await request.json()
+        p = path_for(name)
+        if not p.exists():
+            raise HTTPException(404, "no such build")
+        moved = variants.trash_candidates(p, keep=body.get("keep") or [])
+        return {"items": [{"file": f, "trash": t} for f, t in moved]}
 
     @app.post("/api/damage")
     async def damage_api(request: Request):
