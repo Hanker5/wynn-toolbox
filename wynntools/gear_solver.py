@@ -7,7 +7,7 @@ docs/ROADMAP.md for the planned exact (MILP) version.
 import dataclasses
 import time
 from dataclasses import dataclass, field
-from itertools import product
+from itertools import combinations, product
 from operator import add
 
 from .codec import SLOTS
@@ -53,6 +53,14 @@ DERIVED_GOALS = DERIVED_FLOORS
 DAMAGE_GOAL_PREFIX = "damage:"      # "damage:<spell name>": that spell's headline number
 
 
+def _majors_ok(spec, items, set_majors):
+    """Every required major ID is active (on an item or from a set bonus) and no avoided one is."""
+    active = set(set_majors)
+    for it in items:
+        active.update(it.get("majorIds") or ())
+    return all(m in active for m in spec.require_major) and not active & set(spec.exclude_major)
+
+
 def _set_stat(stats, key):
     """A set bonus's value for a stat ("hp" is its Health bonus; "-x" is x negated)."""
     if key[0] == "-":
@@ -75,6 +83,8 @@ class Spec:
     require_major: list = field(default_factory=list)   # e.g. ["GREED", "MAGNET"]
     exclude_major: list = field(default_factory=list)   # major IDs no item may carry (forced items excepted)
     caps: dict = field(default_factory=dict)     # stat -> maximum total (every search kind)
+    require_sets: dict = field(default_factory=dict)    # set name -> at least this many pieces worn
+    exclude_sets: list = field(default_factory=list)    # set names none of whose pieces are used (forced items excepted)
     force: dict = field(default_factory=dict)    # slot -> item name
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
@@ -161,8 +171,9 @@ def _usable(gd, spec):
             continue
         if name in spec.exclude or it.get("tier") in spec.exclude_tiers:
             continue
-        if spec.exclude_major and name not in (spec.force or {}).values() \
-                and set(it.get("majorIds") or ()) & set(spec.exclude_major):
+        if name not in (spec.force or {}).values() and (
+                set(it.get("majorIds") or ()) & set(spec.exclude_major)
+                or gd.set_of.get(name) in spec.exclude_sets):
             continue
         if spec.inventory is not None:
             it = with_rolls(it, spec.inventory.rolls(name))
@@ -171,14 +182,34 @@ def _usable(gd, spec):
     return pools
 
 
-def _major_options(pools, gd, major):
-    opts = []
-    for s in SLOTS:
-        if s == "ring2":
-            continue
-        for it in pools[s]:
-            if major in (it.get("majorIds") or []):
-                opts.append(("ring" if s == "ring1" else s, gd.name(it)))
+def _set_groups(pools, gd, set_name, need):
+    """Every way to wear `need` pieces of a set (distinct slots), as groups of (slot, name)."""
+    pieces = [("ring" if s == "ring1" else s, gd.name(it)) for s in SLOTS if s != "ring2"
+              for it in pools[s] if gd.set_of.get(gd.name(it)) == set_name]
+    out = []
+    for combo in combinations(pieces, need):
+        kinds = [k for k, _ in combo]
+        if all(kinds.count(k) <= (2 if k == "ring" else 1) for k in kinds):
+            out.append(tuple(combo))
+            if len(out) >= 300:
+                break
+    return out
+
+
+def _bonus_counts(gd, set_name, major):
+    """Piece counts of a set whose bonus grants `major`."""
+    return [c for c in range(1, len(gd.sets[set_name]["bonuses"]) + 1)
+            if major in set_bonus_stats({set_name: c}, gd.sets)[1]]
+
+
+def _major_options(pools, gd, major, exclude_sets=()):
+    """Ways to have a major ID: one item that carries it, or enough pieces of a set whose bonus grants it."""
+    opts = [((("ring" if s == "ring1" else s), gd.name(it)),) for s in SLOTS if s != "ring2"
+            for it in pools[s] if major in (it.get("majorIds") or [])]
+    for name in gd.sets:
+        counts = _bonus_counts(gd, name, major)
+        if counts and name not in exclude_sets:
+            opts += _set_groups(pools, gd, name, min(counts))
     if not opts:
         where = " that you own" if getattr(_major_options, "owned_only", False) else ""
         raise ValueError(f"no usable item{where} carries major ID {major}")
@@ -186,11 +217,16 @@ def _major_options(pools, gd, major):
 
 
 def _force_sets(spec, pools, gd):
-    """Every way of placing one item per required major ID, merged with spec.force."""
-    options = [_major_options(pools, gd, m) for m in spec.require_major]
+    """Every way of placing the items for each required major ID and required set, merged with spec.force."""
+    options = [_major_options(pools, gd, m, spec.exclude_sets) for m in spec.require_major]
+    for name, need in spec.require_sets.items():
+        groups = _set_groups(pools, gd, name, need)
+        if not groups:
+            raise ValueError(f"no usable {need}-piece combination of the {name} set")
+        options.append(groups)
     for combo in product(*options) if options else [()]:
         force, ok = dict(spec.force), True
-        for slot, name in combo:
+        for slot, name in (p for group in combo for p in group):
             if name in force.values():
                 continue                     # one item may carry several majors
             if slot == "ring":
@@ -512,7 +548,10 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 sp = exact_sp(names_now)          # WynnBuilder's skill-point rules
                 if sp.total_assigned > budget or not sp.under_100:
                     return
-                set_stats, _ = set_bonus_stats(sp.set_counts, gd.sets)
+                set_stats, set_majors = set_bonus_stats(sp.set_counts, gd.sets)
+                if not _majors_ok(spec, chosen, set_majors) or any(
+                        sp.set_counts.get(n, 0) < need for n, need in spec.require_sets.items()):
+                    return
                 a = set_contrib(set_stats)
                 total = val + a[0]
                 if best and total <= best.score:

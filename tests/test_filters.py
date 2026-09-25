@@ -8,7 +8,7 @@ from wynntools.gear_milp import solve_gear_exact
 from wynntools.gear_solver import SUM_FLOORS, solve_gear
 from wynntools.search import spec_from
 from wynntools.statinfo import LABELS, catalog
-from wynntools.verify import stat
+from wynntools.verify import build_skillpoints, stat
 
 BASE = {"class": "Mage", "level": 105, "objective": {"sdPct": 1}}
 
@@ -70,3 +70,56 @@ def test_cap_in_the_local_search(gd):
     spec = dataclasses.replace(spec, atree=set())
     r = LocalSearch(spec, gd).run()
     assert r is not None and _total(gd, r, "spd") <= 0
+
+
+# ------------------------------------------------------------ set bonuses: majors and set-level filters
+def _sets_worn(gd, r, level=105):
+    return build_skillpoints(r.equipment, [None] * 14, gd).set_counts
+
+
+MAGE_HP = {"class": "Mage", "level": 105, "objective": {"hp": 1}}
+
+
+def test_a_major_only_a_set_bonus_grants_can_be_required(gd):
+    """CINDERCURSE comes from wearing 3 Cindercurse pieces; both searches find that."""
+    spec = spec_from({**MAGE_HP, "objective": {"sdPct": 1}, "require_major": ["CINDERCURSE"], "topn": 5}, gd)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r is not None and _sets_worn(gd, r).get("Cindercurse", 0) >= 3
+
+
+def test_avoided_major_is_kept_out_of_set_bonuses(gd):
+    """Three Cindercurse pieces would grant the major; with it avoided that can't happen, two are fine."""
+    three = {"chestplate": "Cindercurse Cuirass", "leggings": "Cindercurse Cuisses", "weapon": "Cindercurse Crosier"}
+    spec = spec_from({**MAGE_HP, "force": three, "topn": 5}, gd)
+    assert _sets_worn(gd, solve_gear_exact(spec, gd)).get("Cindercurse") == 3
+    banned = spec_from({**MAGE_HP, "force": three, "exclude_major": ["CINDERCURSE"], "topn": 5}, gd)
+    assert solve_gear_exact(banned, gd) is None
+    assert solve_gear(banned, gd) is None
+    two = dict(list(three.items())[:2])
+    ok = spec_from({**MAGE_HP, "force": two, "exclude_major": ["CINDERCURSE"], "topn": 5}, gd)
+    for r in (solve_gear_exact(ok, gd), solve_gear(ok, gd)):
+        assert r is not None and _sets_worn(gd, r).get("Cindercurse", 0) < 3
+
+
+def test_require_a_set(gd):
+    spec = spec_from({**MAGE_HP, "require_sets": {"Air Relic": 4}, "topn": 5}, gd)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r is not None and _sets_worn(gd, r).get("Air Relic", 0) == 4
+    hard = spec_from({**BASE, "objective": {"poison": 1}, "floors": {"hp": 6000},
+                      "require_sets": {"Cosmic Foundations": 4}}, gd)       # needs the exact search
+    assert _sets_worn(gd, solve_gear_exact(hard, gd)).get("Cosmic Foundations") == 4
+
+
+def test_exclude_a_set(gd):
+    spec = spec_from({**MAGE_HP, "exclude_sets": ["Cindercurse"], "topn": 5}, gd)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r is not None and not _sets_worn(gd, r).get("Cindercurse")
+
+
+def test_set_filters_are_checked(gd):
+    with pytest.raises(ValueError, match="unknown set"):
+        spec_from({**BASE, "require_sets": {"Nope": 2}}, gd)
+    with pytest.raises(ValueError, match="piece count"):
+        spec_from({**BASE, "require_sets": {"Cindercurse": 0}}, gd)
+    with pytest.raises(ValueError, match="both required and excluded"):
+        spec_from({**BASE, "require_sets": {"Cindercurse": 2}, "exclude_sets": ["Cindercurse"]}, gd)

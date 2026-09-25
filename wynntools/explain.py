@@ -35,6 +35,7 @@ def _constraints(spec):
     """The player's requirements the exact program can check, as (kind, key, text)."""
     out = [("force", slot, f"{name} in {slot}") for slot, name in (spec.force or {}).items()]
     out += [("major", m, f"major ID {m}") for m in spec.require_major]
+    out += [("set", n, f"at least {v} pieces of the {n} set") for n, v in spec.require_sets.items()]
     out += [("cap", k, f"{label(k)} at most {v:,}") for k, v in spec.caps.items()]
     for k, v in spec.floors.items():
         if k in (*SUM_FLOORS, *SKILL_FLOORS, MIN_ELEDEF, "mana", "weapon_dps"):
@@ -50,6 +51,7 @@ def _with(spec, keep):
         force={s: n for s, n in spec.force.items() if ("force", s) in kinds},
         require_major=[m for m in spec.require_major if ("major", m) in kinds],
         caps={k: v for k, v in spec.caps.items() if ("cap", k) in kinds},
+        require_sets={k: v for k, v in spec.require_sets.items() if ("set", k) in kinds},
         floors={k: v for k, v in spec.floors.items() if ("floor", k) in kinds})
 
 
@@ -182,7 +184,7 @@ def explain(spec, gd, found=None, time_limit=180):
             out["summary"] = "A build exists, but the search didn't finish; try again or allow more time."
         return out
     # deletion filter: kept items and major IDs first, so floors stay in the explanation
-    order = sorted(cons, key=lambda c: {"force": 0, "major": 1, "floor": 2, "cap": 3}[c[0]])
+    order = sorted(cons, key=lambda c: {"force": 0, "major": 1, "set": 1, "floor": 2, "cap": 3}[c[0]])
     conflict = list(order)
     for c in order:
         trial = [x for x in conflict if x is not c]

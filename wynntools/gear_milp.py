@@ -176,6 +176,9 @@ class GearModel:
         for v, v2 in second_copy.items():
             rows.add([(v2, 1), (v, -1)], hi=0)
         for s, ys in set_vars.items():
+            for c, y in enumerate(ys):      # a bonus tier that grants an avoided major can't be reached
+                if c and set(spec.exclude_major) & set_bonus_stats({s: c}, gd.sets)[1]:
+                    rows.add([(y, 1)], hi=0)
             rows.add([(y, 1) for y in ys], 1, 1)
             rows.add([(v, 1) for v in set_members[s]] + [(y, -c) for c, y in enumerate(ys)], 0, 0)
 
@@ -269,6 +272,11 @@ class GearModel:
             if not terms:
                 raise Infeasible(f"no usable item carries major ID {major}")
             rows.add(terms, lo=1)
+        for name, need in spec.require_sets.items():
+            ys = set_vars.get(name, [])
+            if len(ys) <= need:
+                raise Infeasible(f"the {name} set can't reach {need} pieces here")
+            rows.add([(y, 1) for c, y in enumerate(ys) if c >= need], lo=1)
         for slot, name in (spec.force or {}).items():
             kind = "ring" if slot in ("ring1", "ring2") else slot
             vs = [v for v in by_kind[kind] if var_item[v] is not EMPTY and gd.name(var_item[v]) == name]

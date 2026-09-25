@@ -56,6 +56,17 @@ def spec_from(raw, gd, inventory=None):
                 raise ValueError(f"unknown major ID {m!r} in {key!r}")
     if set(raw.get("require_major") or []) & set(raw.get("exclude_major") or []):
         raise ValueError("a major ID can't be both required and excluded")
+    require_sets = dict(raw.get("require_sets") or {})
+    for n, v in require_sets.items():
+        if n not in gd.sets:
+            raise ValueError(f"unknown set {n!r} in 'require_sets'")
+        if not isinstance(v, int) or isinstance(v, bool) or v < 1:
+            raise ValueError(f"'require_sets' needs a piece count of 1 or more for {n!r}, not {v!r}")
+    for n in raw.get("exclude_sets") or []:
+        if n not in gd.sets:
+            raise ValueError(f"unknown set {n!r} in 'exclude_sets'")
+    if set(require_sets) & set(raw.get("exclude_sets") or []):
+        raise ValueError("a set can't be both required and excluded")
     prefer = raw.get("prefer") or {}
     if isinstance(prefer, list):
         prefer = {n: 0 for n in prefer}        # 0: a tiebreak only
@@ -74,6 +85,7 @@ def spec_from(raw, gd, inventory=None):
     return Spec(cls=raw["class"], level=int(raw["level"]), objective=objective, floors=floors,
                 require_major=list(raw.get("require_major") or []),
                 exclude_major=list(raw.get("exclude_major") or []), caps=caps,
+                require_sets=require_sets, exclude_sets=list(raw.get("exclude_sets") or []),
                 force={k: v for k, v in (raw.get("force") or {}).items() if v},
                 exclude=exclude, exclude_tiers=set(raw.get("exclude_tiers") or []),
                 tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes") or []],
