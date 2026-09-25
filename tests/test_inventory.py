@@ -1,4 +1,5 @@
 import dataclasses
+import pytest
 
 from wynntools.gear_solver import Spec, solve_gear, upgrades
 from wynntools.inventory import Inventory, load, save, with_rolls
@@ -45,3 +46,33 @@ def test_missing_slots_are_allowed_when_searching_owned_items(gd):
     inv = Inventory(items={n: {} for n in GAIA_BUILD if n != "Dying Lobelia"})
     r = solve_gear(dataclasses.replace(SPEC, only=inv.names(), inventory=inv), gd)
     assert r is not None and r.equipment[6] is None          # no bracelet owned
+
+
+def test_aspects_round_trip_validate_and_old_files(tmp_path, gd):
+    inv = Inventory(tomes=["Tome of Scavenging Expertise III"] * 2)
+    inv.set_aspect("Mage", "Aspect of Runic Extravagance", 2)
+    save(inv, tmp_path / "inventory.json")
+    back = load(tmp_path / "inventory.json")
+    assert back.aspect_tier("Mage", "Aspect of Runic Extravagance") == 2
+    assert back.aspect_tier("Mage", "Nope") == 0
+    assert back.tome_counts() == {"Tome of Scavenging Expertise III": 2}
+    from wynntools.inventory import validate
+    assert validate(back, gd) == []
+    back.set_aspect("Mage", "Aspect of Runic Extravagance", 9)
+    back.set_aspect("Mage", "Nope", 1)
+    assert len(validate(back, gd)) == 2
+    back.set_aspect("Mage", "Nope", 0)
+    (tmp_path / "old.json").write_text('{"items": {"Galleon": {}}}')
+    assert load(tmp_path / "old.json").aspects == {}
+
+
+def test_spec_tome_pool_parsing(gd):
+    from wynntools.search import spec_from
+    raw = {"class": "Shaman", "level": 105, "objective": {"eSteal": 1}}
+    inv = Inventory(tomes=["Tome of Scavenging Expertise III"] * 2)
+    assert spec_from(raw, gd, inv).tome_pool == "fixed"
+    owned = spec_from({**raw, "tome_pool": "owned"}, gd, inv)
+    assert owned.tome_supply == {"Tome of Scavenging Expertise III": 2}
+    assert spec_from({**raw, "tome_pool": "any"}, gd, inv).tome_supply is None
+    with pytest.raises(ValueError, match="tome_pool"):
+        spec_from({**raw, "tome_pool": "some"}, gd, inv)

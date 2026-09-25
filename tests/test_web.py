@@ -133,6 +133,20 @@ def test_inventory_api_and_reserved_file(client):
     assert client.put("/api/builds/inventory.json", json={}).status_code == 400
 
 
+def test_inventory_api_aspects_and_unavailable(client):
+    post = lambda **b: client.post("/api/inventory", json=b)
+    name = "Aspect of Runic Extravagance"
+    r = post(action="add", kind="aspect", **{"class": "Mage"}, name=name, tier=2)
+    assert r.json()["aspects"] == {"Mage": {name: 2}}
+    assert post(action="add", kind="aspect", **{"class": "Mage"}, name=name, tier=9).status_code == 422
+    assert post(action="add", kind="aspect", **{"class": "Mage"}, name="Nope").status_code == 422
+    assert client.get("/api/inventory").json()["unknown"] == []
+    assert post(action="remove", kind="aspect", **{"class": "Mage"}, name=name).json()["aspects"] == {}
+    assert post(action="add", kind="unavailable", name="Galleon", reason="pricey").json()["unavailable"] == {"Galleon": "pricey"}
+    assert post(action="add", kind="unavailable", name="Nope").status_code == 422
+    assert post(action="remove", kind="unavailable", name="Galleon").json()["unavailable"] == {}
+
+
 def test_update_check_cache_is_not_a_build(client, tmp_path):
     """Regression: the update checker's own cache files (not build-shaped JSON)
     showed up in the builds list as unreadable builds."""
@@ -298,3 +312,23 @@ def test_page_never_runs_a_cached_old_script(client):
         assert v == hashlib.sha256((STATIC / name).read_bytes()).hexdigest()[:12]
     s = client.get("/static/" + refs[0])
     assert s.status_code == 200 and s.headers["cache-control"] == "no-cache"
+
+
+def test_solve_chooses_owned_tomes(client):
+    have = ["Tome of Scavenging Expertise III", "Tome of Scavenging Expertise II"]
+    for t in have:
+        client.post("/api/inventory", json={"action": "add", "kind": "tome", "name": t})
+    spec = {"class": "Shaman", "level": 105, "objective": {"eSteal": 1}, "floors": {"hp": 9000},
+            "tome_pool": "owned"}
+    job = client.post("/api/solve", json={"spec": spec, "file": "tomes.json", "name": "Tomes"}).json()["job"]
+    for _ in range(600):
+        with client.stream("GET", f"/api/jobs/{job}/events") as s:
+            last = [line for line in s.iter_lines() if line.startswith("data:")][-1]
+        if '"state": "done"' in last or '"state": "failed"' in last:
+            break
+        time.sleep(0.1)
+    assert '"state": "done"' in last, last
+    doc = client.get("/api/builds/tomes.json").json()
+    chosen = [t for t in doc["tomes"] if t]
+    assert chosen and set(chosen) <= set(have) and doc["status"]["verified"]
+    assert doc["spec"]["tome_pool"] == "owned"

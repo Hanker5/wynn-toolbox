@@ -96,8 +96,10 @@ Run `uv run wt --help` (or `wt <command> --help`) for the full list.
   Calculated - Fruma Edition", with powder specials to compare (the tools
   work out which one your powders give).
 - **Compare**: two builds side by side: gear, totals, skill points, damage, HP.
-- **Inventory and upgrades**: record the items and tomes you own (with their real
-  rolls), build only from those, and rank which unowned item would help most.
+- **Inventory and upgrades**: record the items, tomes and aspects you own (with
+  real rolls and aspect tiers; tabs, filters and an unavailable list in the app),
+  build only from those (the search can also choose your tomes, or any tome), and
+  rank which unowned item would help most.
 - **Crafting**: exact crafted-item stats (checked against WynnBuilder's own code)
   and suggestions for the best ingredients and layout for a slot and goal, plus
   where each ingredient drops; the gear search can include crafted pieces.

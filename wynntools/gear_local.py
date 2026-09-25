@@ -56,6 +56,8 @@ class LocalSearch:
         self.weapons, self.rounds, self.time_limit = weapons, rounds, time_limit
         self.spare = spare_sp or spec.spare_sp or ("goal" if spec.derived_objective() else "none")
         self.budget = skill_points(spec.level)
+        if spec.tome_pool != "fixed":
+            raise ValueError("choosing tomes ('tome_pool': owned/any) only works with the exact search")
         self.tome_ids = list(spec.tomes) + [None] * (14 - len(spec.tomes))
         self.derived = spec.derived_floors()
         keys = list(spec.objective) + list(self.derived)

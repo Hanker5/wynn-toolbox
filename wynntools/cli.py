@@ -230,9 +230,11 @@ def cmd_tree(a):
         print(f"  {by_id[i]['display_name']:<26}{by_id[i].get('archetype') or ''}")
 
 
-def _build_from(spec, equipment, tree_preset, gd):
+def _build_from(spec, equipment, tree_preset, gd, tome_ids=None):
+    """A Build for a search result. `tome_ids`: the 14 tomes the search chose
+    (tome_pool owned/any); otherwise the spec's own."""
     b = Build(equipment=equipment, level=spec["level"],
-              tomes=_resolve_tomes(spec.get("tomes"), gd), version=LATEST)
+              tomes=list(tome_ids) if tome_ids else _resolve_tomes(spec.get("tomes"), gd), version=LATEST)
     if tree_preset:
         b.atree = _tree_for(b.level, b.weapon, tree_preset, gd)
     return b
@@ -295,7 +297,8 @@ def _edit_spec(a, doc, gd):
     if equipment[8]:
         raw.setdefault("class", gd.weapon_class(equipment[8]))
     raw.setdefault("level", doc["level"])
-    if "tomes" not in raw and any(doc.get("tomes") or []):
+    if "tomes" not in raw and any(doc.get("tomes") or []) and \
+            (a.tomes or raw.get("tome_pool") or "fixed") == "fixed":
         raw["tomes"] = doc["tomes"]
     if a.keep and a.change:
         raise SystemExit("pass --keep or --change, not both")
@@ -446,6 +449,12 @@ def cmd_gear(a):
     if left_out:
         print(f"(leaving out {len(left_out)} item{'s' if len(left_out) != 1 else ''} marked unavailable "
               f"in {a.inventory}: {', '.join(left_out[:6])}{', ...' if len(left_out) > 6 else ''})")
+    if a.tomes or (a.owned and "tome_pool" not in raw and not any(raw.get("tomes") or [])
+                   and kind_for(spec, a.shortlists) == "exact"):     # owned tomes only where a search can choose them
+        pool = a.tomes or "owned"
+        raw["tome_pool"] = pool
+        spec = _spec_from(raw, gd, inventory)
+        _search_tree(spec, a.tree, gd, old_doc)
     if a.owned:
         spec.only, spec.inventory, spec.crafted = inventory.names(), inventory, False
         print(f"Searching only the {len(inventory.names())} items in {a.inventory} (real rolls where given).")
@@ -482,7 +491,15 @@ def cmd_gear(a):
     _print_goal(spec, r)
     if a.edit:
         _same_ring_order(r.equipment, old_doc.get("equipment") or [None] * len(SLOTS))
-    b = _build_from(raw, r.equipment, a.tree, gd)
+    b = _build_from(raw, r.equipment, a.tree, gd, r.tomes)
+    if r.tomes:
+        chosen = [f"{TOME_SLOTS[k]}: {gd.name(gd.tome(t))}" for k, t in enumerate(r.tomes)
+                  if t is not None and spec.tomes[k:k + 1] in ([], [None])]
+        print(f"Tomes the search chose ({spec.tome_pool}): " + ("; ".join(chosen) or "none"))
+        pairs = [t for k, t in enumerate(r.tomes) if t is not None and r.tomes.count(t) > 1]
+        if pairs:
+            print("Note: the same tome sits in two paired slots; WynnBuilder allows it, but whether "
+                  "the game does is untested (knowledge/mechanics.md).")
     if not a.tree and spec.atree and b.weapon and gd.weapon_class(b.weapon) == spec.cls:
         b.atree = set(spec.atree) | b.atree
     b.skillpoints = r.skillpoints
@@ -1098,14 +1115,34 @@ def cmd_own(a):
         for n in sorted(inv.items):
             r = inv.rolls(n)
             print(f"  {n}" + (f"  (rolls: {', '.join(f'{k} {v}' for k, v in r.items())})" if r else ""))
-        for t in inv.tomes:
-            print(f"  tome: {t}")
+        for t, n in sorted(inv.tome_counts().items()):
+            print(f"  tome: {t}" + (f"  x{n}" if n > 1 else ""))
+        for cls, mine in sorted(inv.aspects.items()):
+            for n, tier in sorted(mine.items()):
+                print(f"  aspect ({cls}): {n}  (tier {tier})")
         for c in inv.crafts:
             it = gd.item(c)
             print(f"  crafted {it['type']}: {c}")
         bad = inv_mod.validate(inv, gd)
         if bad:
             print("Not found in the game data: " + ", ".join(bad))
+        return 0
+    if a.aspect:
+        if not a.cls:
+            raise SystemExit("--aspect needs --class (Archer, Warrior, Mage, Assassin or Shaman)")
+        known = {x["displayName"]: len(x.get("tiers") or []) for x in gd.aspects(a.cls)}
+        if not known:
+            raise SystemExit(f"no aspects for class {a.cls!r}")
+        for name in a.names:
+            if name not in known:
+                raise SystemExit(f"unknown {a.cls} aspect {name!r}")
+            top = max(known[name], 1)
+            tier = a.tier or top
+            if not 1 <= tier <= top:
+                raise SystemExit(f"{name}: tier must be 1..{top}")
+            inv.set_aspect(a.cls, name, tier if a.action == "add" else 0)
+        inv_mod.save(inv, a.inventory)
+        print(f"{a.inventory}: {sum(len(v) for v in inv.aspects.values())} aspects")
         return 0
     for name in a.names:
         if a.action == "add":
@@ -1371,7 +1408,11 @@ def main(argv=None):
     s.add_argument("--no-show", action="store_true", help="don't open the saved build in the web app")
     s.add_argument("--name", help="display name for the saved build")
     s.add_argument("--quiet", action="store_true", help="no progress output")
-    s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls")
+    s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls "
+                   "(and, unless the spec lists tomes, only tomes in the inventory)")
+    s.add_argument("--tomes", choices=["owned", "any"],
+                   help="let the exact search choose the tomes the spec leaves empty: from your inventory "
+                        "or any tome (a spec's \"tome_pool\" does the same)")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.add_argument("--time-limit", type=int, default=600, metavar="SECONDS",
                    help="stop searching after this long (default 600); the exact search then "
@@ -1424,6 +1465,9 @@ def main(argv=None):
     s.add_argument("--reason", help="unavailable: why (e.g. \"too expensive\")")
     s.add_argument("--remove", action="store_true", help="unavailable: take the names off the list")
     s.add_argument("--tome", action="store_true", help="the names are tomes")
+    s.add_argument("--aspect", action="store_true", help="the names are aspects (needs --class)")
+    s.add_argument("--class", dest="cls", help="aspect: the class, e.g. Mage")
+    s.add_argument("--tier", type=int, help="aspect: highest tier owned (default: the top tier)")
     s.add_argument("--roll", action="append", metavar="ID=VALUE", help="real roll, e.g. poison=20640")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_own)

@@ -17,6 +17,7 @@ from .gear_solver import (DAMAGE_GOAL_PREFIX, DERIVED_FLOORS, DERIVED_GOALS, MIN
                           SKILL_FLOORS, SUM_FLOORS, Spec, solve_gear)
 from .rules import ROLLED_IDS
 
+TOME_POOLS = ("fixed", "owned", "any")
 FLOOR_KEYS = (*SUM_FLOORS, *SKILL_FLOORS, MIN_ELEDEF, *DERIVED_FLOORS, "mana", "weapon_dps", "damage")
 
 
@@ -78,6 +79,12 @@ def spec_from(raw, gd, inventory=None):
     for n in named:
         if not n.startswith("CR-"):
             gd.item(n)                          # KeyError names the typo
+    pool = raw.get("tome_pool") or "fixed"
+    if pool not in TOME_POOLS:
+        raise ValueError(f"'tome_pool' is {', '.join(TOME_POOLS)}, not {pool!r}")
+    supply = None
+    if pool == "owned":
+        supply = dict(inventory.tome_counts()) if inventory is not None else {}
     exclude = set(raw.get("exclude") or [])
     unavailable = set(getattr(inventory, "unavailable", None) or {})
     forced = {v for v in (raw.get("force") or {}).values() if v}
@@ -89,6 +96,7 @@ def spec_from(raw, gd, inventory=None):
                 force={k: v for k, v in (raw.get("force") or {}).items() if v},
                 exclude=exclude, exclude_tiers=set(raw.get("exclude_tiers") or []),
                 tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes") or []],
+                tome_pool=pool, tome_supply=supply,
                 topn=int(raw.get("topn") or 8), crafted=bool(raw.get("crafted")),
                 roll=raw.get("roll") or "base", at_most_one=[list(g) for g in groups],
                 prefer=prefer, spare_sp=raw.get("spare_sp"))
@@ -137,6 +145,10 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
     """Search. `progress` gets {"fraction" (None if unknown), "nodes", "best",
     "elapsed", "text"} as the search goes."""
     kind = kind or kind_for(spec)
+    if spec.tome_pool != "fixed" and kind != "exact":
+        raise ValueError("choosing tomes ('tome_pool': owned/any) needs the exact search, which can't "
+                         "check damage-model goals or minimums (effective HP, DPS, spell damage, "
+                         "regen with %); use 'tome_pool': 'fixed' with the tomes listed, or drop those")
     note = KIND_NOTES[kind]
     confirm_note = None
     found = None
@@ -153,6 +165,9 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
             gap = (r.bound - r.score) / max(abs(r.score), 1e-9) * 100 if r.bound is not None else None
             note = ("exact search, stopped at the time limit: a valid build, but not proven the "
                     "best" + (f"; no build can beat it by more than {gap:.1f}%" if gap is not None else ""))
+        if r is not None and spec.tome_pool != "fixed":
+            note += ("; tomes chosen from the ones you own" if spec.tome_pool == "owned"
+                     else "; tomes chosen from any tome (ones to collect)")
     elif kind == "shortlists":
         def shortlist_progress(p):
             if progress:

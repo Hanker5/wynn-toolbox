@@ -201,7 +201,11 @@ entries may be stated as fact.
   says which mobs drop an ingredient and where (`wt ingredient`), but not how
   often; 152 of 972 ingredients list no mob at all.
 - Whether two copies of the same tome can sit in paired slots (both mobXp slots,
-  for example). WynnBuilder allows it.
+  for example). WynnBuilder allows it. The tome-choosing search (`tome_pool`) keeps
+  to the copies a player owns, but with `any` it can pick one twice.
+- Tome "levels" (100, 120) are not player-level requirements (they exceed the
+  level cap); the search doesn't filter tomes by level. Only guild tomes carry
+  skill points (data), and only they count in item skill requirements.
 
 ## Mistakes the verifiers catch
 

@@ -76,3 +76,61 @@ def test_never_worse_than_shortlists_on_random_specs(gd, seed):
         return
     assert b is not None and b.score >= a.score - 1e-9
     valid(gd, spec, b)
+
+
+# ---- the search choosing tomes (tome_pool owned / any)
+TOME_SPEC = Spec(cls="Shaman", level=105, objective={"eSteal": 1}, floors={"hp": 9000})
+
+
+def tome_names(gd, r):
+    return [gd.name(gd.tome(t)) for t in r.tomes if t is not None]
+
+
+def verified(gd, spec, r):
+    ok, rep = check_link(to_link(Build(equipment=r.equipment, level=spec.level, tomes=r.tomes,
+                                       skillpoints=r.skillpoints), gd), gd)
+    assert ok, rep["problems"]
+
+
+def test_any_tome_beats_no_tomes_and_the_link_verifies(gd):
+    fixed = solve_gear_exact(TOME_SPEC, gd)
+    anyt = solve_gear_exact(dataclasses.replace(TOME_SPEC, tome_pool="any"), gd)
+    assert fixed.tomes is None and anyt.tomes and anyt.score > fixed.score
+    verified(gd, TOME_SPEC, anyt)
+
+
+def test_owned_pool_uses_only_owned_tomes_and_their_counts(gd):
+    have = ["Tome of Scavenging Expertise III", "Tome of Scavenging Expertise II"]
+    inv = Inventory(tomes=have + ["Tome of Scavenging Expertise III"])       # two copies of III
+    spec = dataclasses.replace(TOME_SPEC, tome_pool="owned", tome_supply=inv.tome_counts())
+    r = solve_gear_exact(spec, gd)
+    got = tome_names(gd, r)
+    assert set(got) <= set(have) and got.count("Tome of Scavenging Expertise III") <= 2
+    one = dataclasses.replace(spec, tome_supply={have[0]: 1})
+    assert tome_names(gd, solve_gear_exact(one, gd)).count(have[0]) == 1
+    empty = dataclasses.replace(spec, tome_supply={})
+    assert solve_gear_exact(empty, gd).tomes == [None] * 14
+    verified(gd, spec, r)
+
+
+def test_fixed_tomes_stay_and_the_pool_fills_the_rest(gd):
+    keep = gd.tome("Tome of Scavenging Expertise III")["id"]
+    spec = dataclasses.replace(TOME_SPEC, tome_pool="any", tomes=[None] * 12 + [keep, None])
+    r = solve_gear_exact(spec, gd)
+    assert r.tomes[12] == keep and sum(t is not None for t in r.tomes) >= 1
+
+
+def test_a_guild_tome_can_make_a_skill_minimum_reachable(gd):
+    guild = "Brute's Tome of Allegiance"                # +4 Strength
+    spec = dataclasses.replace(TOME_SPEC, floors={"str": 164})
+    without = solve_gear_exact(spec, gd)
+    with_it = solve_gear_exact(dataclasses.replace(spec, tome_pool="owned", tome_supply={guild: 1}), gd)
+    assert with_it.score > without.score and tome_names(gd, with_it) == [guild]
+    verified(gd, spec, with_it)
+
+
+def test_choosing_tomes_needs_the_exact_search(gd):
+    from wynntools.search import run
+    spec = dataclasses.replace(TOME_SPEC, tome_pool="any", objective={"ehp": 1})
+    with pytest.raises(ValueError, match="exact search"):
+        run(spec, gd, explain_failure=False)

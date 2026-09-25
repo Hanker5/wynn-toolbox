@@ -300,12 +300,15 @@ function searchPicker({ label, placeholder, options, onPick }) {
 }
 
 // ------------------------------------------------------------------ inventory
-S.inv = { items: {}, tomes: [], crafts: [] };
+S.inv = { items: {}, tomes: [], crafts: [], aspects: {}, unavailable: {} };
 const owns = (name) => !!name && (name in S.inv.items || S.inv.crafts.includes(name));
 async function loadInventory() {
   S.inv = await api("GET", "/api/inventory");
   const n = Object.keys(S.inv.items).length + S.inv.crafts.length;
-  $("#open-inventory").textContent = `Inventory · ${n} item${n === 1 ? "" : "s"}`;
+  const a = Object.values(S.inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
+  const parts = [[n, "item"], [S.inv.tomes.length, "tome"], [a, "aspect"]].filter(([c]) => c)
+    .map(([c, w]) => `${c} ${w}${c === 1 ? "" : "s"}`);
+  $("#open-inventory").textContent = parts.length ? `Inventory · ${parts.join(", ")}` : "Inventory";
 }
 async function setOwned(name, own, extra = {}) {
   const kind = name.startsWith("CR-") ? "craft" : extra.kind || "item";
@@ -327,18 +330,59 @@ function ownButton(getName) {
   return b;
 }
 
+const INV_TABS = ["Items", "Tomes", "Aspects", "Unavailable"];
+const ASPECT_CLASSES = ["Archer", "Warrior", "Mage", "Assassin", "Shaman"];
+const TOME_TYPE_LABEL = { weaponTome: "Weapon", armorTome: "Armor", guildTome: "Guild", lootrunTome: "Lootrun",
+  gatherXpTome: "Gathering XP", dungeonXpTome: "Dungeon XP", mobXpTome: "Mob XP" };
+const tomeTypeLabel = (t) => TOME_TYPE_LABEL[t] || t;
+const invTab = () => { const t = store.get("wt-inv-tab"); return INV_TABS.includes(t) ? t : "Items"; };
+const invPrefs = { ownedOnly: {}, aspectClass: null, q: {} };
+
 async function renderInventory() {
   await loadInventory();
-  const inv = S.inv, box = $("#inventory");
-  const names = [...Object.keys(inv.items), ...inv.crafts];
+  const inv = S.inv, box = $("#inventory"), tab = invTab();
+  const itemNames = [...Object.keys(inv.items), ...inv.crafts];
+  const aspectCount = Object.values(inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
+  const counts = { Items: itemNames.length, Tomes: inv.tomes.length, Aspects: aspectCount,
+    Unavailable: Object.keys(inv.unavailable || {}).length };
+  const again = () => renderInventory();
+  const tabs = h("div", { class: "tabs", role: "tablist" }, INV_TABS.map((t) =>
+    h("button", { role: "tab", class: `tab${t === tab ? " on" : ""}`, "aria-selected": t === tab ? "true" : "false",
+      onclick: () => { store.set("wt-inv-tab", t); again(); } },
+      t, h("span", { class: "badge" }, String(counts[t])))));
+  const hints = {
+    Items: "Mark the items you own. The solver can then build only from these (\"Only items I own\") and rank what to get next. Enter real roll values if you know them; blank means a typical 100% roll.",
+    Tomes: "Mark the tomes you own (two of the same tome for a paired slot: use the stepper). The solver can be told to pick only from these, or from any tome.",
+    Aspects: "Mark each aspect you have and the highest tier you have reached. The editor won't offer a higher tier than that.",
+    Unavailable: "Items you can't or won't get (too expensive, not on the market). Every search leaves them out unless you force one into a slot.",
+  };
+  const body = h("div", { class: "inv-body" });
+  setKids(box, h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Inventory")), tabs,
+    h("p", { class: "hint" }, hints[tab]), body);
+  const filterBar = (key, placeholder, extra = []) => {
+    const q = h("input", { type: "search", placeholder, "aria-label": placeholder, value: invPrefs.q[key] || "" });
+    const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!invPrefs.ownedOnly[key] }), " Owned only");
+    only.querySelector("input").onchange = (e) => { invPrefs.ownedOnly[key] = e.target.checked; draw(); };
+    q.oninput = () => { invPrefs.q[key] = q.value; draw(); };
+    return { q, bar: h("div", { class: "inv-filter" }, q, ...extra, only) };
+  };
+  let draw = () => {};
+  if (tab === "Items") await invItems(body, inv, itemNames, again);
+  else if (tab === "Tomes") { const f = filterBar("tomes", "Filter tomes…"); draw = invTomes(body, inv, f, again); body.prepend(f.bar); draw(); }
+  else if (tab === "Aspects") await invAspects(body, inv, filterBar, again);
+  else invUnavailable(body, inv, again);
+}
+
+async function invItems(body, inv, names, again) {
   await Promise.all(names.map((n) => itemInfo("any", n)));
   const addInput = h("input", { placeholder: "Search any item to add…", "aria-label": "Add owned item" });
   const addAc = autocomplete(addInput, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
-    async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); renderInventory(); });
+    async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); again(); });
   const rows = names.sort().map((n) => {
     const it = S.items[n];
     const rolls = (inv.items[n] || {}).rolls || {};
     const rolled = Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi);
+    const canRoll = rolled.length && !n.startsWith("CR-");
     const inputs = rolled.map(([k, [lo, mid, hi]]) => {
       const [label, unit] = idLabel(k);
       const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
@@ -346,6 +390,7 @@ async function renderInventory() {
       inp.dataset.id = k;
       return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
     });
+    const nSet = Object.keys(rolls).length;
     const save = h("button", { class: "mini", onclick: async () => {
       const r = {};
       for (const inp of card.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
@@ -353,27 +398,114 @@ async function renderInventory() {
     } }, "Save rolls");
     const card = h("div", { class: "inv-item" },
       h("div", { class: "row" }, itemIcon(it?.type, 32, it?.tier),
-        h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n)),
-        h("span", { class: "grow" }),
-        rolled.length && !n.startsWith("CR-") ? save : null,
-        h("button", { class: "mini danger", onclick: async () => { await setOwned(n, false); renderInventory(); } }, "Remove")),
-      rolled.length && !n.startsWith("CR-") ? h("div", { class: "rolls" }, inputs) : null,
-      h("div", { class: "eq-line" }, itemLine(it)));
+        h("div", { class: "inv-main" },
+          h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n)),
+          h("div", { class: "eq-line" }, itemLine(it))),
+        nSet ? h("span", { class: "badge gold", title: "Real rolls entered" }, `${nSet} roll${nSet === 1 ? "" : "s"}`) : null,
+        h("button", { class: "mini danger", onclick: async () => { await setOwned(n, false); again(); } }, "Remove")),
+      canRoll ? h("details", { class: "rolls-drawer", open: nSet > 0 },
+        h("summary", {}, "Real rolls"),
+        h("div", { class: "rolls" }, inputs), h("div", { class: "row" }, save)) : null);
     attachTooltip(card.querySelector(".eq-icon"), () => S.items[n]);
     return card;
   });
-  const tomeTypes = Object.keys(S.tomes).sort();
-  const tomeSel = h("select", { "aria-label": "Add owned tome" }, h("option", { value: "" }, "Add a tome you own…"),
-    ...tomeTypes.map((t) => h("optgroup", { label: t }, ...S.tomes[t].map((x) => h("option", { value: x.name }, x.name)))));
-  tomeSel.onchange = async () => { if (tomeSel.value) { await setOwned(tomeSel.value, true, { kind: "tome" }); renderInventory(); } };
-  setKids(box,
-    h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Inventory")),
-    h("p", { class: "hint" }, "Mark the items you own. The solver can then build only from these (\"Only items I own\") and rank what to get next. Enter real roll values if you know them; blank means a typical 100% roll."),
-    h("section", { class: "panel" }, h("div", { class: "panel-h" }, `Items · ${names.length}`), addAc,
-      rows.length ? h("div", { class: "inv-list" }, rows) : h("p", { class: "muted" }, "Nothing yet. Search above, or use the ☆ Own button on a build's items.")),
-    h("section", { class: "panel" }, h("div", { class: "panel-h" }, `Tomes · ${inv.tomes.length}`), tomeSel,
-      h("div", { class: "inv-list" }, inv.tomes.map((t, i) => h("div", { class: "row inv-tome" }, h("span", {}, t), h("span", { class: "grow" }),
-        h("button", { class: "mini danger", onclick: async () => { await setOwned(t, false, { kind: "tome" }); renderInventory(); } }, "Remove"))))));
+  body.append(addAc, rows.length ? h("div", { class: "inv-grid" }, rows)
+    : h("p", { class: "muted" }, "Nothing yet. Search above, or use the ☆ Own button on a build's items."));
+}
+
+function invTomes(body, inv, f, again) {
+  const own = () => { const c = {}; for (const t of inv.tomes) c[t] = (c[t] || 0) + 1; return c; };
+  const list = h("div", { class: "inv-tomes" });
+  body.append(list);
+  const step = async (name, delta) => {
+    await setOwned(name, delta > 0, { kind: "tome" });
+    inv = S.inv; draw();
+  };
+  const draw = () => {
+    const c = own(), q = (invPrefs.q.tomes || "").toLowerCase(), only = !!invPrefs.ownedOnly.tomes;
+    const groups = Object.keys(S.tomes).sort().map((type) => {
+      const all = S.tomes[type].filter((t) => (!q || t.name.toLowerCase().includes(q)) && (!only || c[t.name]));
+      all.sort((a, b) => (!!c[b.name] - !!c[a.name]) || 0);     // owned first, then the server's level order
+      if (!all.length) return null;
+      const have = S.tomes[type].reduce((t, x) => t + (c[x.name] || 0), 0);
+      return h("section", { class: "panel" }, h("div", { class: "panel-h" }, `${tomeTypeLabel(type)} · ${have} owned`),
+        h("div", { class: "inv-grid" }, all.map((t) => {
+          const n = c[t.name] || 0;
+          return h("div", { class: `inv-item tome-card${n ? " owned" : ""}` },
+            h("div", { class: "row" }, h("span", { class: "inv-name" }, t.name), h("span", { class: "grow" }),
+              h("span", { class: "muted" }, `Lv. ${t.lvl}`)),
+            h("div", { class: "eq-line" }, Object.entries(t.stats).flatMap(([a, b], i) => {
+              const [l, u] = idLabel(a);
+              return [i ? " · " : "", h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`)];
+            })),
+            h("div", { class: "row stepper" },
+              n ? h("button", { class: "mini", "aria-label": `Own one fewer ${t.name}`, onclick: () => step(t.name, -1) }, "−") : null,
+              n ? h("span", { class: "count" }, `×${n}`) : null,
+              h("button", { class: `mini own${n ? " on" : ""}`, "aria-label": `Own ${t.name}`,
+                onclick: () => step(t.name, +1) }, n ? "+" : "☆ Own")));
+        })));
+    }).filter(Boolean);
+    setKids(list, groups.length ? groups : [h("p", { class: "muted" }, only ? "You don't own any tomes that match." : "No tomes match.")]);
+  };
+  return draw;
+}
+
+async function invAspects(body, inv, filterBar, again) {
+  const cur = weaponClass(S.cur?.doc?.equipment?.[8]);
+  invPrefs.aspectClass ||= ASPECT_CLASSES.includes(cur) ? cur : "Mage";
+  S.aspects ??= {};
+  const clsSel = h("select", { "aria-label": "Class" }, ASPECT_CLASSES.map((c) => h("option", { value: c }, c)));
+  clsSel.value = invPrefs.aspectClass;
+  const f = filterBar("aspects", "Filter aspects…", [clsSel]);
+  const list = h("div", { class: "inv-grid" });
+  body.append(f.bar, list);
+  const draw = async () => {
+    const cls = invPrefs.aspectClass;
+    S.aspects[cls] ??= await api("GET", `/api/aspects/${cls}`);
+    const mine = inv.aspects?.[cls] || {}, q = (invPrefs.q.aspects || "").toLowerCase(), only = !!invPrefs.ownedOnly.aspects;
+    const shown = S.aspects[cls].filter((a) => (!q || a.name.toLowerCase().includes(q)) && (!only || mine[a.name]));
+    shown.sort((a, b) => (!!mine[b.name] - !!mine[a.name]));
+    const setTier = async (a, tier) => {
+      S.inv = await api("POST", "/api/inventory", { action: tier ? "add" : "remove", kind: "aspect", class: cls, name: a.name, tier });
+      await loadInventory(); inv = S.inv; draw();
+    };
+    setKids(list, shown.length ? shown.map((a) => {
+      const own = mine[a.name] || 0;
+      return h("div", { class: `inv-item aspect-card${own ? " owned" : ""}` },
+        h("div", { class: "row" }, h("span", { class: `tier-${a.rarity} inv-name` }, a.name), h("span", { class: "grow" }),
+          h("span", { class: "muted" }, a.rarity)),
+        h("div", { class: "tier-pills", role: "group", "aria-label": `${a.name} tier owned` }, a.tiers.map((t, i) =>
+          h("button", { class: `mini pill${own >= i + 1 ? " on" : ""}`, title: `${t.threshold ?? "?"} needed\n${t.desc}`,
+            "aria-pressed": own >= i + 1 ? "true" : "false", "aria-label": `${a.name} tier ${i + 1}`,
+            onclick: () => setTier(a, own === i + 1 ? 0 : i + 1) }, `Tier ${i + 1}`))));
+    }) : [h("p", { class: "muted" }, only ? `You don't own any ${cls} aspects that match.` : "No aspects match.")]);
+  };
+  draw();
+  const redraw = draw;
+  clsSel.onchange = () => { invPrefs.aspectClass = clsSel.value; redraw(); };
+  f.q.oninput = () => { invPrefs.q.aspects = f.q.value; redraw(); };
+  f.bar.querySelector("input[type=checkbox]").onchange = (e) => { invPrefs.ownedOnly.aspects = e.target.checked; redraw(); };
+}
+
+function invUnavailable(body, inv, again) {
+  const addInput = h("input", { placeholder: "Search an item to mark unavailable…", "aria-label": "Add unavailable item" });
+  const reason = h("input", { placeholder: "Reason (optional)", "aria-label": "Reason" });
+  const addAc = autocomplete(addInput, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
+    async (o) => {
+      await api("POST", "/api/inventory", { action: "add", kind: "unavailable", name: o.name, reason: reason.value });
+      await loadInventory(); again();
+    });
+  const entries = Object.entries(inv.unavailable || {}).sort(([a], [b]) => a.localeCompare(b));
+  body.append(h("div", { class: "inv-filter" }, addAc, reason),
+    entries.length ? h("div", { class: "inv-grid" }, entries.map(([n, why]) =>
+      h("div", { class: "inv-item" }, h("div", { class: "row" },
+        h("div", { class: "inv-main" }, h("span", { class: "inv-name" }, displayName(n)),
+          why ? h("div", { class: "eq-line muted" }, why) : null),
+        h("button", { class: "mini danger", onclick: async () => {
+          await api("POST", "/api/inventory", { action: "remove", kind: "unavailable", name: n });
+          await loadInventory(); again();
+        } }, "Remove")))))
+    : h("p", { class: "muted" }, "Nothing is marked unavailable."));
 }
 
 // ------------------------------------------------------------------ sidebar
@@ -470,10 +602,12 @@ async function renderEditor() {
   const tomesOpen = store.get("wt-tomes-open") === "1";
   const tomesPanel = h("details", { class: "panel", id: "ed-tomes-panel", open: tomesOpen },
     h("summary", { class: "panel-h" }, h("span", { id: "ed-tomes-sum" }, "Tomes")),
+    ownedOnlyToggle("wt-tomes-owned", "Only tomes I own", () => renderTomes()),
     h("div", { id: "ed-tomes", class: "tomes" }));
   tomesPanel.addEventListener("toggle", () => store.set("wt-tomes-open", tomesPanel.open ? "1" : "0"));
   const aspectsPanel = h("details", { class: "panel", id: "ed-aspects-panel", open: store.get("wt-aspects-open") === "1" },
     h("summary", { class: "panel-h" }, h("span", { id: "ed-aspects-sum" }, "Aspects")),
+    ownedOnlyToggle("wt-aspects-owned", "Only aspects I own (up to the tier I have)", () => renderAspects()),
     h("div", { id: "ed-aspects", class: "aspects" }));
   aspectsPanel.addEventListener("toggle", () => store.set("wt-aspects-open", aspectsPanel.open ? "1" : "0"));
   ed.replaceChildren(
@@ -799,12 +933,20 @@ function ingredientSources(r) {
     h("ul", {}, rows), h("div", { class: "hint" }, "Coordinates are (x, z). From WynnBuilder's ingredient data."));
 }
 
+// "Only what I own" switch for the editor's tome and aspect pickers (remembered per browser)
+function ownedOnlyToggle(key, label, redraw) {
+  const box = h("input", { type: "checkbox", checked: store.get(key) === "1" });
+  box.onchange = () => { store.set(key, box.checked ? "1" : "0"); redraw(); };
+  return h("label", { class: "check owned-toggle" }, box, ` ${label}`);
+}
+
 function renderTomes() {
   const d = S.cur.doc, box = $("#ed-tomes"); box.replaceChildren();
   d.tomes = d.tomes || Array(14).fill(null);
   S.meta.tome_slots.forEach((slot, k) => {
     const type = slot.replace(/\d+$/, "");
-    const tomes = S.tomes[type] || [];
+    const have = new Set(S.inv.tomes), only = store.get("wt-tomes-owned") === "1";
+    const tomes = (S.tomes[type] || []).filter((t) => !only || have.has(t.name) || t.name === d.tomes[k]);
     const info = h("div", { class: "eq-line" });
     const describe = () => {
       const t = tomes.find((x) => x.name === sel.value);
@@ -812,7 +954,8 @@ function renderTomes() {
         ...Object.entries(t.stats).flatMap(([a, b]) => { const [l, u] = idLabel(a); return [" · ", h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`)]; })] : []));
     };
     const sel = h("select", { "aria-label": slot, onchange: (e) => { edit((x) => { x.tomes[k] = e.target.value || null; }); describe(); } },
-      h("option", { value: "" }, "— none —"), tomes.map((t) => h("option", { value: t.name }, t.name)));
+      h("option", { value: "" }, "— none —"),
+      tomes.map((t) => h("option", { value: t.name }, `${have.has(t.name) ? "★ " : ""}${t.name}`)));
     sel.value = d.tomes[k] || "";
     describe();
     box.append(h("div", { class: "tome" }, h("label", {}, slot.replace(/Tome(\d)/, " tome $1").replace(/Xp/, " XP").replace(/^./, (c) => c.toUpperCase())), sel, info));
@@ -828,25 +971,28 @@ async function renderAspects() {
   S.aspects ??= {};
   S.aspects[cls] ??= await api("GET", `/api/aspects/${cls}`);
   const all = S.aspects[cls], byName = Object.fromEntries(all.map((a) => [a.name, a]));
+  const mine = S.inv.aspects?.[cls] || {}, only = store.get("wt-aspects-owned") === "1";
+  const shown = (k) => all.filter((a) => !only || mine[a.name] || a.name === cur()[k]?.[0]);
+  const tierMax = (a, k) => (only && mine[a.name] ? Math.max(mine[a.name], cur()[k]?.[0] === a.name ? cur()[k][1] : 0) : a.tiers.length);
   const cur = () => (S.cur.doc.aspects || [null, null, null, null, null]);
   const setAt = (k, v) => edit((x) => { const a = [...(x.aspects || [null, null, null, null, null])]; a[k] = v; x.aspects = a.some(Boolean) ? a : null; });
   const rows = [0, 1, 2, 3, 4].map((k) => {
     const entry = cur()[k];
     const sel = h("select", { "aria-label": `Aspect ${k + 1}` }, h("option", { value: "" }, "— none —"),
-      all.map((a) => h("option", { value: a.name, class: `tier-${a.rarity}` }, a.name)));
+      shown(k).map((a) => h("option", { value: a.name, class: `tier-${a.rarity}` }, `${mine[a.name] ? "★ " : ""}${a.name}`)));
     const tier = h("select", { "aria-label": `Aspect ${k + 1} tier`, class: "tier-sel" });
     const info = h("div", { class: "eq-line" });
     const draw = () => {
       const a = byName[sel.value];
       sel.className = a ? `tier-${a.rarity}` : "";
-      tier.replaceChildren(...(a ? a.tiers.map((t, i) => h("option", { value: i + 1 }, `Tier ${i + 1}`)) : []));
+      tier.replaceChildren(...(a ? a.tiers.slice(0, tierMax(a, k)).map((t, i) => h("option", { value: i + 1 }, `Tier ${i + 1}`)) : []));
       tier.disabled = !a; tier.hidden = !a;
       const e = cur()[k];
       if (a && e) tier.value = String(e[1]);
       info.replaceChildren(...(a && e ? [h("span", { class: "muted" }, `${a.rarity} · `), a.tiers[e[1] - 1]?.desc || ""] : []));
     };
     sel.value = entry?.[0] || "";
-    sel.onchange = () => { const a = byName[sel.value]; setAt(k, a ? [a.name, a.tiers.length] : null); draw(); drawSum(); };
+    sel.onchange = () => { const a = byName[sel.value]; setAt(k, a ? [a.name, tierMax(a, k)] : null); draw(); drawSum(); };
     tier.onchange = () => { setAt(k, [sel.value, +tier.value]); draw(); };
     draw();
     return h("div", { class: "aspect" }, sel, tier, info);
@@ -1505,7 +1651,11 @@ function renderSolver(pre = {}) {
   f.crafted = h("input", { type: "checkbox" });
   f.owned = h("input", { type: "checkbox" });
   f.exact = h("input", { type: "checkbox", checked: true });
-  f.tomesFrom = h("select", {}, h("option", { value: "" }, "no tomes"), S.builds.map((b) => h("option", { value: b.file }, b.name)));
+  f.tomesFrom = h("select", { title: "Choosing tomes uses the exact search: not with effective HP, DPS or spell-damage goals or minimums" },
+    h("option", { value: "" }, "no tomes"),
+    h("optgroup", { label: "Let the search choose" },
+      h("option", { value: "@owned" }, "only tomes I own"), h("option", { value: "@any" }, "any tome (ones to collect)")),
+    h("optgroup", { label: "Use the tomes of a build" }, S.builds.map((b) => h("option", { value: b.file }, b.name))));
   if (pre.from) f.tomesFrom.value = pre.from;
   f.preset = h("select", { "aria-label": "Tree preset" });
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
@@ -1674,14 +1824,15 @@ function renderSolver(pre = {}) {
     const objective = { [f.goal.value]: 1 };
     if (f.tie.value && f.tie.value !== f.goal.value) objective[f.tie.value] = 0.01;
     let tomes = [];
-    if (f.tomesFrom.value) tomes = (await api("GET", `/api/builds/${encodeURIComponent(f.tomesFrom.value)}`)).tomes || [];
+    const pool = f.tomesFrom.value.startsWith("@") ? f.tomesFrom.value.slice(1) : null;
+    if (f.tomesFrom.value && !pool) tomes = (await api("GET", `/api/builds/${encodeURIComponent(f.tomesFrom.value)}`)).tomes || [];
     const force = { ...kept };
     if (f.weapon.value) force.weapon = f.weapon.value;
     return { class: f.cls.value, level: +f.level.value, objective, floors,
       require_major: [...majors], exclude_major: [...noMajors], caps,
       require_sets: { ...reqSets }, exclude_sets: [...noSets], force, exclude: [...exclude], at_most_one: groups,
       prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
-      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
+      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, ...(pool ? { tome_pool: pool } : {}), topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
   }
   const treeArgs = () => ({ tree_preset: f.preset.value || null,
@@ -1966,6 +2117,7 @@ function watch() {
     if (changed.includes("inventory.json") || removed.includes("inventory.json")) {
       await loadInventory();
       if (!$("#inventory").hidden) renderInventory();
+      if (S.cur && !$("#editor").hidden && $("#ed-tomes")) { renderTomes(); renderAspects(); }   // the stars
     }
     await loadList();
     const c = S.cur; if (!c) return;

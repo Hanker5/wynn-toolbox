@@ -372,6 +372,38 @@ def test_set_bonuses_shown(page):
     assert not page.errors
 
 
+def test_inventory_tabs_tomes_aspects_unavailable(page, app):
+    """Own a tome twice and an aspect tier from the Inventory page; manage the unavailable list."""
+    inv_path = Path(app.builds_dir) / "inventory.json"
+    read = lambda: json.loads(inv_path.read_text())
+    page.click("#open-inventory")
+    page.wait_for_selector("#inventory:not([hidden]) .tab")
+    page.get_by_role("tab", name="Tomes").click()
+    page.get_by_label("Filter tomes…").fill("Scavenging Expertise III")
+    own = page.get_by_role("button", name="Own Tome of Scavenging Expertise III")
+    own.click()
+    own.click()
+    page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('2 tomes')")
+    assert read()["tomes"] == ["Tome of Scavenging Expertise III"] * 2
+    page.get_by_role("button", name="Own one fewer Tome of Scavenging Expertise III").click()
+    page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('1 tome')")
+    page.get_by_role("tab", name="Aspects").click()
+    page.get_by_label("Class").select_option("Mage")
+    page.get_by_label("Filter aspects…").fill("Runic Extravagance")
+    page.get_by_role("button", name="Aspect of Runic Extravagance tier 2").click()
+    page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('aspect')")
+    assert read()["aspects"] == {"Mage": {"Aspect of Runic Extravagance": 2}}
+    page.get_by_role("tab", name="Unavailable").click()
+    page.get_by_label("Add unavailable item").fill("Galleon")
+    page.get_by_text("Galleon").first.click()
+    page.wait_for_selector(".inv-item:has-text('Galleon')")
+    assert "Galleon" in read()["unavailable"]
+    page.locator(".inv-item:has-text('Galleon') button:has-text('Remove')").click()
+    page.wait_for_selector(".inv-item:has-text('Galleon')", state="detached")
+    assert read()["unavailable"] == {}
+    assert not page.errors
+
+
 def test_own_button_rolls_and_upgrades(page, app):
     """Mark an item owned from a build, give it a real roll, see totals follow."""
     open_build(page, "shaman_105_stormdrain")
@@ -383,6 +415,7 @@ def test_own_button_rolls_and_upgrades(page, app):
     assert "Galleon" in inv["items"]
     page.click("#open-inventory")
     page.wait_for_selector("#inventory:not([hidden]) .inv-item")
+    page.locator(".inv-item:has-text('Galleon') summary").click()          # rolls sit in a drawer
     page.get_by_role("spinbutton", name="Galleon Stealing").fill("5")      # base is 15
     page.locator(".inv-item:has-text('Galleon') button:has-text('Save rolls')").click()
     page.wait_for_function("document.querySelector('#toast').textContent.includes('Rolls saved')")
@@ -998,4 +1031,29 @@ def test_progress_clock_ticks_every_second(page):
     clocks = [t.split("·")[-1].strip() for t in seen if ":" in t.split("·")[-1]]
     assert len({c for c in clocks if c[0].isdigit() and ":" in c}) >= 4, seen   # 0:00 0:01 0:02 0:03 ...
     page.wait_for_function("document.querySelector('#solver-status').textContent === 'Cancelled.'", timeout=20000)
+    assert not page.errors
+
+
+def test_editor_pickers_mark_and_filter_owned_tomes_and_aspects(page, app):
+    """Owned tomes/aspects get a star; "only I own" hides the rest and caps the aspect tier."""
+    post = lambda **b: page.evaluate("b => fetch('/api/inventory', {method: 'POST', headers: "
+                                     "{'Content-Type': 'application/json'}, body: JSON.stringify(b)})", b)
+    post(action="add", kind="tome", name="Tome of Scavenging Expertise III")
+    post(action="add", kind="aspect", **{"class": "Mage"}, name="Aspect of Runic Extravagance", tier=1)
+    page.click("#open-inventory")                          # reloads the inventory in the page
+    page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('tome')")
+    open_build(page, "mage_105_gaia_lightbender")
+    page.click("#ed-tomes-panel summary")
+    page.click("#ed-aspects-panel summary")
+    slot = page.locator("select[aria-label='mobXpTome1']")
+    page.wait_for_function("document.querySelector(\"select[aria-label='mobXpTome1']\").textContent.includes('★ Tome of Scavenging Expertise III')")
+    everything = slot.locator("option").count()
+    assert everything > 4
+    page.get_by_label("Only tomes I own").check()
+    assert slot.locator("option").count() <= 3            # none, the owned tome, and what the build wears
+    aspect = page.locator("select[aria-label='Aspect 1']")
+    page.get_by_label("Only aspects I own (up to the tier I have)").check()
+    assert aspect.locator("option").count() == 2
+    aspect.select_option("Aspect of Runic Extravagance")
+    assert page.locator("select[aria-label='Aspect 1 tier'] option").count() == 1
     assert not page.errors

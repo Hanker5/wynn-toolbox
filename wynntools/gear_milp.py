@@ -31,7 +31,7 @@ import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, milp
 from scipy.sparse import coo_matrix
 
-from .codec import SLOTS
+from .codec import SLOTS, TOME_SLOTS
 from .gear_solver import (CLASS_WEAPON, ELEDEF_KEYS, EMPTY, MIN_ELEDEF, SUM_FLOORS, Result,
                           _crafted_candidates, _usable, assign_for_floors, derived_goal,
                           linear_value)
@@ -79,6 +79,7 @@ class Solved(NamedTuple):
     proven: bool         # nothing better exists under the objective
     value: float         # the objective's value for this build (the program's own)
     bound: float         # the best any build could still reach
+    tomes: list = None   # the 14 tome ids of this build (fixed ones plus any the search chose)
 
 
 class GearModel:
@@ -168,8 +169,43 @@ class GearModel:
         self.z_var = nv + 10                             # lowest elemental defence (goal)
         self.nv = nv = nv + 11
 
+        # tomes the search may choose: one binary per (empty slot, tome), at most one per slot
+        self.tome_vars = {}                  # var -> (slot index, tome)
+        by_slot = {}
+        if spec.tome_pool != "fixed":
+            for k, slot in enumerate(TOME_SLOTS):
+                if self.tome_ids[k] is not None:
+                    continue
+                kind = slot.rstrip("0123456789")
+                for t in sorted(gd.tome_by_name.values(), key=gd.name):
+                    if t["type"] != kind:
+                        continue
+                    if spec.tome_supply is not None and not spec.tome_supply.get(gd.name(t)):
+                        continue
+                    self.tome_vars[nv] = (k, t)
+                    by_slot.setdefault(k, []).append(nv)
+                    nv += 1
+            self.nv = nv
+        self.by_tome_slot = by_slot
+
         rows = _Rows()
         self.rows = rows
+        for k, vs in by_slot.items():
+            rows.add([(v, 1) for v in vs], hi=1)
+        if spec.tome_supply is not None:     # owned: no more copies of a tome than you have
+            per = {}
+            for v, (k, t) in self.tome_vars.items():
+                per.setdefault(gd.name(t), []).append(v)
+            for name, vs in per.items():
+                if len(vs) > spec.tome_supply[name]:
+                    rows.add([(v, 1) for v in vs], hi=spec.tome_supply[name])
+        # paired slots of one kind are interchangeable: keep them in index order
+        # (an empty slot counts as 0), so each set of tomes is one solution, not several
+        for k in range(1, len(TOME_SLOTS)):
+            if TOME_SLOTS[k].rstrip("0123456789") == TOME_SLOTS[k - 1].rstrip("0123456789") \
+                    and k in by_slot and k - 1 in by_slot:
+                rows.add([(v, i + 1) for i, v in enumerate(by_slot[k - 1])] +
+                         [(v, -(i + 1)) for i, v in enumerate(by_slot[k])], hi=0)
         for kind in KINDS:
             need = 2 if kind == "ring" else 1
             rows.add([(v, 1) for v in by_kind[kind]], need, need)
@@ -208,10 +244,11 @@ class GearModel:
         # is necessary; the order-dependent part of the rule can only need more.
         self.budget = budget = skill_points(spec.level)
         helps = lambda v: var_kind[v] != "weapon" and not gd.name(var_item[v]).startswith("CR-")
+        guild_vars = [(v, t) for v, (k, t) in self.tome_vars.items() if TOME_SLOTS[k] == "guildTome1"]
         for j, s in enumerate(SKILLS):
             const = stat(guild, s) if guild else 0
-            terms = [(b_var[j], 1)]
-            worst = const                     # most negative b_j can get (for the big-M)
+            terms = [(b_var[j], 1)] + [(v, -stat(t, s)) for v, t in guild_vars]
+            worst = const + min([0] + [stat(t, s) for _, t in guild_vars])   # most negative b_j can get (for the big-M)
             for kind in KINDS:
                 lows = [stat(var_item[v], s) for v in by_kind[kind]
                         if var_item[v] is not EMPTY and helps(v)] + [0]
@@ -249,6 +286,7 @@ class GearModel:
                     continue
                 terms = [(a_var[j], 1)] + [(v, b) for v, b in pos.items()
                                            if var_kind[v] != kind]
+                terms += [(v, max(0, stat(t, s))) for v, t in guild_vars]
                 terms += [(v, -r) for v, r in reqs if r > 0]
                 rows.add(terms, lo=-max(0, const))
             # a floor on the final skill: assigned + every bonus (weapon, crafts and
@@ -256,6 +294,7 @@ class GearModel:
             if s in fl:
                 terms = [(a_var[j], 1)] + [(v, stat(it, s)) for v, it in enumerate(var_item)
                                            if it is not EMPTY]
+                terms += [(v, stat(t, s)) for v, t in guild_vars]
                 for st, ys in set_vars.items():
                     for c, y in enumerate(ys):
                         if c:
@@ -309,6 +348,7 @@ class GearModel:
                 if c:
                     st = set_bonus_stats({s: c}, gd.sets)[0]
                     terms.append((y, st.get("hpBonus", 0) if key == "hp" else st.get(key, 0)))
+        terms += [(v, stat(t, key)) for v, (_, t) in self.tome_vars.items()]
         return terms, sum(stat(t, key) for t in self.tomes)
 
     def objective_vector(self, item_value=None, set_value=None, per_point=0.0):
@@ -330,6 +370,8 @@ class GearModel:
             for cnt, y in enumerate(ys):
                 if cnt:
                     c[y] = -set_value(gd.sets[s]["bonuses"][cnt - 1])
+        for v, (_, t) in self.tome_vars.items():
+            c[v] = -item_value(t)
         if MIN_ELEDEF in spec.objective:
             c[self.z_var] = -spec.objective[MIN_ELEDEF]
         c[self.a_var] = per_point
@@ -356,10 +398,21 @@ class GearModel:
         out["ring1"], out["ring2"] = (rings + [None, None])[:2]
         return [out[s] for s in SLOTS]
 
-    def check(self, names):
+    def tome_ids_of(self, x):
+        """The 14 tome ids of a solution vector: the fixed ones plus the chosen."""
+        ids = list(self.tome_ids)
+        for v, (k, t) in self.tome_vars.items():
+            if x[v] > 0.5:
+                ids[k] = t["id"]
+        return ids
+
+    def check(self, names, tome_ids=None):
         """Exact checks for a build: (score, manual skill points, sp) or None."""
         spec, gd, stat = self.spec, self.gd, self.stat
-        sp = build_skillpoints(names, self.tome_ids, gd)
+        tome_ids = tome_ids or self.tome_ids
+        tomes = [gd.tome(t) for t in tome_ids if t is not None]
+        chosen = [gd.tome(t) for k, t in enumerate(tome_ids) if t is not None and self.tome_ids[k] is None]
+        sp = build_skillpoints(names, tome_ids, gd)
         if sp.total_assigned > self.budget or not sp.under_100:
             return None
         got = assign_for_floors(sp, spec.skill_floors(), self.budget)
@@ -375,15 +428,17 @@ class GearModel:
         if "mana" in fl:
             spare = self.budget - sp.total_assigned - sum(extra)
             int_items = sp.final[2] - sp.assigned[2]
-            mana = max_mana(sum(stat(o, "maxMana") for o in (*items, *self.tomes))
+            mana = max_mana(sum(stat(o, "maxMana") for o in (*items, *tomes))
                             + set_stats.get("maxMana", 0),
                             min(100, sp.assigned[2] + extra[2] + spare) + int_items)
             if mana < fl["mana"]:
                 return None
         score = linear_value(items, set_stats, spec.objective, stat)
+        if chosen:                             # the search's own tome picks count towards the goal
+            score += linear_value(chosen, {}, spec.objective, stat)
         if MIN_ELEDEF in spec.objective:
             score += spec.objective[MIN_ELEDEF] * min(
-                sum(stat(o, k) for o in (*items, *self.tomes)) + set_stats.get(k, 0)
+                sum(stat(o, k) for o in (*items, *tomes)) + set_stats.get(k, 0)
                 for k in ELEDEF_KEYS)
         return score, manual, sp
 
@@ -423,21 +478,22 @@ class GearModel:
                 return incumbent._replace(proven=True, bound=bound)
             chosen = [v for v in range(self.n_items) if res.x[v] > 0.5]
             names = self.names(chosen)
-            ok = self.check(names)
+            tome_ids = self.tome_ids_of(res.x)
+            ok = self.check(names, tome_ids)
             if ok is not None and accept is not None and not accept(names, ok):
                 ok = None
             if progress:
                 progress({"round": rnd, "cuts": len(cuts.lo), "best": bound,
                           "elapsed": time.time() - t0})
             if ok is not None:
-                return Solved(names, ok, cuts, True, bound, bound)
-            self.cut(cuts, names)
+                return Solved(names, ok, cuts, True, bound, bound, tome_ids)
+            self.cut(cuts, names, tome_ids)
             if rnd == next_margin and margins:
                 next_margin = rnd * 3
                 got = self._with_margin(c, cuts, margins.pop(0), accept, t0, time_limit)
                 if got and (incumbent is None or got.value > incumbent.value):
                     incumbent = got
-                    self.cut(cuts, got.names)          # the main loop needn't find it again
+                    self.cut(cuts, got.names, got.tomes)   # the main loop needn't find it again
         if incumbent:
             return incumbent._replace(bound=bound if bound is not None else incumbent.value)
         raise TimeoutError(f"exact search found no valid build in {time.time() - t0:.0f}s "
@@ -469,15 +525,18 @@ class GearModel:
             if res is None or res == "timeout":
                 return None
             names = self.names([v for v in range(self.n_items) if res.x[v] > 0.5])
-            ok = self.check(names)
+            tome_ids = self.tome_ids_of(res.x)
+            ok = self.check(names, tome_ids)
             if ok is not None and (accept is None or accept(names, ok)):
-                return Solved(names, ok, cuts, False, -res.fun, -res.fun)
-            self.cut(rows, names)
+                return Solved(names, ok, cuts, False, -res.fun, -res.fun, tome_ids)
+            self.cut(rows, names, tome_ids)
         return None
 
-    def cut(self, cuts, names):
-        """Forbid exactly this combination of items from now on."""
+    def cut(self, cuts, names, tome_ids=None):
+        """Forbid exactly this combination of items (and chosen tomes) from now on."""
         chosen = self.chosen_vars(names)
+        if tome_ids:
+            chosen += [v for v, (k, t) in self.tome_vars.items() if tome_ids[k] == t["id"]]
         cuts.add([(v, 1) for v in chosen], hi=len(chosen) - 1)
 
     def chosen_vars(self, names):
@@ -505,4 +564,5 @@ def solve_gear_exact(spec, gd, progress=None, max_rounds=2000, time_limit=600):
         return None
     score, manual, sp = got.checked
     return Result(score, got.names, sp.assigned, time.time() - t0, skillpoints=manual,
-                  proven=got.proven, bound=got.bound)
+                  proven=got.proven, bound=got.bound,
+                  tomes=got.tomes if spec.tome_pool != "fixed" else None)

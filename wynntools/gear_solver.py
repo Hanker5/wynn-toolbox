@@ -89,6 +89,10 @@ class Spec:
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
     tomes: list = field(default_factory=list)    # 14 tome ids (None = empty), TOME_SLOTS order
+    # "fixed": exactly `tomes`. "owned"/"any": the exact search also fills every slot `tomes`
+    # leaves empty, from the tomes in `tome_supply` (name -> how many; owned) or any tome.
+    tome_pool: str = "fixed"
+    tome_supply: dict | None = None
     roll: str = "base"                           # "base" (100%), "max" (perfect) or "min"
     crafted: bool = False                        # also consider crafted items (see craft_solver)
     only: set | None = None                      # restrict to these names (e.g. what you own)
@@ -123,6 +127,7 @@ class Result:
     metrics: dict | None = None         # derived numbers, when the search worked them out
     proven: bool = True                 # exact search: proven best (False: stopped at the time limit)
     bound: float | None = None          # exact search: the best score any build could reach
+    tomes: list | None = None           # 14 tome ids the search chose (tome_pool owned/any), else None
 
 
 def assign_for_floors(sp, floors, budget):
@@ -286,6 +291,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 ("weapon",) if kind == CLASS_WEAPON[spec.cls] else (kind,)
             for s in slots:
                 pools[s].extend(items)
+    if spec.tome_pool != "fixed":
+        raise ValueError("choosing tomes ('tome_pool': owned/any) only works with the exact search")
     tome_ids = list(spec.tomes) + [None] * (14 - len(spec.tomes))
     tomes = [gd.tome(t) for t in tome_ids if t is not None]
     if spec.derived_objective() or MIN_ELEDEF in spec.objective:

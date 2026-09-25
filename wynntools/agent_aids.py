@@ -98,6 +98,15 @@ def check_spec(raw, gd, tree=None, inventory=None):
     kind = kind_for(spec)
     if needs_tree(spec) and not tree and not spec.atree:
         errors.append("damage goals or minimums need an ability tree: pass --tree PRESET")
+    if spec.tome_pool != "fixed" and kind != "exact":
+        errors.append("'tome_pool' owned/any needs the exact search; damage-model goals and minimums "
+                      "can't use it (list the tomes instead, or drop those goals)")
+    if spec.tome_pool == "owned" and not spec.tome_supply:
+        warnings.append("'tome_pool' is owned but the inventory has no tomes: no tome will be chosen "
+                        "(`wt own add --tome NAME`)")
+    if spec.tome_pool == "any":
+        warnings.append("tome_pool any: the search may pick tomes the player doesn't own; they are goals "
+                        "to collect, and it may put the same tome in two paired slots (untested in game)")
     if kind == "local":
         warnings.append("a derived goal runs the local search: a minute or more, and the result is "
                         "good but not proven best (say so)")
@@ -158,7 +167,11 @@ def report(doc, gd, path):
                                       if hand else "automatic"),
               "  - Aspects: " + ("present, as in the file" if aspects else "empty (players can add them; "
                                                                         "they change damage, not totals)"),
-              f"  - Tomes: {tomes}/14, goals to collect unless the player owns them",
+              {"owned": f"  - Tomes: {tomes}/14, chosen by the search from the tomes in the player's inventory",
+               "any": f"  - Tomes: {tomes}/14, chosen by the search from ANY tome: goals to collect "
+                      f"(check which the player owns); the same tome may fill two paired slots (untested in game)",
+               }.get(spec.get("tome_pool"),
+                     f"  - Tomes: {tomes}/14, goals to collect unless the player owns them"),
               "  - Powders: " + ("as in the file" if powders else "none (`wt powders` suggests some)"),
               "  - Damage: the developer guide's steps at WynnBuilder's defaults (no potions, buffs or "
               "powder specials), before the target's elemental defences"]

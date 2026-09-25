@@ -43,7 +43,10 @@ questions; you run the commands.
      do that itself.
    - **Aspects are empty** in solver builds; say so. (Players can add them in
      the editor or the build file's `aspects`; they change damage, not totals.)
-   - Tomes are **goals to collect** unless the player said they own them.
+   - Tomes are **goals to collect** unless the player said they own them. When
+     the search chose them (`tome_pool` / `--tomes`), say from which pool: the
+     player's inventory, or any tome (goals to collect); and that a tome may fill
+     two paired slots (untested in game).
    - WynnBuilder's page shows **perfect (130%) rolls**; say which one you quote.
    - Crafted items are **ranges**; the middle counts as typical. Mention that
      ingredients have to be collected.
@@ -83,7 +86,7 @@ questions; you run the commands.
 
 9. **Know which search ran.** `wt gear` prints it; repeat it to the player.
    - **exact** (the default): the best build over every usable item, under the
-     spec and the stated assumptions. If it says it stopped at the time limit,
+     spec and the stated assumptions (with `tome_pool`, over the tomes too). If it says it stopped at the time limit,
      the build is valid but not proven best; quote the gap it prints.
    - **shortlist** (damage-model minimums: effective HP, regen with %, DPS,
      spell damage; or `--shortlists`): can miss the best build; run
@@ -137,7 +140,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. Every class has a generic preset per archetype (`archer-boltslinger`, `warrior-paladin`, `mage-riftwalker`, ...); none is tuned for a particular goal. |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
 | `wt ingredient "Stolen Pearls"` | Which mobs drop an ingredient and where (x, y, z). `wt craft` lists this for every suggested ingredient. |
-| `wt own add\|remove\|list [NAME] [--tome] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes and real roll values. |
+| `wt own add\|remove\|list [NAME] [--tome] [--aspect --class C [--tier N]] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes (repeat a name to own two), aspects with the highest tier reached, and real roll values. |
 | `wt own unavailable [NAME ...] [--reason TEXT] [--remove]` | Items the player can't or won't get (too expensive, ...): every search leaves them out unless forced. |
 | `wt gear spec.json --tree PRESET` with `"floors": {"damage": {"Ophanim": 15000}}` | Damage minimums: a spell's headline number (melee: average DPS), checked exactly on every candidate with the preset's tree. |
 | spec `floors` | any item stat as a minimum (`sdPct`, `poison`, `spRaw1`, `xpb`, ... every ID in `wynntools/statinfo.py`), and `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef`/`tDef`/`wDef`/`fDef`/`aDef` (raw, as the Summary shows), `min_eledef` (every elemental defence), `str`/`dex`/`int`/`def`/`agi` (final skill points: met with spare points set by hand if the gear falls short), and damage-model ones: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage`. |
@@ -145,7 +148,8 @@ the sandbox, including the ones that talk to the web app.
 | spec `caps` / `exclude_major` | `caps`: `{stat: maximum}` on any item stat (every search kind). `exclude_major`: major IDs no item or set bonus may give (forced items are kept, so forcing pieces that trigger it finds nothing). |
 | spec `require_sets` / `exclude_sets` | `require_sets`: `{set name: pieces}` wear at least that many pieces of a set (its bonus is then in every total). `exclude_sets`: sets none of whose pieces are used (forced items excepted). A `require_major` can also be met through a set bonus. |
 | spec acquisition keys | `exclude`, `exclude_tiers` (e.g. `["Mythic"]`), `at_most_one` (lists of item names), `prefer` (names: a tiebreak), `force`, and `--owned`. The inventory's unavailable list is always left out. |
-| `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. |
+| `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. Tomes come from the inventory too, unless the spec lists tomes. |
+| `wt gear spec.json --tomes owned\|any` (spec `"tome_pool"`) | The exact search also chooses the tomes the spec leaves empty: from the inventory, or any tome. Not with damage-model goals or minimums (they use other searches). Chosen tomes are saved in the build. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
 | `wt config [ai [claude\|codex\|gemini\|shell\|none]]` / `wt config check_updates on\|off` | Show or change the AI assistant the web app starts in its terminal, or turn the update check off (`builds/settings.json`). |

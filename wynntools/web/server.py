@@ -638,9 +638,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         return on_progress
 
     def build_doc(raw, spec, equipment, skillpoints, name, notes="", preset=None, tree_names=None,
-                  parent=None):
-        """A build file for a search result."""
-        tomes = [t or None for t in raw.get("tomes") or []]
+                  parent=None, tome_ids=None):
+        """A build file for a search result (`tome_ids`: the tomes the search chose)."""
+        tomes = [None if t is None else gd.name(gd.tome(t)) for t in tome_ids] if tome_ids else \
+            [t or None for t in raw.get("tomes") or []]
         doc = {"name": name, "notes": notes, "level": spec.level, "equipment": list(equipment),
                "tomes": tomes + [None] * (len(TOME_SLOTS) - len(tomes)),
                "skillpoints": skillpoints, "spec": raw, "tree_preset": preset}
@@ -687,7 +688,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                     job["error"] = (out.explanation or {}).get("summary") or "no build satisfies these constraints"
                     return
                 doc = build_doc(raw, spec, r.equipment, r.skillpoints, body.get("name") or p.stem,
-                                body.get("notes", ""), preset, body.get("tree"), parent)
+                                body.get("notes", ""), preset, body.get("tree"), parent, r.tomes)
                 buildfile.write(p, buildfile.refresh(doc, gd, owned))
                 job["state"] = "done"
             except Cancelled:
@@ -843,9 +844,36 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
     @app.post("/api/inventory")
     async def change_inventory(request: Request):
-        """{"action": "add"|"remove", "kind": "item"|"tome"|"craft", "name": ..., "rolls": {...}?}"""
+        """{"action": "add"|"remove", "kind": "item"|"tome"|"craft"|"aspect"|"unavailable",
+        "name": ..., "rolls": {...}?, "class": ..., "tier": ..., "reason": ...}"""
         body = await request.json()
         i, name, kind = inv(), body.get("name") or "", body.get("kind", "item")
+        action = body.get("action")
+        if action not in ("add", "remove"):
+            raise HTTPException(422, "action must be add or remove")
+        if kind == "aspect":
+            cls = body.get("class") or ""
+            known = {a["displayName"]: len(a.get("tiers") or []) for a in gd.aspects(cls)}
+            if name not in known:
+                raise HTTPException(422, f"unknown {cls} aspect: {name}")
+            top = max(known[name], 1)
+            tier = int(body.get("tier") or top)
+            if action == "add" and not 1 <= tier <= top:
+                raise HTTPException(422, f"tier must be 1..{top}")
+            i.set_aspect(cls, name, tier if action == "add" else 0)
+            inv_mod.save(i, inv_path)
+            return i.to_json()
+        if kind == "unavailable":
+            try:
+                gd.item(name)
+            except (KeyError, ValueError, NotImplementedError):
+                raise HTTPException(422, f"unknown item: {name}")
+            if action == "add":
+                i.unavailable[name] = body.get("reason") or ""
+            else:
+                i.unavailable.pop(name, None)
+            inv_mod.save(i, inv_path)
+            return i.to_json()
         try:
             if kind == "tome":
                 gd.tome(name)

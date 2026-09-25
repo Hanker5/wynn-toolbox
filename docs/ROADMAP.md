@@ -9,6 +9,10 @@ Rough priority order. Want to take one? Say so in an issue first; see
    need a better bound on effective HP and damage.
 2. ~~**Real item rolls.**~~ Done: `wt own --roll` and the Inventory page;
    `wt gear --owned` and `wt upgrades` use them.
+   Tomes and aspects are in the inventory too (tabbed Inventory page); the exact
+   search can choose tomes from it or from any tome (`tome_pool`). Still to do:
+   choosing tomes in the shortlist and local searches (damage-model goals), and
+   in `wt upgrades`.
 3. **Differential tests for decoding and the tree.** Encoding of powders, skill
    points, aspects, tomes and crafts is checked against WynnBuilder's own JS;
    extend the same harness to full-link decoding and ability-tree activation.
@@ -16,7 +20,8 @@ Rough priority order. Want to take one? Say so in an issue first; see
    WynnBuilder page (`-m live`).
 5. **More skills**: `explain` (walk a player through a decoded build), `decode`
    for quick lookups. (`wt compare` and the Compare builds page are done.)
-6. **Aspects** in specs and output, with names.
+6. **Aspects** in specs and output, with names. (Owned aspects are tracked and
+   limit the editor's picker; searches don't choose aspects yet.)
 7. **Custom items** in the link codec; legacy (pre-binary) links and legacy
    crafted hashes; item data for older game versions.
 8. **Crafting**: consumables (potions, scrolls, food); powders as crafting

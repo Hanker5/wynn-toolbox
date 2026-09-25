@@ -64,7 +64,15 @@ Then collect only what is still missing:
   (`exclude`, or `wt own unavailable NAME --reason ...` so every search leaves
   them out), "no mythics" (`exclude_tiers`), "only one of these"
   (`at_most_one`), items they'd like if it costs nothing (`prefer`).
-- **Tomes**: which they own, or whether to plan for aspirational ones.
+- **Tomes**: which they own, or whether to plan for aspirational ones. Record
+  owned ones with `wt own add --tome NAME`; then `"tome_pool": "owned"` (or
+  `wt gear --tomes owned`) lets the exact search pick the tomes for the slots
+  `tomes` leaves empty from what they own; `"any"` picks from any tome (goals to
+  collect: say so, and that the same tome may fill two paired slots, untested in
+  game). Only the exact search does this: not with effective HP, DPS, spell damage
+  or regen-with-% goals or minimums. `wt gear --owned` defaults to owned tomes.
+- **Aspects**: `wt own add --aspect --class Mage NAME --tier N` records the ones
+  they have. Searches don't choose aspects; the editor can limit its picker to them.
 
 ## 2. Write the spec
 
@@ -84,7 +92,9 @@ possible" is `ehp`, not `hp`). Derived goals run the local search and put
 spare skill points where they help; damage goals need `--tree`.
 
 Tome slot order: weapon ×2, armor ×4, guild, lootrun, gatherXp ×2, dungeonXp ×2,
-mobXp ×2. Floors include tome stats and base HP.
+mobXp ×2. Floors include tome stats and base HP. `"tome_pool": "fixed"` (the
+default) uses exactly the listed `tomes`; with `owned`/`any` the listed ones stay
+and the search fills the empty slots.
 
 Set `"crafted": true` to let the search use crafted gear. It often wins for
 niche stats (Stealing, for one) and costs little search time. Ask first if the
