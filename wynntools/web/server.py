@@ -30,9 +30,10 @@ from ..codec import SLOTS, TOME_SLOTS
 from ..damage import POWDER_SPECIALS
 from ..data import VERSIONS, GameData
 from ..derived import DAMAGE_KEYS, DERIVED
-from ..gear_solver import CLASS_WEAPON, upgrades
+from ..gear_solver import CLASS_WEAPON, SUM_FLOORS, upgrades
 from ..presets import PRESETS, preset_weights
 from ..rules import ability_points
+from ..statinfo import catalog
 from ..tree_solver import solve_tree
 from ..verify import stat
 from . import terminal as term_mod
@@ -243,6 +244,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 "presets": [{"name": k, "class": v["class"], "about": v["about"]}
                             for k, v in PRESETS.items()],
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
+                "stat_groups": [{"group": g, "stats": [{"key": k, "label": l} for k, l in ks]}
+                                for g, ks in catalog(SUM_FLOORS)],
                 "stats": ["eSteal", "poison", "lb", "hp", "mr", "ms", "sdPct", "mdPct",
                           "spd", "xpb", "hprRaw", "ls"],
                 # goals WynnBuilder's damage model works out (wynntools.derived)

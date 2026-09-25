@@ -221,13 +221,33 @@ def test_outside_edit_appears_in_page(page, app):
         "document.querySelector('#editor textarea').value === 'edited by the AI'", timeout=15000)
 
 
+
+def pick_rule(page, text):
+    """Search the requirement picker and take the top match with Enter."""
+    box = page.get_by_role("combobox", name="Add a requirement")
+    box.fill(text)
+    box.press("Enter")
+
+
+def add_rule(page, text, value, name=None):
+    """Add a requirement in the solver form: search it, then type its value."""
+    pick_rule(page, text)
+    page.get_by_role("spinbutton", name=name or text, exact=True).fill(str(value))
+
+
+def open_fold(page, title):
+    """Open a collapsed section of the solver form."""
+    page.locator("details.fold > summary", has_text=title).click()
+
+
 def test_solver_form_runs_and_opens_result(page):
     page.click("#new-build")
     page.get_by_role("combobox", name="Class").select_option("Mage")
     page.get_by_role("combobox", name="Maximize").select_option("poison")
     page.get_by_role("combobox", name="Tree preset").select_option("mage-riftwalker")
-    page.get_by_role("spinbutton", name="Health").fill("15000")
-    page.get_by_role("spinbutton", name="Mana regen").fill("20")
+    add_rule(page, "health", 15000, "Health")
+    add_rule(page, "mana regen", 20, "Mana regen")
+    open_fold(page, "Items")
     page.get_by_role("combobox", name="Required major IDs").select_option("PLAGUE")
     page.get_by_role("textbox", name="Weapon (optional)").fill("Gaia")
     page.get_by_role("textbox", name="Name").fill("ui solver test")
@@ -393,15 +413,53 @@ def test_damage_panel_shows_wynnbuilder_numbers(page, gd, links):
     assert not page.errors
 
 
-def test_solver_offers_spell_damage_minimum(page):
+def test_solver_offers_spell_damage_requirement(page):
     page.click("text=New build from goals")
-    page.select_option("#solver select >> nth=0", "Mage")
-    spell = page.locator("select[aria-label='Spell for the damage minimum']")
-    assert spell.is_disabled()                              # no preset yet
-    page.select_option("select[aria-label='Tree preset']", "mage-light-bender")
-    page.wait_for_function("!document.querySelector(\"select[aria-label='Spell for the damage minimum']\").disabled")
-    options = spell.locator("option").all_inner_texts()
-    assert "Wand Melee (DPS)" in options and "Ophanim" in options
+    page.get_by_role("combobox", name="Class").select_option("Mage")
+    box = page.get_by_role("combobox", name="Add a requirement")
+    box.fill("ophanim")
+    assert "No match" in page.inner_text(".pk-list")                # no tree yet, so no spells
+    box.fill("spell")
+    assert "Pick a tree preset" in page.inner_text(".pk-list")
+    page.get_by_role("combobox", name="Tree preset").select_option("mage-light-bender")
+    box.fill("ophanim")                                             # the spells load after the preset is chosen
+    page.wait_for_selector(".pk-item:has-text('Ophanim')")
+    assert page.locator(".pk-item").all_inner_texts() == ["Ophanim"]
+    box.press("Enter")
+    page.get_by_role("spinbutton", name="Ophanim damage").fill("15000")
+    box.fill("ophanim")
+    assert "No match" in page.inner_text(".pk-list")                # already added: not offered twice
+    assert not page.errors
+
+
+def test_requirement_picker_filters_as_you_type(page):
+    page.click("text=New build from goals")
+    box = page.get_by_role("combobox", name="Add a requirement")
+    box.click()
+    groups = page.locator(".pk-group").all_text_contents()
+    assert "Survival" in groups and any(g.startswith("Item stat:") for g in groups)
+    box.fill("thunder def")                                         # every word must match
+    texts = page.locator(".pk-item").all_inner_texts()
+    assert texts and all("thunder" in t.lower() and "def" in t.lower() for t in texts)
+    box.press("ArrowDown")
+    box.press("Enter")
+    assert page.locator(".rule").count() == 1
+    box.fill("zzzz")
+    assert "No match" in page.inner_text(".pk-list")
+    box.press("Escape")
+    assert page.locator(".pk-list").count() == 0
+    assert not page.errors
+
+
+def test_solver_takes_any_stat_as_minimum_or_maximum(page):
+    page.click("text=New build from goals")
+    assert page.locator(".rule").count() == 0                       # nothing until the player adds it
+    add_rule(page, "poison", 5000, "Poison")
+    pick_rule(page, "spell 1 cost raw")
+    page.get_by_role("combobox", name="Spell 1 cost (raw): at least or at most").select_option("max")
+    page.get_by_role("spinbutton", name="Spell 1 cost (raw)", exact=True).fill("0")
+    page.get_by_role("button", name="Remove Poison").click()
+    assert page.locator(".rule").count() == 1
     assert not page.errors
 
 
@@ -467,11 +525,13 @@ def test_exact_search_from_the_form(page):
     page.click("#new-build")
     page.get_by_role("combobox", name="Class").select_option("Mage")
     page.get_by_role("combobox", name="Maximize").select_option("poison")
-    page.get_by_role("spinbutton", name="Health").fill("15000")
-    page.get_by_role("spinbutton", name="Mana regen").fill("20")
+    add_rule(page, "health", 15000, "Health")
+    add_rule(page, "mana regen", 20, "Mana regen")
+    open_fold(page, "Items")
     page.get_by_role("combobox", name="Required major IDs").select_option("PLAGUE")
     page.get_by_role("textbox", name="Weapon (optional)").fill("Gaia")
     page.get_by_role("textbox", name="Name").fill("ui exact test")
+    open_fold(page, "Search options")
     page.get_by_label("Exact search (every item)").check()
     page.click("text=Find the best build")
     page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=120000)
@@ -858,8 +918,9 @@ def test_tradeoffs_from_the_form(page):
     page.click("#new-build")
     page.get_by_role("combobox", name="Class").select_option("Shaman")
     page.get_by_role("combobox", name="Tree preset").select_option("shaman-summoner")
+    open_fold(page, "Items")
     page.get_by_role("textbox", name="Weapon (optional)").fill("Stormdrain")
-    page.get_by_role("spinbutton", name="Health", exact=True).fill("12000")
+    add_rule(page, "health", 12000, "Health")
     page.wait_for_selector("#solver-trade:not([disabled])")
     page.select_option("select[aria-label='Damage to trade']", "puppet_dps")
     page.click("#solver-trade")
@@ -869,4 +930,12 @@ def test_tradeoffs_from_the_form(page):
     assert "max damage" in rows.first.inner_text() and "max survival" in rows.last.inner_text()
     rows.first.locator("text=Save").click()
     page.wait_for_selector("#editor:not([hidden]) #ed-badge .badge.ok", timeout=30000)
+    assert not page.errors
+
+
+def test_requirement_picker_opens_at_the_top_with_nothing_selected(page):
+    page.click("text=New build from goals")
+    page.get_by_role("combobox", name="Add a requirement").click()
+    assert page.locator(".pk-item.sel").count() == 0
+    assert page.evaluate("document.querySelector('.pk-list').scrollTop") == 0
     assert not page.errors

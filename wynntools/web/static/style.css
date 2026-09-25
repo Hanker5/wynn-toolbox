@@ -414,3 +414,32 @@ label.boost { display: flex; flex-direction: column; font-size: 11px; color: var
 .plan button { align-self: flex-start; }
 ul.findings { margin: 0; padding-left: 18px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 ul.findings li.error strong { color: var(--bad); } ul.findings li.warn strong { color: var(--warn); }
+
+
+/* solver form */
+.form.tight { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.checks { gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.add-row { gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.add-rule { min-width: 220px; }
+.rules { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.rule { display: grid; grid-template-columns: 1fr 96px 110px 32px; gap: 8px; align-items: center; }
+.rule-name { font-size: 14px; overflow-wrap: anywhere; }
+.card.fold > summary { cursor: pointer; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.card.fold[open] > summary { margin-bottom: 10px; }
+details.more > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+.run-bar { position: sticky; bottom: 0; z-index: 5; background: var(--panel); border: 1px solid #2b2b2b;
+  border-radius: 8px; padding: 10px 12px; margin: 12px 0; box-shadow: 0 -6px 12px rgba(0,0,0,.35); }
+.run-bar .row { margin-top: 8px; }
+.trade-row { margin: 0 0 12px; align-items: center; gap: 8px; flex-wrap: wrap; }
+.form.tight > label:first-child { grid-column: 1 / -1; }
+.checks label { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
+.checks input[type=checkbox] { width: auto; margin: 0; }
+.trade-row select { max-width: 200px; }
+.picker { flex: 1 1 320px; min-width: 240px; }
+.picker input { width: 100%; }
+.pk-list { min-width: 0; }
+.pk-group { padding: 6px 10px 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.pk-item { padding: 5px 10px; cursor: pointer; font-size: 14px; }
+.pk-item:hover, .pk-item.sel { background: var(--panel-3); }
+.pk-item.off { color: var(--muted); cursor: default; font-style: italic; }
+.pk-none { padding: 8px 10px; color: var(--muted); }

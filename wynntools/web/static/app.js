@@ -254,6 +254,51 @@ function autocomplete(input, fetchOptions, onPick) {
   return wrap;
 }
 
+/** A search box over grouped options ({key, label, group, disabled?}): type to filter (every word
+ * must match the label, key or group), arrows and Enter to pick, Escape to close. */
+function searchPicker({ label, placeholder, options, onPick }) {
+  const input = h("input", { type: "text", role: "combobox", "aria-label": label, placeholder, autocomplete: "off",
+    "aria-autocomplete": "list", "aria-expanded": "false" });
+  const wrap = h("div", { class: "ac picker" }, input);
+  let list = null, shown = [], sel = -1;
+  const close = () => { list?.remove(); list = null; sel = -1; input.setAttribute("aria-expanded", "false"); };
+  const matches = () => {
+    const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
+    return options().filter((o) => { const hay = `${o.label} ${o.key} ${o.group}`.toLowerCase(); return words.every((w) => hay.includes(w)); });
+  };
+  const draw = () => {
+    list?.remove();
+    shown = matches();
+    const pickable = shown.filter((o) => !o.disabled);
+    if (sel >= pickable.length) sel = pickable.length - 1;
+    const kids = []; let group = null, n = 0;
+    for (const o of shown) {
+      if (o.group !== group) { group = o.group; kids.push(h("div", { class: "pk-group" }, group)); }
+      const idx = o.disabled ? -1 : n++;
+      kids.push(h("div", { class: "pk-item" + (o.disabled ? " off" : "") + (!o.disabled && idx === sel ? " sel" : ""), role: "option",
+        "aria-disabled": o.disabled ? "true" : null, "aria-selected": !o.disabled && idx === sel ? "true" : "false",
+        onmousedown: (e) => { e.preventDefault(); if (!o.disabled) choose(o); } }, o.label));
+    }
+    list = h("div", { class: "ac-list pk-list", role: "listbox" }, kids.length ? kids : h("div", { class: "pk-none" }, "No match"));
+    wrap.append(list);
+    input.setAttribute("aria-expanded", "true");
+    list.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+  };
+  const choose = (o) => { input.value = ""; close(); onPick(o.key); input.focus(); };
+  input.addEventListener("input", () => { sel = input.value.trim() ? 0 : -1; draw(); });
+  input.addEventListener("focus", draw);
+  input.addEventListener("blur", () => setTimeout(close, 120));
+  input.addEventListener("keydown", (e) => {
+    const pickable = shown.filter((o) => !o.disabled);
+    if (e.key === "ArrowDown") { if (!list) draw(); sel = Math.min(pickable.length - 1, sel + 1); draw(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { sel = Math.max(0, sel - 1); draw(); e.preventDefault(); }
+    else if (e.key === "Enter" && list && pickable.length) { choose(pickable[Math.max(0, sel)]); e.preventDefault(); }
+    else if (e.key === "Escape") close();
+  });
+  wrap.refresh = () => { if (list) draw(); };      // options changed while the list is open
+  return wrap;
+}
+
 // ------------------------------------------------------------------ inventory
 S.inv = { items: {}, tomes: [], crafts: [] };
 const owns = (name) => !!name && (name in S.inv.items || S.inv.crafts.includes(name));
@@ -1415,6 +1460,7 @@ async function openSolverFor(c, fix = null) {
     floors: { ...(spec.floors || {}), ...(fix?.floors || {}) }, force: { ...(spec.force || {}), ...keep },
     locked: Object.keys(keep), tree: d.tree || [], tomes: d.tomes, exclude: spec.exclude || [],
     exclude_tiers: spec.exclude_tiers || [], require_major: spec.require_major || [],
+    exclude_major: spec.exclude_major || [], caps: spec.caps || {},
     at_most_one: spec.at_most_one || [], prefer: spec.prefer || {}, why: fix?.why,
     defaultGoal: !Object.keys(spec.objective || {}).length });
   show("solver");
@@ -1451,7 +1497,8 @@ function renderSolver(pre = {}) {
   if (pre.cls) f.cls.value = pre.cls;
   f.level = h("input", { type: "number", value: pre.level || 105, min: 1, max: 121 });
   f.goal = h("select", { "aria-label": "Maximize" });
-  f.tie = h("select", {}, h("option", { value: "" }, "none"), m.stats.map((s) => h("option", { value: s }, idLabel(s)[0])));
+  const statOptions = () => m.stat_groups.map((g) => h("optgroup", { label: g.group }, g.stats.map((s) => h("option", { value: s.key }, s.label))));
+  f.tie = h("select", {}, h("option", { value: "" }, "none"), statOptions());
   f.weapon = h("input", { placeholder: "any", value: pre.force?.weapon || "" });
   f.mythic = h("input", { type: "checkbox", checked: (pre.exclude_tiers || []).includes("Mythic") });
   f.crafted = h("input", { type: "checkbox" });
@@ -1467,12 +1514,20 @@ function renderSolver(pre = {}) {
   const prefer = new Set(Object.keys(pre.prefer || {}));
   const groups = (pre.at_most_one || []).map((g) => [...g]);
   const kept = { ...(pre.force || {}) }; delete kept.weapon;
+  const noMajors = new Set(pre.exclude_major || []);
+  const noMajorChips = h("div", { class: "chips" });
+  const drawNoMajors = () => noMajorChips.replaceChildren(...[...noMajors].map((k) =>
+    h("span", { class: "chip on", title: "remove", onclick: () => { noMajors.delete(k); drawNoMajors(); } }, `no ${k} ✕`)));
+  const noMajorIn = h("select", {}, h("option", { value: "" }, "Add a major ID to avoid…"),
+    m.majors.map(([k, name]) => h("option", { value: k }, name)));
+  noMajorIn.onchange = () => { if (noMajorIn.value) { noMajors.add(noMajorIn.value); majors.delete(noMajorIn.value); drawMajors(); } noMajorIn.value = ""; drawNoMajors(); };
+  drawNoMajors();
   const majorChips = h("div", { class: "chips" });
   const drawMajors = () => majorChips.replaceChildren(...[...majors].map((k) =>
     h("span", { class: "chip on", title: "remove", onclick: () => { majors.delete(k); drawMajors(); } }, `${k} ✕`)));
   const majorIn = h("select", {}, h("option", { value: "" }, "Add a required major ID…"),
     m.majors.map(([k, name]) => h("option", { value: k }, name)));
-  majorIn.onchange = () => { if (majorIn.value) majors.add(majorIn.value); majorIn.value = ""; drawMajors(); };
+  majorIn.onchange = () => { if (majorIn.value) { majors.add(majorIn.value); noMajors.delete(majorIn.value); drawNoMajors(); } majorIn.value = ""; drawMajors(); };
   drawMajors();
 
   // "At most one of these": build a group, then add it.
@@ -1493,14 +1548,13 @@ function renderSolver(pre = {}) {
     f.preset.replaceChildren(h("option", { value: "" }, own ? "this build's own tree" : "none (gear only)"),
       ...m.presets.filter((p) => p.class === f.cls.value).map((p) => h("option", { value: p.name, title: p.about }, p.name)));
   };
-  f.dmgSpell = h("select", { "aria-label": "Spell for the damage minimum" });
   let spells = [];
   const syncGoals = () => {
     const keep = f.goal.value || Object.keys(pre.objective || {})[0] || "eSteal";
     const shaman = f.cls.value === "Shaman";
     const derived = m.derived.filter((g) => shaman || !["puppet_dps", "summon_dps"].includes(g.key));
     setKids(f.goal,
-      h("optgroup", { label: "Item stats" }, m.stats.map((s) => h("option", { value: s }, idLabel(s)[0]))),
+      ...statOptions(),
       h("optgroup", { label: "Worked out by WynnBuilder's model" }, derived.map((g) =>
         h("option", { value: g.key }, g.label + (g.damage ? " (needs a tree)" : "")))),
       spells.length ? h("optgroup", { label: "Spell damage (needs a tree)" }, spells.filter((sp) => !sp.melee).map((sp) =>
@@ -1508,17 +1562,12 @@ function renderSolver(pre = {}) {
     f.goal.value = [...f.goal.options].some((o) => o.value === keep) ? keep : "eSteal";
     f.tdamage.replaceChildren(...[["melee_dps", "Main-attack DPS"], ...(shaman ? [["puppet_dps", "Puppet DPS"], ["summon_dps", "Total summon DPS"]] : []),
       ...spells.filter((sp) => !sp.melee).map((sp) => [`damage:${sp.name}`, sp.name])].map(([k, l]) => h("option", { value: k }, l)));
-    for (const k of ["puppet_dps", "summon_dps"]) if (f[k]) f[k].closest("label").hidden = !shaman;
+    drawPicker();
   };
   const syncSpells = async () => {
-    const keep = f.dmgSpell.value;
     const preset = f.preset.value || m.presets.find((p) => p.class === f.cls.value)?.name;
     spells = f.preset.value || pre.tree?.length
       ? await api("GET", `/api/spells?cls=${f.cls.value}&preset=${encodeURIComponent(preset || "")}&level=${+f.level.value || 105}`) : [];
-    f.dmgSpell.replaceChildren(h("option", { value: "" }, spells.length ? "none" : "pick a tree preset first"),
-      ...spells.map((sp) => h("option", { value: sp.name }, sp.melee ? `${sp.name} (DPS)` : sp.name)));
-    f.dmgSpell.disabled = !spells.length;
-    if (spells.some((sp) => sp.name === keep)) f.dmgSpell.value = keep;
     syncGoals();
   };
   f.tdamage = h("select", { "aria-label": "Damage to trade", class: "inline" });
@@ -1528,12 +1577,61 @@ function renderSolver(pre = {}) {
   f.preset.onchange = syncSpells; f.level.addEventListener("change", syncSpells);
   const weaponAc = autocomplete(f.weapon, (q) => api("GET", `/api/items?slot=weapon&cls=${f.cls.value}&level=${f.level.value}&q=${encodeURIComponent(q)}`), () => {});
 
-  const floorCards = FLOOR_GROUPS.map(([title, rows]) => h("div", { class: "floor-group" },
-    h("div", { class: "fg-h" }, title),
-    h("div", { class: "form" }, rows.map(([k, label, ph]) =>
-      field(label, num(k, ph), DERIVED_FLOORS.includes(k) ? "Worked out by WynnBuilder's model: uses the shortlist search" : null)))));
-  for (const [k, v] of Object.entries(pre.floors || {})) if (f[k] && typeof v === "number") f[k].value = v;
-  const firstDamage = Object.entries(pre.floors?.damage || {})[0];
+  // Requirements: only the ones the player adds, each a row (at least / at most / value).
+  const shown = new Set(FLOOR_GROUPS.flatMap(([, rows]) => rows.map(([k]) => k)));
+  const itemStats = new Set(m.stat_groups.flatMap((g) => g.stats.map((x) => x.key)));
+  const labelOf = new Map(FLOOR_GROUPS.flatMap(([, rows]) => rows.map(([k, l]) => [k, l])));
+  for (const g of m.stat_groups) for (const x of g.stats) if (!labelOf.has(x.key)) labelOf.set(x.key, x.label);
+  const ruleLabel = (k) => (k.startsWith("damage:") ? `${k.slice(7)} damage` : labelOf.get(k) || k);
+  const rules = [
+    ...Object.entries(pre.floors || {}).flatMap(([k, v]) => k === "damage"
+      ? Object.entries(v).map(([n, x]) => ({ key: `damage:${n}`, kind: "min", value: x }))
+      : typeof v === "number" ? [{ key: k, kind: "min", value: v }] : []),
+    ...Object.entries(pre.caps || {}).map(([key, value]) => ({ key, kind: "max", value }))];
+  const ruleBox = h("div", { class: "rules" });
+  const quick = h("div", { class: "chips" });
+  let pickerOptions = [];
+  f.add = searchPicker({ label: "Add a requirement", placeholder: "Search a stat, DPS or spell to require…",
+    options: () => pickerOptions, onPick: (k) => addRule(k) });
+  const drawRules = () => {
+    ruleBox.replaceChildren(...rules.map((r, i) => {
+      const kind = h("select", { "aria-label": `${ruleLabel(r.key)}: at least or at most`, disabled: !itemStats.has(r.key),
+        onchange: (ev) => { r.kind = ev.target.value; } }, h("option", { value: "min" }, "at least"), h("option", { value: "max" }, "at most"));
+      kind.value = r.kind;
+      return h("div", { class: "rule" },
+        h("span", { class: "rule-name" }, ruleLabel(r.key),
+          DERIVED_FLOORS.includes(r.key) || r.key.startsWith("damage:") ? h("span", { class: "muted", title: "Worked out by WynnBuilder's model: uses the shortlist search" }, " · model") : null),
+        kind,
+        h("input", { type: "number", "aria-label": ruleLabel(r.key), value: r.value ?? "", placeholder: "value",
+          oninput: (ev) => { r.value = ev.target.value === "" ? null : +ev.target.value; } }),
+        h("button", { class: "mini", "aria-label": `Remove ${ruleLabel(r.key)}`, onclick: () => { rules.splice(i, 1); drawRules(); drawPicker(); } }, "✕"));
+    }));
+    ruleBox.hidden = !rules.length;
+    const none = $("#no-rules"); if (none) none.hidden = !!rules.length;
+  };
+  const addRule = (key) => {
+    if (!key || rules.some((r) => r.key === key)) return;
+    rules.push({ key, kind: "min", value: null }); drawRules(); drawPicker();
+    ruleBox.lastElementChild?.querySelector("input")?.focus();
+  };
+  function drawPicker() {
+    const shaman = f.cls.value === "Shaman", used = new Set(rules.map((r) => r.key));
+    const opts = [];
+    for (const [title, rows] of FLOOR_GROUPS) {
+      for (const [k, l] of rows) if (!used.has(k) && (shaman || !["puppet_dps", "summon_dps"].includes(k))) opts.push({ key: k, label: l, group: title });
+    }
+    if (spells.length) {
+      for (const sp of spells) if (!used.has(`damage:${sp.name}`))
+        opts.push({ key: `damage:${sp.name}`, label: sp.melee ? `${sp.name} (DPS)` : sp.name, group: "Spell damage" });
+    } else opts.push({ key: "", label: "Pick a tree preset to require a spell's damage", group: "Spell damage", disabled: true });
+    for (const g of m.stat_groups) for (const x of g.stats)
+      if (!shown.has(x.key) && !used.has(x.key)) opts.push({ key: x.key, label: x.label, group: `Item stat: ${g.group}` });
+    pickerOptions = opts;
+    f.add.refresh();
+    quick.replaceChildren(...["hp", "ehp", "mr", "spd", "min_eledef"].filter((k) => !used.has(k)).map((k) =>
+      h("button", { class: "chip", onclick: () => addRule(k) }, `+ ${ruleLabel(k)}`)));
+  }
+  drawRules();
 
   const bar = h("i"), status = h("div", { class: "hint", id: "solver-status" }), cancelBtn = h("button", { class: "danger", hidden: true }, "Cancel");
   const runBtn = h("button", { class: "primary", id: "solver-run" }, "Find the best build");
@@ -1543,9 +1641,13 @@ function renderSolver(pre = {}) {
   const resultBox = h("div", { id: "solver-result" });
 
   async function readForm() {
-    const floors = {};
-    for (const [, rows] of FLOOR_GROUPS) for (const [k] of rows) if (f[k].value !== "") floors[k] = +f[k].value;
-    if (f.dmgSpell.value && f.dmg_min.value !== "") floors.damage = { [f.dmgSpell.value]: +f.dmg_min.value };
+    const floors = {}, caps = {};
+    for (const r of rules) {
+      if (r.value == null || Number.isNaN(r.value)) continue;
+      if (r.key.startsWith("damage:")) (floors.damage ||= {})[r.key.slice(7)] = r.value;
+      else if (r.kind === "max") caps[r.key] = r.value;
+      else floors[r.key] = r.value;
+    }
     const objective = { [f.goal.value]: 1 };
     if (f.tie.value && f.tie.value !== f.goal.value) objective[f.tie.value] = 0.01;
     let tomes = [];
@@ -1553,7 +1655,7 @@ function renderSolver(pre = {}) {
     const force = { ...kept };
     if (f.weapon.value) force.weapon = f.weapon.value;
     return { class: f.cls.value, level: +f.level.value, objective, floors,
-      require_major: [...majors], force, exclude: [...exclude], at_most_one: groups,
+      require_major: [...majors], exclude_major: [...noMajors], caps, force, exclude: [...exclude], at_most_one: groups,
       prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
       exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
@@ -1710,47 +1812,50 @@ function renderSolver(pre = {}) {
         `. Kept: ${[pre.force?.weapon && `weapon (${pre.force.weapon})`, ...keptList.map(([s, n]) => `${s} (${n})`)].filter(Boolean).join(", ") || "nothing"}.` +
         (pre.defaultGoal ? " This build has no saved goal, so the search maximizes effective HP: change Maximize below if you want something else." : "")),
       h("label", { class: "check" }, f.asCandidate, " Save results as candidates of this build")) : null,
-    h("div", { class: "card" }, h("h3", {}, "Who and what"),
-      h("div", { class: "form" }, field("Name", f.name), field("Class", f.cls), field("Level", f.level),
-        field("Maximize", f.goal), field("Tiebreaker (tiny weight)", f.tie), field("Tree", f.preset)),
-      h("p", { class: "hint" }, "Goals worked out by WynnBuilder's model (effective HP, DPS, …) use a local search: good builds, not proven the best. " +
-        "Spare skill points then go where they help the goal, set by hand in the build.")),
-    h("div", { class: "card" }, h("h3", {}, "Minimums (leave blank for none)"),
-      ...floorCards,
-      h("div", { class: "form", style: "margin-top:8px" }, field("Spell", f.dmgSpell), field("Spell damage at least", num("dmg_min", "e.g. 15000"))),
-      h("p", { class: "hint" }, "Health, regen and defences count gear, tomes and set bonuses (raw elemental defences, as the Summary shows). " +
-        "Skill-point minimums are met with spare points if the gear falls short; the build keeps them set by hand. Max mana assumes spare points go into Intelligence. " +
-        "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search.")),
-    h("div", { class: "card" }, h("h3", {}, "Items"),
-      h("div", { class: "form" }, field("Required major IDs", majorIn), field("Weapon (optional)", weaponAc),
-        field("Tomes", f.tomesFrom), field("Shortlist size", f.topn),
+    h("div", { class: "card" }, h("h3", {}, "Goal"),
+      h("div", { class: "form tight" }, field("Name", f.name), field("Class", f.cls), field("Level", f.level),
+        field("Maximize", f.goal), field("Tree", f.preset)),
+      h("div", { class: "row checks" },
         h("label", { class: "check" }, f.mythic, "No mythics"),
         h("label", { class: "check" }, f.crafted, "Include crafted items"),
-        h("label", { class: "check" }, f.owned, "Only items I own"),
-        h("label", { class: "check", title: "Finds the best build over every usable item. With a damage-model minimum the shortlist search is used instead." },
-          f.exact, "Exact search (every item)")),
-      majorChips,
+        h("label", { class: "check" }, f.owned, "Only items I own"))),
+    h("div", { class: "card" }, h("h3", {}, "Requirements"),
+      h("div", { class: "row add-row" }, f.add, quick), ruleBox,
+      h("p", { class: "hint", id: "no-rules", hidden: !!rules.length }, "None yet: the search maximizes the goal alone. Add a minimum (or a maximum, for item stats) to constrain it."),
+      h("details", { class: "more" }, h("summary", {}, "How these are counted"),
+        h("p", { class: "hint" }, "Health, regen and defences count gear, tomes and set bonuses (raw elemental defences, as the Summary shows). " +
+          "Skill-point minimums are met with spare points if the gear falls short; the build keeps them set by hand. Max mana assumes spare points go into Intelligence. " +
+          "Any item stat works, at 100% rolls unless you own the item. " +
+          "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search."))),
+    h("details", { class: "card fold", open: !!(majors.size || noMajors.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
+      h("summary", {}, "Items: weapon, major IDs, tomes, leave out"),
+      h("div", { class: "form" }, field("Weapon (optional)", weaponAc), field("Tomes", f.tomesFrom),
+        field("Required major IDs", majorIn), field("Avoid these major IDs", noMajorIn)),
+      majorChips, noMajorChips,
       h("div", { class: "form", style: "margin-top:10px" },
         field("Leave out (unavailable, too expensive…)", itemChips("Leave out", exclude)),
         field("Prefer when it costs nothing", itemChips("Prefer", prefer)),
         field("At most one of", h("div", {}, draftChips, addGroup, groupBox))),
       h("p", { class: "hint" }, `Items on your Inventory page's unavailable list are always left out${Object.keys(S.inv.unavailable || {}).length ? ` (${Object.keys(S.inv.unavailable).length} now)` : ""}.`)),
-    h("div", { class: "card" }, h("h3", {}, "Run"), h("div", { class: "progress" }, bar), status,
-      h("div", { class: "row", style: "margin-top:10px" }, runBtn, upBtn, cancelBtn),
-      h("div", { class: "row", style: "margin-top:10px" }, tradeBtn, h("span", { class: "muted" }, "trade"), f.tdamage,
-        h("span", { class: "muted" }, "against"), f.ttank),
-      h("p", { class: "hint" }, "Stats are 100% rolls (or your real rolls for items you own). The exact search finds the best build over every usable item. " +
-        "With a damage-model minimum (or Exact search unticked) it searches per-slot shortlists instead; raise the shortlist size to double-check those."),
-      resultBox, upgradesBox));
+    h("details", { class: "card fold" },
+      h("summary", {}, "Search options"),
+      h("div", { class: "form" }, field("Tiebreaker (tiny weight)", f.tie), field("Shortlist size", f.topn),
+        h("label", { class: "check", title: "Finds the best build over every usable item. With a damage-model minimum the shortlist search is used instead." },
+          f.exact, "Exact search (every item)")),
+      h("p", { class: "hint" }, "Goals worked out by WynnBuilder's model (effective HP, DPS, …) use a local search: good builds, not proven the best. " +
+        "Spare skill points then go where they help the goal, set by hand in the build. " +
+        "Stats are 100% rolls (or your real rolls for items you own). With a damage-model minimum (or Exact search unticked) it searches per-slot shortlists; raise the shortlist size to double-check those.")),
+    h("div", { class: "run-bar" }, h("div", { class: "progress" }, bar), status,
+      h("div", { class: "row" }, runBtn, upBtn, cancelBtn)),
+    h("div", { class: "row trade-row" }, tradeBtn, h("span", { class: "muted" }, "trade"), f.tdamage,
+      h("span", { class: "muted" }, "against"), f.ttank),
+    resultBox, upgradesBox);
   runBtn.disabled = tradeBtn.disabled = upBtn.disabled = true;      // until the goal list is in
   syncSpells().finally(() => { if (!S.job) runBtn.disabled = tradeBtn.disabled = upBtn.disabled = false; }).then(() => {
     if (pre.objective) {
       const [goal, ...rest] = Object.keys(pre.objective);
       if ([...f.goal.options].some((o) => o.value === goal)) f.goal.value = goal;
       if (rest[0] && [...f.tie.options].some((o) => o.value === rest[0])) f.tie.value = rest[0];
-    }
-    if (firstDamage && [...f.dmgSpell.options].some((o) => o.value === firstDamage[0])) {
-      f.dmgSpell.value = firstDamage[0]; f.dmg_min.value = firstDamage[1];
     }
   });
 }
