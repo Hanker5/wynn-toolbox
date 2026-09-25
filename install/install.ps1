@@ -111,6 +111,7 @@
         $lnk.TargetPath = $app
         $lnk.Arguments = 'serve'
         $lnk.WorkingDirectory = $Dir
+        $lnk.IconLocation = Join-Path $Dir 'wynntools\web\static\logo.ico'
         $lnk.Description = 'AI-assisted Wynncraft builds'
         $lnk.Save()
     }

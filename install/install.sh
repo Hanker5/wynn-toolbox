@@ -118,7 +118,7 @@ Type=Application
 Name=WynnGPT
 Comment=AI-assisted Wynncraft builds
 Exec="$BIN/wynn-toolbox"
-Icon=applications-games
+Icon=$DIR/wynntools/web/static/logo.png
 Terminal=false
 Categories=Game;Utility;
 EOF

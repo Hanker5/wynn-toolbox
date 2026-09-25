@@ -13,6 +13,7 @@ moved or resized by the window manager, so:
 The window's size and position are kept in settings.json (`window`).
 """
 import logging
+import sys
 from pathlib import Path
 
 from .. import settings as settings_mod
@@ -20,6 +21,9 @@ from .. import settings as settings_mod
 log = logging.getLogger(__name__)
 
 TITLE = "WynnGPT"
+STATIC = Path(__file__).parent / "static"
+# Windows wants an .ico for the title bar and taskbar; Qt (Linux) and macOS take the png.
+ICON = STATIC / ("logo.ico" if sys.platform == "win32" else "logo.png")
 DEFAULT_SIZE = (1400, 900)
 MIN_SIZE = (900, 600)
 EDGES = ("n", "s", "e", "w", "ne", "nw", "se", "sw")
@@ -248,7 +252,7 @@ def run(url, settings_path, on_close):
     window.events.closing += save
     _current = api
     try:
-        webview.start(private_mode=False, storage_path=str(settings_path.parent / ".webview"))
+        webview.start(private_mode=False, storage_path=str(settings_path.parent / ".webview"), icon=str(ICON))
     finally:
         _current = None
         on_close()
