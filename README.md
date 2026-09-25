@@ -1,4 +1,4 @@
-# Wynn Toolbox
+# WynnGPT
 
 **AI-assisted Wynncraft build toolkit.** Tell your AI assistant what you want
 (a Stealing Summoner, a poison Mage with at least 15,000 HP) and it uses these
@@ -27,20 +27,20 @@ rules, and hand you a working WynnBuilder link.
   ```
 
 The installer sets up Python (through [uv](https://docs.astral.sh/uv/)),
-downloads WynnBuilder's data and adds a **Wynn Toolbox** shortcut (Start menu
+downloads WynnBuilder's data and adds a **WynnGPT** shortcut (Start menu
 and Desktop on Windows, apps menu or Desktop elsewhere) plus a `wynn-toolbox`
-command. Wynn Toolbox checks GitHub for updates when it opens and asks whether
+command. WynnGPT checks GitHub for updates when it opens and asks whether
 to **Update now** or **Ignore** (it asks again when something newer appears;
 "Check for updates" in the sidebar looks any time). You can also run the
 installer again. Either way your builds and settings are kept.
 
-**First run.** Wynn Toolbox opens in its own window and asks which AI assistant
+**First run.** WynnGPT opens in its own window and asks which AI assistant
 you want: **Claude Code**, **Codex** or **Gemini CLI** (or none). If it isn't
 installed, "Install for me" runs the official installer in the built-in
 terminal, where you can watch it. Then it starts the AI, which asks you to
 sign in the first time.
 
-From then on, opening Wynn Toolbox also starts your AI in the terminal panel.
+From then on, opening WynnGPT also starts your AI in the terminal panel.
 To switch, click the **AI** button in the sidebar (or run
 `wt config ai codex`).
 
@@ -48,7 +48,7 @@ Each AI comes set up for the toolbox: a shared `build` skill, a prompt hook
 that tells it which build you have open, and (Claude Code, Gemini CLI)
 permission to run `wt` without asking. Say yes when it asks whether to trust
 the folder. Codex also asks you to approve new hooks once: type `/hooks` and
-trust the Wynn Toolbox one.
+trust the WynnGPT one.
 
 **For developers** (from a clone):
 
@@ -183,7 +183,7 @@ need to write code to help:
 
 Game data and the build-link format come from
 [WynnBuilder](https://github.com/wynnbuilder/wynnbuilder.github.io) (GPL-3.0);
-the link codec and formulas are ports of its source. Wynn Toolbox is therefore
+the link codec and formulas are ports of its source. WynnGPT is therefore
 also licensed under the **GNU GPL v3.0 or later** (see `LICENSE`).
 
 The ability tree is drawn with a port of WynnBuilder's tree renderer (grid,

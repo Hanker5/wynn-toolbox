@@ -1,4 +1,4 @@
-"""Is there a newer Wynn Toolbox on GitHub, and install it.
+"""Is there a newer WynnGPT on GitHub, and install it.
 
 Any new commit on the branch the app was installed from counts as an update.
 The installer records the commit it installed in `.wynn-toolbox-install`
@@ -174,7 +174,7 @@ fi
 WINDOWS_HELPER = r"""
 Start-Transcript -Path $env:WT_LOG -Append | Out-Null
 if ($env:WT_PID -ne '0') { Wait-Process -Id $env:WT_PID -ErrorAction SilentlyContinue }
-Write-Host "Updating Wynn Toolbox to $env:WYNN_TOOLBOX_COMMIT ..."
+Write-Host "Updating WynnGPT to $env:WYNN_TOOLBOX_COMMIT ..."
 $ok = $true
 try { Invoke-RestMethod $env:WT_INSTALLER | Invoke-Expression }
 catch { $ok = $false; Write-Host ($_ | Out-String) -ForegroundColor Red }

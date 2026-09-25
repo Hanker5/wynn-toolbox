@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One-command setup for Wynn Toolbox. Safe to re-run.
+# One-command setup for WynnGPT. Safe to re-run.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

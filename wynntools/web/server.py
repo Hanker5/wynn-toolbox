@@ -50,7 +50,7 @@ SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct"
 
 
 UNAUTHORIZED_PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
-<title>Wynn Toolbox</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;
+<title>WynnGPT</title><style>body{font:16px/1.5 system-ui,sans-serif;max-width:34rem;
 margin:15vh auto;padding:0 16px;color:#1b1e25;background:#f4f5f8}
 @media (prefers-color-scheme:dark){body{color:#e6e8ee;background:#111318}}
 code{background:rgba(127,127,127,.18);padding:1px 5px;border-radius:4px}</style></head>
@@ -119,7 +119,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         beat.cancel()
         term.close()                      # don't leave the shell running after exit
 
-    app = FastAPI(title="Wynn Toolbox", docs_url=None, redoc_url=None, openapi_url=None,
+    app = FastAPI(title="WynnGPT", docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
     app.state.token = token
     app.state.terminal = term
@@ -1134,7 +1134,7 @@ def serve(builds_dir="builds", port=8765, mode=None):
     builds_dir = Path(builds_dir)
     url = running_instance(builds_dir)
     if url:
-        print(f"Wynn Toolbox is already running at:\n  {url}", flush=True)
+        print(f"WynnGPT is already running at:\n  {url}", flush=True)
         if mode == "window" and _call_running(builds_dir, "POST", "/api/window/focus")[2] == 200:
             return
         if mode != "none":
@@ -1156,11 +1156,11 @@ def serve(builds_dir="builds", port=8765, mode=None):
                                            log_level="warning", timeout_graceful_shutdown=3))
     app.state.mode = mode
     app.state.shutdown = lambda: setattr(server, "should_exit", True)
-    how = {"window": "Close the Wynn Toolbox window (or press Ctrl+C here) to quit.",
-           "browser": "Keep this window open while you use Wynn Toolbox. Close it (or press "
+    how = {"window": "Close the WynnGPT window (or press Ctrl+C here) to quit.",
+           "browser": "Keep this window open while you use WynnGPT. Close it (or press "
                       "Ctrl+C) to quit.",
            "none": "Press Ctrl+C to quit."}
-    print(f"Wynn Toolbox is running at:\n  {url}\n(only this computer can connect; "
+    print(f"WynnGPT is running at:\n  {url}\n(only this computer can connect; "
           f"the token in the link is the password for this session)\n\n{how[mode]}",
           flush=True)
     try:

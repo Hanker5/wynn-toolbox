@@ -1,9 +1,9 @@
 #!/bin/sh
-# Wynn Toolbox installer for Linux and macOS.
+# WynnGPT installer for Linux and macOS.
 #
 #   curl -fsSL https://raw.githubusercontent.com/Hanker5/wynn-toolbox/main/install/install.sh | sh
 #
-# Installs into ~/WynnToolbox, adds a "Wynn Toolbox" shortcut and a
+# Installs into ~/WynnToolbox, adds a "WynnGPT" shortcut and a
 # `wynn-toolbox` command. Run it again to update: your builds, settings and
 # downloaded game data are kept.
 #
@@ -32,7 +32,7 @@ command -v tar >/dev/null 2>&1 || die "tar is needed; install it with your packa
 ORIG_PATH="$PATH"
 export PATH="$BIN:$HOME/.cargo/bin:$PATH"
 if ! command -v uv >/dev/null 2>&1; then
-  say "Installing uv (it manages Python for Wynn Toolbox)..."
+  say "Installing uv (it manages Python for WynnGPT)..."
   curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 command -v uv >/dev/null 2>&1 || die "uv did not install; see https://docs.astral.sh/uv/"
@@ -59,7 +59,7 @@ fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-say "Downloading Wynn Toolbox..."
+say "Downloading WynnGPT..."
 case "$TARBALL" in
   http://*|https://*) curl -fsSL "$TARBALL" -o "$tmp/src.tar.gz" ||
                         die "download failed: $TARBALL" ;;
@@ -88,7 +88,7 @@ say "Downloading WynnBuilder's item data..."
 mkdir -p "$BIN"
 cat > "$BIN/wynn-toolbox" <<EOF
 #!/bin/sh
-# Starts Wynn Toolbox (made by its installer; it updates itself from the app).
+# Starts WynnGPT (made by its installer; it updates itself from the app).
 # Its output goes to builds/app.log when there is no terminal to show it.
 cd "$DIR" || exit 1
 if [ -t 1 ]; then exec "$DIR/.venv/bin/wt" serve "\$@"; fi
@@ -101,12 +101,12 @@ case "$(uname -s)" in
   Darwin)
     desktop="$HOME/Desktop"
     mkdir -p "$desktop"
-    cat > "$desktop/Wynn Toolbox.command" <<EOF
+    cat > "$desktop/WynnGPT.command" <<EOF
 #!/bin/sh
 exec "$BIN/wynn-toolbox"
 EOF
-    chmod +x "$desktop/Wynn Toolbox.command"
-    where="double-click \"Wynn Toolbox\" on your Desktop, or $where"
+    chmod +x "$desktop/WynnGPT.command"
+    where="double-click \"WynnGPT\" on your Desktop, or $where"
     ;;
   *)
     apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
@@ -115,7 +115,7 @@ EOF
     cat > "$entry" <<EOF
 [Desktop Entry]
 Type=Application
-Name=Wynn Toolbox
+Name=WynnGPT
 Comment=AI-assisted Wynncraft builds
 Exec="$BIN/wynn-toolbox"
 Icon=applications-games
@@ -130,12 +130,12 @@ EOF
       # GNOME only launches desktop files marked as trusted.
       gio set "$desktop/wynn-toolbox.desktop" metadata::trusted true 2>/dev/null || true
     fi
-    where="open \"Wynn Toolbox\" from your apps menu or desktop, or $where"
+    where="open \"WynnGPT\" from your apps menu or desktop, or $where"
     ;;
 esac
 
 echo
-say "Done! Wynn Toolbox is installed in $DIR"
+say "Done! WynnGPT is installed in $DIR"
 echo "    To start it, $where"
 echo "    The first time, it will help you set up an AI assistant."
 case ":$ORIG_PATH:" in

@@ -43,7 +43,7 @@ function ask(title, text, buttons) {
     if (S.cur?.dirty) worries.push(`Your changes to ${S.cur.doc?.name || S.cur.file} aren't saved.`);
     if (S.job) worries.push("A build search is still running; it will stop.");
     if (worries.length) {
-      const go = await ask("Close Wynn Toolbox?", [...worries, "The terminal and any AI running in it will close too."],
+      const go = await ask("Close WynnGPT?", [...worries, "The terminal and any AI running in it will close too."],
         [{ label: "Cancel", value: false }, { label: "Close anyway", value: true, danger: true }]);
       if (!go) return;
     }

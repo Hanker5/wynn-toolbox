@@ -64,9 +64,9 @@
     const next = h("button", { class: "primary", disabled: !W.choice, onclick: afterPick }, "Next");
     return [
       ...header("Choose your AI assistant",
-        "Wynn Toolbox is driven by an AI assistant that runs in the terminal panel. It reads this " +
+        "WynnGPT is driven by an AI assistant that runs in the terminal panel. It reads this " +
         "folder's instructions, runs the tools and explains the results. Pick one you have an account " +
-        "for. It will start by itself every time you open Wynn Toolbox, and you can change it any time " +
+        "for. It will start by itself every time you open WynnGPT, and you can change it any time " +
         "with the AI button in the sidebar."),
       h("div", { class: "setup-cards" }, cards),
       h("div", { class: "setup-foot" },
@@ -130,7 +130,7 @@
         c.first_run ? h("li", {}, c.first_run) : null,
         h("li", {}, c.account),
         h("li", {}, "Then tell it what you want, e.g. “make me a Stealing Shaman build with at least 12,000 HP”."),
-        h("li", {}, `${c.label} will start by itself whenever you open Wynn Toolbox. To change that, use the AI button in the sidebar.`)),
+        h("li", {}, `${c.label} will start by itself whenever you open WynnGPT. To change that, use the AI button in the sidebar.`)),
       h("div", { class: "setup-foot" },
         h("button", { onclick: () => { W.step = "pick"; draw(); } }, "Back"),
         h("button", { class: "primary", onclick: finish }, `Start ${c.label}`)),

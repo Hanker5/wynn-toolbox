@@ -19,7 +19,7 @@ from .. import settings as settings_mod
 
 log = logging.getLogger(__name__)
 
-TITLE = "Wynn Toolbox"
+TITLE = "WynnGPT"
 DEFAULT_SIZE = (1400, 900)
 MIN_SIZE = (900, 600)
 EDGES = ("n", "s", "e", "w", "ne", "nw", "se", "sw")

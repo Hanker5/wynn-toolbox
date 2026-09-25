@@ -1,5 +1,5 @@
 "use strict";
-// Wynn Toolbox web app. All data is rendered with textContent (never innerHTML),
+// WynnGPT web app. All data is rendered with textContent (never innerHTML),
 // because build files can be edited by anyone, including an AI agent.
 
 const $ = (sel) => document.querySelector(sel);

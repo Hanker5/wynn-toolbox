@@ -1,6 +1,6 @@
 "use strict";
 // Update checker: asks the server (wynntools/updates.py) whether GitHub has a
-// newer Wynn Toolbox, and offers Update now / Ignore.
+// newer WynnGPT, and offers Update now / Ignore.
 
 (() => {
   const dlg = document.getElementById("update");
@@ -42,7 +42,7 @@
       h("p", {}, changes(r)),
       list, more,
       r.can_update
-        ? h("p", { class: "muted" }, "Updating closes Wynn Toolbox (and the terminal), installs the new version and opens it again. Your builds and settings are kept.")
+        ? h("p", { class: "muted" }, "Updating closes WynnGPT (and the terminal), installs the new version and opens it again. Your builds and settings are kept.")
         : h("p", {}, "This is a developer copy (a git clone): update it with ", h("code", {}, "git pull"), "."),
       worries.length ? h("div", { class: "banner warn" }, h("ul", {}, worries.map((w) => h("li", {}, w)))) : null,
       h("div", { class: "setup-foot" }, h("div", { class: "msg" }), foot)));
@@ -74,8 +74,8 @@
       return;
     }
     const reopen = window.wtWindow?.open
-      ? "Wynn Toolbox will close now and open again by itself when the update is done (a minute or two)."
-      : "Wynn Toolbox will stop now and open a new tab when the update is done (a minute or two). You can close this one.";
+      ? "WynnGPT will close now and open again by itself when the update is done (a minute or two)."
+      : "WynnGPT will stop now and open a new tab when the update is done (a minute or two). You can close this one.";
     dlg.replaceChildren(h("div", { class: "setup-body" },
       h("div", { class: "setup-head" }, h("h2", {}, "Updating…")),
       h("p", {}, reopen),
@@ -94,7 +94,7 @@
     last = r;
     drawButtons();
     if (r.error) { if (manual) toast(`Couldn't check for updates: ${r.error}`); return; }
-    if (!r.available) { if (manual) toast("Wynn Toolbox is up to date"); return; }
+    if (!r.available) { if (manual) toast("WynnGPT is up to date"); return; }
     if (manual || !r.ignored) whenFree(openDialog);
   }
 

@@ -5,7 +5,7 @@ version: "0.1"
 license: GPL-3.0-or-later
 ---
 
-# Wynn Toolbox
+# WynnGPT
 
 An AI-assisted toolkit for Wynncraft builds. It decodes and encodes WynnBuilder
 links, searches gear and ability trees against a player's goals, and verifies
@@ -139,7 +139,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
 | `wt config [ai [claude\|codex\|gemini\|shell\|none]]` / `wt config check_updates on\|off` | Show or change the AI assistant the web app starts in its terminal, or turn the update check off (`builds/settings.json`). |
-| `wt update [--check]` | Is a newer Wynn Toolbox on GitHub? Without `--check`, install it (only while the app is closed; in the app the player uses its Update button). |
+| `wt update [--check]` | Is a newer WynnGPT on GitHub? Without `--check`, install it (only while the app is closed; in the app the player uses its Update button). |
 
 ## Build files are the shared record
 

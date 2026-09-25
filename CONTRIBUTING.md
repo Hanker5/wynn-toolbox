@@ -1,6 +1,6 @@
-# Contributing to Wynn Toolbox
+# Contributing to WynnGPT
 
-Thanks for helping. Wynn Toolbox is only useful if its numbers are right, so
+Thanks for helping. WynnGPT is only useful if its numbers are right, so
 most of this guide is about keeping them right.
 
 ## Ways to help
@@ -117,7 +117,7 @@ for understanding it and for the tests passing.
 
 ## License
 
-Wynn Toolbox is licensed under the GNU GPL v3.0 or later (it ports
+WynnGPT is licensed under the GNU GPL v3.0 or later (it ports
 GPL-3.0 code from WynnBuilder). By contributing, you agree that your
 contribution is licensed the same way.
 

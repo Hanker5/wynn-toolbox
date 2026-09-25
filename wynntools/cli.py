@@ -616,13 +616,13 @@ def _hook_context(v):
         return None
     where = VIEW_NAMES.get(v.get("view"), "the app")
     if not v.get("file"):
-        return f"[Wynn Toolbox] The player is on {where} in the web app, with no build open."
+        return f"[WynnGPT] The player is on {where} in the web app, with no build open."
     path = BUILDS / v["file"]
     doc = v.get("doc") if v.get("dirty") and v.get("doc") else (buildfile.read(path) if path.exists() else {})
     name = doc.get("name") or path.stem
-    first = (f"[Wynn Toolbox] The player has {path} (\"{name}\", level {doc.get('level')}) open in the build editor"
+    first = (f"[WynnGPT] The player has {path} (\"{name}\", level {doc.get('level')}) open in the build editor"
              if v.get("view") == "editor" else
-             f"[Wynn Toolbox] The player is on {where}; the last build they opened is {path} (\"{name}\")")
+             f"[WynnGPT] The player is on {where}; the last build they opened is {path} (\"{name}\")")
     if v.get("dirty"):
         first += ", with UNSAVED edits (ask them to Save before you change the file)"
     return first + ". \"This build\" means that one; run `wt current` for its details before answering about it."
@@ -1212,14 +1212,14 @@ def cmd_config(a):
 
 
 def cmd_update(a):
-    """Is a newer Wynn Toolbox on GitHub? Without --check, install it."""
+    """Is a newer WynnGPT on GitHub? Without --check, install it."""
     from . import updates
     from .web.client import running
     r = updates.check(updates.ROOT, a.builds, force=True)
     if r["error"]:
         raise SystemExit(f"Couldn't check for updates: {r['error']}")
     if not r["available"]:
-        print(f"Wynn Toolbox is up to date ({(r['current'] or '?')[:7]} on {r['branch']}).")
+        print(f"WynnGPT is up to date ({(r['current'] or '?')[:7]} on {r['branch']}).")
         return 0
     what = (f"{r['ahead_by']} new change{'s' if r['ahead_by'] != 1 else ''}"
             if r["ahead_by"] is not None else "a newer version (this one's version is unknown)")
@@ -1232,7 +1232,7 @@ def cmd_update(a):
         print("This is a git clone: update it with `git pull`.")
         return 0
     if running(a.builds):
-        raise SystemExit("Wynn Toolbox is open: use the Update button in the app, or close "
+        raise SystemExit("WynnGPT is open: use the Update button in the app, or close "
                          "it and run `wt update` again.")
     installer = "install.ps1" if sys.platform == "win32" else "install.sh"
     print(f"Installing (install/{installer} from {r['latest'][:7]})...", flush=True)
@@ -1438,7 +1438,7 @@ def main(argv=None):
                      help="open in the browser instead of the app window")
     how.add_argument("--no-browser", action="store_true", help="just serve; open nothing")
     s.set_defaults(fn=cmd_serve)
-    s = sub.add_parser("update", help="check GitHub for a newer Wynn Toolbox and install it")
+    s = sub.add_parser("update", help="check GitHub for a newer WynnGPT and install it")
     s.add_argument("--check", action="store_true", help="only say whether there is one")
     s.add_argument("--builds", default="builds", help="folder of build files")
     s.set_defaults(fn=cmd_update)

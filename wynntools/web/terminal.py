@@ -34,7 +34,7 @@ AI_CLIS = [
     {"key": "codex", "cmd": "codex", "label": "Codex", "vendor": "OpenAI",
      "account": "Needs a ChatGPT Plus, Pro, Business, Edu or Enterprise plan, or an OpenAI API key.",
      "login": "The first time it starts, choose \u201cSign in with ChatGPT\u201d.",
-     "first_run": "Once signed in, type /hooks and trust the Wynn Toolbox hook. It tells Codex "
+     "first_run": "Once signed in, type /hooks and trust the WynnGPT hook. It tells Codex "
                   "which build you have open each time you send a message.",
      # Windows installs via npm, not OpenAI's own install.ps1: that script can crash on
      # Windows PowerShell 5.1 with "The property 'OSArchitecture' cannot be found on this

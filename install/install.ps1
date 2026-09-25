@@ -1,8 +1,8 @@
-# Wynn Toolbox installer for Windows. In PowerShell:
+# WynnGPT installer for Windows. In PowerShell:
 #
 #   irm https://raw.githubusercontent.com/Hanker5/wynn-toolbox/main/install/install.ps1 | iex
 #
-# Installs into %LOCALAPPDATA%\WynnToolbox, adds "Wynn Toolbox" to the Start
+# Installs into %LOCALAPPDATA%\WynnToolbox, adds "WynnGPT" to the Start
 # menu and the Desktop, and a `wynn-toolbox` command. Run it again to update:
 # your builds, settings and downloaded game data are kept.
 #
@@ -33,7 +33,7 @@
     # ------------------------------------------------------------ uv (Python manager)
     $env:Path = "$Bin;$env:Path"
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-        Say 'Installing uv (it manages Python for Wynn Toolbox)...'
+        Say 'Installing uv (it manages Python for WynnGPT)...'
         powershell -NoProfile -ExecutionPolicy ByPass -Command 'irm https://astral.sh/uv/install.ps1 | iex'
         Check 'Installing uv'
     }
@@ -61,7 +61,7 @@
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('wynn-toolbox-' + [guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
-        Say 'Downloading Wynn Toolbox...'
+        Say 'Downloading WynnGPT...'
         if ($Zip -match '^https?://') { Invoke-WebRequest $Zip -OutFile "$tmp\src.zip" -UseBasicParsing }
         else { Copy-Item $Zip "$tmp\src.zip" }
         Expand-Archive "$tmp\src.zip" -DestinationPath "$tmp\src"
@@ -99,7 +99,7 @@
     New-Item -ItemType Directory -Force -Path $Bin | Out-Null
     Set-Content -Path (Join-Path $Bin 'wynn-toolbox.cmd') -Encoding ASCII -Value @(
         '@echo off',
-        'rem Starts Wynn Toolbox (made by its installer; re-run the installer to update).',
+        'rem Starts WynnGPT (made by its installer; re-run the installer to update).',
         "cd /d `"$Dir`"",
         "`"$wt`" serve %*"
     )
@@ -107,7 +107,7 @@
     $shell = New-Object -ComObject WScript.Shell
     foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
         if (-not $folder) { continue }
-        $lnk = $shell.CreateShortcut((Join-Path $folder 'Wynn Toolbox.lnk'))
+        $lnk = $shell.CreateShortcut((Join-Path $folder 'WynnGPT.lnk'))
         $lnk.TargetPath = $app
         $lnk.Arguments = 'serve'
         $lnk.WorkingDirectory = $Dir
@@ -116,8 +116,8 @@
     }
 
     Write-Host ''
-    Say "Done! Wynn Toolbox is installed in $Dir"
-    Write-Host '    To start it, open "Wynn Toolbox" from the Start menu or your Desktop.'
+    Say "Done! WynnGPT is installed in $Dir"
+    Write-Host '    To start it, open "WynnGPT" from the Start menu or your Desktop.'
     Write-Host '    The first time, it will help you set up an AI assistant.'
     Write-Host '    It checks for updates itself (or run this installer again).'
 }
