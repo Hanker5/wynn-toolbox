@@ -971,3 +971,14 @@ def test_set_picker_list_opens_right_under_its_box(page):
       - document.querySelector('#solver .card.fold').getBoundingClientRect().right""")
     assert right <= 0                                              # the two boxes stay inside the card
     assert not page.errors
+
+
+def test_health_regen_raw_can_be_required(page):
+    page.click("text=New build from goals")
+    box = page.get_by_role("combobox", name="Add a requirement")
+    for query in ("health regen raw", "hp regen raw", "hprRaw"):     # WynnBuilder's wording, the short form, the ID
+        box.fill(query)
+        assert page.locator(".pk-item").all_text_contents() == ["Health regen (raw)"]
+    box.press("Enter")
+    page.get_by_role("spinbutton", name="Health regen (raw)", exact=True).fill("200")
+    assert not page.errors

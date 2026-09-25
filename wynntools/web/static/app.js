@@ -264,7 +264,7 @@ function searchPicker({ label, placeholder, options, onPick }) {
   const close = () => { list?.remove(); list = null; sel = -1; input.setAttribute("aria-expanded", "false"); };
   const matches = () => {
     const words = input.value.toLowerCase().split(/\s+/).filter(Boolean);
-    return options().filter((o) => { const hay = `${o.label} ${o.key} ${o.group}`.toLowerCase(); return words.every((w) => hay.includes(w)); });
+    return options().filter((o) => { const hay = `${o.label} ${o.key} ${o.group}${/health/i.test(o.label) ? " hp" : ""}`.toLowerCase(); return words.every((w) => hay.includes(w)); });
   };
   const draw = () => {
     list?.remove();
@@ -1437,7 +1437,7 @@ async function copyLink() {
 // Minimums, grouped as the form shows them. Keys are the spec's "floors" (AGENTS.md).
 const FLOOR_GROUPS = [
   ["Survival", [["hp", "Health", "e.g. 17000"], ["ehp", "Effective HP", "e.g. 40000"],
-    ["hprRaw", "HP regen (raw)", "e.g. 200"], ["hpr", "HP regen (with %)", "e.g. 300"],
+    ["hprRaw", "Health regen (raw)", "e.g. 200"], ["hpr", "Health regen (with %)", "e.g. 300"],
     ["min_eledef", "Every elemental defence", "e.g. 0"],
     ["eDef", "Earth defence", ""], ["tDef", "Thunder defence", ""], ["wDef", "Water defence", ""],
     ["fDef", "Fire defence", ""], ["aDef", "Air defence", ""]]],
