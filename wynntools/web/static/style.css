@@ -435,7 +435,7 @@ details.more > summary { cursor: pointer; font-size: 12px; color: var(--muted); 
 .checks label { display: flex; flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 13px; }
 .checks input[type=checkbox] { width: auto; margin: 0; }
 .trade-row select { max-width: 200px; }
-.picker { flex: 1 1 320px; min-width: 240px; }
+.add-row .picker { flex: 1 1 320px; min-width: 240px; }
 .picker input { width: 100%; }
 .pk-list { min-width: 0; }
 .pk-group { padding: 6px 10px 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }

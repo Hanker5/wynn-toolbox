@@ -1461,6 +1461,7 @@ async function openSolverFor(c, fix = null) {
     locked: Object.keys(keep), tree: d.tree || [], tomes: d.tomes, exclude: spec.exclude || [],
     exclude_tiers: spec.exclude_tiers || [], require_major: spec.require_major || [],
     exclude_major: spec.exclude_major || [], caps: spec.caps || {},
+    require_sets: spec.require_sets || {}, exclude_sets: spec.exclude_sets || [],
     at_most_one: spec.at_most_one || [], prefer: spec.prefer || {}, why: fix?.why,
     defaultGoal: !Object.keys(spec.objective || {}).length });
   show("solver");
@@ -1522,6 +1523,28 @@ function renderSolver(pre = {}) {
     m.majors.map(([k, name]) => h("option", { value: k }, name)));
   noMajorIn.onchange = () => { if (noMajorIn.value) { noMajors.add(noMajorIn.value); majors.delete(noMajorIn.value); drawMajors(); } noMajorIn.value = ""; drawNoMajors(); };
   drawNoMajors();
+  // Sets: wear at least N pieces of one, or leave a set out.
+  const reqSets = { ...(pre.require_sets || {}) };
+  const noSets = new Set(pre.exclude_sets || []);
+  const setBox = h("div", { class: "rules" }), noSetChips = h("div", { class: "chips" });
+  const setSize = (n) => m.sets.find((x) => x.name === n)?.size || 1;
+  const drawSets = () => {
+    setBox.replaceChildren(...Object.entries(reqSets).map(([n, c]) => h("div", { class: "rule set-rule" },
+      h("span", { class: "rule-name" }, n), h("span", { class: "muted" }, `at least, of ${setSize(n)} pieces`),
+      h("input", { type: "number", min: 1, max: setSize(n), value: c, "aria-label": `${n} pieces`,
+        oninput: (ev) => { reqSets[n] = Math.max(1, +ev.target.value || 1); } }),
+      h("button", { class: "mini", "aria-label": `Remove ${n}`, onclick: () => { delete reqSets[n]; drawSets(); } }, "✕"))));
+    setBox.hidden = !Object.keys(reqSets).length;
+    noSetChips.replaceChildren(...[...noSets].map((n) =>
+      h("span", { class: "chip on", title: "remove", onclick: () => { noSets.delete(n); drawSets(); } }, `no ${n} ✕`)));
+  };
+  const setOptions = (allowed) => () => m.sets.filter((x) => allowed(x) && !(x.name in reqSets) && !noSets.has(x.name))
+    .map((x) => ({ key: x.name, label: `${x.name} (${x.size} pieces)`, group: "Sets" }));
+  const reqSetPicker = searchPicker({ label: "Require a set", placeholder: "Search a set to wear…",
+    options: setOptions((x) => x.size <= 9), onPick: (n) => { reqSets[n] = Math.min(setSize(n), 4); drawSets(); } });
+  const noSetPicker = searchPicker({ label: "Avoid a set", placeholder: "Search a set to avoid…",
+    options: setOptions(() => true), onPick: (n) => { noSets.add(n); drawSets(); } });
+  drawSets();
   const majorChips = h("div", { class: "chips" });
   const drawMajors = () => majorChips.replaceChildren(...[...majors].map((k) =>
     h("span", { class: "chip on", title: "remove", onclick: () => { majors.delete(k); drawMajors(); } }, `${k} ✕`)));
@@ -1655,7 +1678,8 @@ function renderSolver(pre = {}) {
     const force = { ...kept };
     if (f.weapon.value) force.weapon = f.weapon.value;
     return { class: f.cls.value, level: +f.level.value, objective, floors,
-      require_major: [...majors], exclude_major: [...noMajors], caps, force, exclude: [...exclude], at_most_one: groups,
+      require_major: [...majors], exclude_major: [...noMajors], caps,
+      require_sets: { ...reqSets }, exclude_sets: [...noSets], force, exclude: [...exclude], at_most_one: groups,
       prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
       exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
@@ -1827,11 +1851,13 @@ function renderSolver(pre = {}) {
           "Skill-point minimums are met with spare points if the gear falls short; the build keeps them set by hand. Max mana assumes spare points go into Intelligence. " +
           "Any item stat works, at 100% rolls unless you own the item. " +
           "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search."))),
-    h("details", { class: "card fold", open: !!(majors.size || noMajors.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
-      h("summary", {}, "Items: weapon, major IDs, tomes, leave out"),
+    h("details", { class: "card fold", open: !!(majors.size || noMajors.size || Object.keys(reqSets).length || noSets.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
+      h("summary", {}, "Items: weapon, major IDs, sets, tomes, leave out"),
       h("div", { class: "form" }, field("Weapon (optional)", weaponAc), field("Tomes", f.tomesFrom),
         field("Required major IDs", majorIn), field("Avoid these major IDs", noMajorIn)),
       majorChips, noMajorChips,
+      h("div", { class: "form", style: "margin-top:10px" }, field("Require a set", reqSetPicker), field("Avoid a set", noSetPicker)),
+      setBox, noSetChips,
       h("div", { class: "form", style: "margin-top:10px" },
         field("Leave out (unavailable, too expensive…)", itemChips("Leave out", exclude)),
         field("Prefer when it costs nothing", itemChips("Prefer", prefer)),

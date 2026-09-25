@@ -244,6 +244,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 "presets": [{"name": k, "class": v["class"], "about": v["about"]}
                             for k, v in PRESETS.items()],
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
+                "sets": sorted(({"name": n, "size": len(v["items"])} for n, v in gd.sets.items()),
+                               key=lambda s: s["name"]),
                 "stat_groups": [{"group": g, "stats": [{"key": k, "label": l} for k, l in ks]}
                                 for g, ks in catalog(SUM_FLOORS)],
                 "stats": ["eSteal", "poison", "lb", "hp", "mr", "ms", "sdPct", "mdPct",

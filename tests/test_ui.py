@@ -939,3 +939,35 @@ def test_requirement_picker_opens_at_the_top_with_nothing_selected(page):
     assert page.locator(".pk-item.sel").count() == 0
     assert page.evaluate("document.querySelector('.pk-list').scrollTop") == 0
     assert not page.errors
+
+
+def test_solver_requires_and_avoids_sets(page):
+    page.click("text=New build from goals")
+    open_fold(page, "Items")
+    req = page.get_by_role("combobox", name="Require a set")
+    req.fill("air relic")
+    req.press("Enter")
+    page.get_by_role("spinbutton", name="Air Relic pieces").fill("3")
+    avoid = page.get_by_role("combobox", name="Avoid a set")
+    avoid.fill("cindercurse")
+    avoid.press("Enter")
+    assert page.locator(".chip", has_text="no Cindercurse").count() == 1
+    req.fill("cindercurse")
+    assert "No match" in page.inner_text(".pk-list")               # already avoided: not offered to require
+    page.get_by_role("button", name="Remove Air Relic").click()
+    assert page.locator(".set-rule").count() == 0
+    assert not page.errors
+
+
+def test_set_picker_list_opens_right_under_its_box(page):
+    page.click("text=New build from goals")
+    open_fold(page, "Items")
+    box = page.get_by_role("combobox", name="Require a set")
+    box.click()
+    gap = page.evaluate("""() => { const i = document.querySelector("input[aria-label='Require a set']").getBoundingClientRect();
+      const l = document.querySelector('.pk-list').getBoundingClientRect(); return l.top - i.bottom; }""")
+    assert 0 <= gap < 12
+    right = page.evaluate("""() => document.querySelector("input[aria-label='Avoid a set']").getBoundingClientRect().right
+      - document.querySelector('#solver .card.fold').getBoundingClientRect().right""")
+    assert right <= 0                                              # the two boxes stay inside the card
+    assert not page.errors
