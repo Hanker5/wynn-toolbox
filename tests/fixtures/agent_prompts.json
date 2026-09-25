@@ -1,0 +1,16 @@
+{
+  "_about": "Prompts an agent must route correctly, with a build already open in the app. `expect` is the first move: create (wt gear --save to a NEW name), edit (that build's file), variant (--save-as / --candidate), import (wt import), ask. `trigger` is the phrase the build skill's section 0 table must list. tests/test_agents.py checks the skill and the hook cover every one; to check a real agent, open a build, paste each prompt, and compare its first `wt` command.",
+  "prompts": [
+    {"prompt": "Make me a new poison Mage build", "expect": "create", "trigger": "new"},
+    {"prompt": "I want another build, this time a tank", "expect": "create", "trigger": "another"},
+    {"prompt": "Build me something different for Warrior", "expect": "create", "trigger": "different"},
+    {"prompt": "Start from scratch with a stealing Shaman", "expect": "create", "trigger": "from scratch"},
+    {"prompt": "Make my build tankier", "expect": "edit", "trigger": "tankier"},
+    {"prompt": "Swap in Gaia for the weapon", "expect": "edit", "trigger": "swap in"},
+    {"prompt": "Can you find a better helmet for this build?", "expect": "edit", "trigger": "a better helmet"},
+    {"prompt": "Improve it", "expect": "edit", "trigger": "improve"},
+    {"prompt": "Keep this one but try it with more mana regen", "expect": "variant", "trigger": "keep this one but"},
+    {"prompt": "Give me another version of this", "expect": "variant", "trigger": "another version of this"},
+    {"prompt": "Here is a WynnBuilder link, can you look at it?", "expect": "import", "trigger": "WynnBuilder link"}
+  ]
+}

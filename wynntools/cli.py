@@ -429,6 +429,17 @@ def cmd_gear(a):
         raw = json.load(open(a.spec, encoding="utf-8"))
     if a.parent and not Path(a.parent).exists():
         raise SystemExit(f"no build {a.parent} to add a candidate to")
+    if a.save and Path(a.save).exists() and not a.force:
+        raise SystemExit(f"{a.save} already exists (a build the player may have). To make a NEW build, "
+                         f"pick another name; to change that one, use `wt gear --edit {a.save}`; "
+                         f"--force overwrites it")
+    if a.edit:
+        target = a.save_as or a.edit
+        print(f"Editing {a.edit} (\"{old_doc.get('name') or Path(a.edit).stem}\")"
+              + (f" and saving the result as {target}" if a.save_as and not a.candidate else "")
+              + (f" as a candidate named {a.candidate!r}" if a.candidate else ""))
+    else:
+        print(f"Creating a new build" + (f" at {a.save}" if a.save else ""))
     spec = _spec_from(raw, gd, inventory)
     _search_tree(spec, a.tree, gd, old_doc)
     left_out = sorted(set(inventory.unavailable) - set(spec.force.values()))
@@ -610,6 +621,20 @@ def _view():
     return client.view(BUILDS)
 
 
+def _recent_builds(limit=3, skip=None):
+    """Names of the build files touched most recently (candidates excluded)."""
+    files = [f for f in BUILDS.glob("*.json")
+             if f.name not in ("inventory.json", "settings.json") and "--" not in f.stem and f.name != skip]
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    return [f.name for f in files[:limit]]
+
+
+_HOOK_RULE = (" Only when the player says \"this build\", \"my build\", \"it\" or asks to improve/change "
+              "one does it mean that file; if they ask for a NEW, another or different build, ignore it: "
+              "start fresh with `wt gear --save builds/<new name>.json` and leave this one alone. "
+              "If unsure which they mean, ask. Say \"editing X\" or \"creating Y\" before you run it.")
+
+
 def _hook_context(v):
     """One or two lines for an AI's per-prompt hook: what the player has open."""
     if not v or v.get("at") is None:
@@ -625,7 +650,9 @@ def _hook_context(v):
              f"[WynnGPT] The player is on {where}; the last build they opened is {path} (\"{name}\")")
     if v.get("dirty"):
         first += ", with UNSAVED edits (ask them to Save before you change the file)"
-    return first + ". \"This build\" means that one; run `wt current` for its details before answering about it."
+    others = _recent_builds(skip=v["file"])
+    recent = f" Other recent builds: {', '.join(others)}." if others else ""
+    return first + "." + recent + _HOOK_RULE + " Run `wt current` for its details before answering about it."
 
 
 def _refuse_if_unsaved(path, force):
@@ -700,6 +727,41 @@ def cmd_current(a):
             if fix["action"] == "auto_sp" else f" (fix: search with {json.dumps(fix['floors'])})"
         print(f"Warning: {w['message']}{how}")
     print(link)
+    return 0 if ok else 1
+
+
+def cmd_intake(a):
+    """What the spec (or build) already answers, and what is still to ask the player."""
+    from .agent_aids import intake
+    raw, tree = None, None
+    if a.source:
+        doc = json.load(open(a.source, encoding="utf-8"))
+        raw, tree = (doc.get("spec") or doc, doc.get("tree_preset"))
+        if "equipment" in doc and not doc.get("spec"):     # a build file with no spec: class and level only
+            raw = {"level": doc.get("level")}
+    print("\n".join(intake(raw, a.tree or tree)))
+    return 0
+
+
+def cmd_spec_check(a):
+    """Catch spec mistakes before a long search."""
+    from .agent_aids import check_spec
+    gd = GameData()
+    raw = json.load(open(a.spec, encoding="utf-8"))
+    errors, warnings = check_spec(raw, gd, a.tree, inv_mod.load(a.inventory))
+    for e in errors:
+        print(f"ERROR: {e}")
+    for w in warnings:
+        print(f"note: {w}")
+    print("spec has errors: fix them before running `wt gear`" if errors else "spec OK")
+    return 1 if errors else 0
+
+
+def cmd_report(a):
+    """The fixed closing report for a build: link, verification, search kind, assumptions."""
+    from .agent_aids import report
+    ok, lines = report(buildfile.read(a.build), GameData(), a.build)
+    print("\n".join(lines))
     return 0 if ok else 1
 
 
@@ -1296,7 +1358,7 @@ def main(argv=None):
                    help="with --edit: search only these slots, keep the rest (comma-separated)")
     s.add_argument("--save-as", metavar="PATH", help="with --edit: write a new build file instead")
     s.add_argument("--force", action="store_true",
-                   help="with --edit: write even if the player has unsaved edits, or --save-as exists")
+                   help="write even if the player has unsaved edits, or --save/--save-as already exists")
     s.add_argument("--tree", choices=sorted(PRESETS), help="also solve the tree with this preset")
     s.add_argument("--shortlists", action="store_true",
                    help="use the older shortlist search instead of the exact one (automatic with damage floors)")
@@ -1384,6 +1446,18 @@ def main(argv=None):
                    help="print a one-line summary as hook JSON for an AI CLI (UserPromptSubmit, BeforeAgent)")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_current)
+    s = sub.add_parser("intake", help="what a spec/build already answers and what is still to ask the player")
+    s.add_argument("source", nargs="?", help="a spec file or build file (optional)")
+    s.add_argument("--tree", help="the tree preset chosen so far")
+    s.set_defaults(fn=cmd_intake)
+    s = sub.add_parser("spec-check", help="check a gear spec for mistakes before a long search")
+    s.add_argument("spec")
+    s.add_argument("--tree", choices=sorted(PRESETS), help="the tree preset you will pass to `wt gear`")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_spec_check)
+    s = sub.add_parser("report", help="the closing report for a build file: verified link, search kind, assumptions")
+    s.add_argument("build")
+    s.set_defaults(fn=cmd_report)
     s = sub.add_parser("show", help="open a build file in the web app")
     s.add_argument("build")
     s.set_defaults(fn=cmd_show)

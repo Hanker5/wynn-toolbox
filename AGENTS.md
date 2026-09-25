@@ -91,7 +91,14 @@ questions; you run the commands.
    - **local** (a derived goal: `ehp`, `hpr`, `melee_dps`, `puppet_dps`,
      `summon_dps`, `damage:<spell>`): a good build, not proven best. Say so.
 
-10. **When nothing fits, pass on the explanation.** `wt gear` prints which of
+10. **New means new.** The open build is context, not a request. Only "this
+    build", "my build", "it" or "improve/change ..." means edit it; "new",
+    "another", "different" or "make me a ..." means `wt gear --save
+    builds/<new name>.json` and the open build stays untouched. Say "editing X"
+    or "creating Y" before you run it; if unsure, ask. `wt gear --save` refuses
+    to overwrite an existing file.
+
+11. **When nothing fits, pass on the explanation.** `wt gear` prints which of
     the player's requirements conflict and how close each gets. Offer to loosen
     one of those; don't guess at others.
 
@@ -120,6 +127,9 @@ the sandbox, including the ones that talk to the web app.
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
 | `wt builds` | List the build files (the app's sidebar); `▶` marks the one open in the app. |
+| `wt intake [spec.json \| builds/x.json]` | What a spec or build already answers and what is still to ask the player (class, level, goal, requirements, weapon, tomes, crafts, tree). |
+| `wt spec-check spec.json [--tree PRESET]` | Catch spec mistakes before a long search: typos, a wrong-class weapon, damage goals without `--tree`, several similar goal weights; says which search will run. Exit 1 on errors. |
+| `wt report builds/x.json` | The closing report: verified link, search kind, objective, and every assumption from rule 3 in one block. Build your answer from it. |
 | `wt show builds/x.json` | Open a build in the player's web app. |
 | `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--lock SLOTS] [--auto-sp] [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--lock` keeps slots in later searches; `--auto-sp` puts skill points back to automatic. `--save-as` makes a variant and leaves the original alone. |
 | `wt damage <link or build file> [--perfect] [--parts] [--special auto\|Curse:7] [--armor-boost e=300]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP, elemental defences, and which powder specials the powders give. Typical rolls by default; `--perfect` matches the WynnBuilder page. `--special`/`--armor-boost` switch powder specials on (not WynnBuilder's default). |
@@ -221,6 +231,9 @@ variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
 | Skill | Use it when |
 |---|---|
 | `build` | A player wants a new build, a weapon comparison, or a change to one. |
+
+`knowledge/goals.md` maps what players say ("tanky", "stealing", "poison") to
+objectives, floors and presets; the skill points at it.
 
 The skill lives in `.claude/skills/build/` (Claude Code) and
 `.agents/skills/build/` (Codex, Gemini CLI). The two files must stay identical;

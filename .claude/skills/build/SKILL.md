@@ -1,12 +1,35 @@
 ---
 name: build
-description: Make, compare, adjust or improve a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants an existing build changed or improved ("this build", "make my build tankier", "a better helmet"); changes go into that build's file rather than a new one. Produces verified WynnBuilder links saved to the player's build list.
+description: Make, compare, adjust or improve a Wynncraft build with the wt tools. Use when a player asks for a build, wants to compare weapons or items, or wants an existing build changed or improved ("this build", "make my build tankier", "a better helmet"), or asks for a NEW build. Decides first whether the player wants a new build or a change to the open one: changes to an existing build go into its file, a request for a new one never touches it. Produces verified WynnBuilder links saved to the player's build list.
 ---
 
 # Build
 
 Follow AGENTS.md throughout: its rules and assumptions bind every step. The
 steps below are the procedure.
+
+## 0. New build or change? Decide first, and say which
+
+The player having a build open does not mean they want it changed. Read their
+words, not the context note about the open build:
+
+| They say | Do this |
+|---|---|
+| "new", "another", "different", "from scratch", "make me a ..." (a class, goal or playstyle) | **Create**: `wt gear <spec> --save builds/<new name>.json`. Leave the open build alone. |
+| "this build", "my build", "it", "improve", "tankier", "swap in X", "a better helmet" | **Edit** that build: section 4b. |
+| "another version of this", "try it with ...", "keep this one but ..." | **Variant**: `--save-as builds/<name>-v2.json` (or `--candidate`). |
+| A WynnBuilder link | `wt import <link> builds/<name>.json`, then edit that. |
+| Unclear | Ask one short question: "change your open build, or make a new one?" |
+
+Before running a search, say in one line **"Editing builds/x.json"** or
+**"Creating builds/y.json"**; `wt gear` prints the same line, so check it
+matches what the player asked for. `wt gear --save` refuses to overwrite an
+existing file: choose another name rather than forcing.
+
+For each new build, run `wt intake [spec]` to see what is still missing, ask
+only that in one short batch, and use `knowledge/goals.md` to turn their words
+into a goal and floors. Run `wt spec-check <spec> --tree PRESET` before a long
+search.
 
 Commands are written as `wt ...`, which works in the web app's terminal (the
 toolbox's `wt` is first on PATH there). Elsewhere, run `uv run wt ...` from the
@@ -21,7 +44,7 @@ tells you class, level and gear without asking:
 
     wt decode "<link>"
 
-**New build or a change to one?** When the player talks about a build they
+**New build or a change to one?** Section 0 decides it. When the player talks about a build they
 already have ("make my build tankier", "find me a better helmet", "swap in
 Gaia", "improve this"), change that build: follow "Changing an existing build"
 below instead of making a new one. Make a new build only when they ask for one,
@@ -206,7 +229,9 @@ Poison is per second (`floor(poison / 3)`), not per hit.
 - The link, a table of the 9 items, and the key totals.
 - Which file you saved, so the player can find it in the list.
 - The objective you used, and the assumptions from AGENTS.md rule 3, in two or
-  three lines.
+  three lines. `wt report builds/<name>.json` prints the verified link, the
+  search kind, the objective and every assumption in one block: build your
+  answer from it instead of reconstructing it.
 - Anything the result depends on that is only tested or unknown per
   `knowledge/mechanics.md`.
 - When developing the toolbox (not for players): add keeper links to

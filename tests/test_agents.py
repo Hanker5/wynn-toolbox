@@ -42,3 +42,31 @@ def test_terminal_puts_the_toolbox_wt_first(monkeypatch):
     monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
     first = terminal.shell_path().split(os.pathsep)[0]
     assert terminal.toolbox_bin() and first == str(terminal.toolbox_bin())
+
+
+# ---- new build vs. change: the routing that once went wrong
+
+def _skill_section0():
+    text = (ROOT / ".claude/skills/build/SKILL.md").read_text()
+    return text.split("## 0.")[1].split("\n## 1.")[0].lower()
+
+
+def test_every_routing_prompt_is_covered_by_the_skill_table():
+    cases = json.loads((ROOT / "tests/fixtures/agent_prompts.json").read_text())["prompts"]
+    table = _skill_section0()
+    for c in cases:
+        assert c["trigger"].lower() in c["prompt"].lower(), c
+        assert c["trigger"].lower() in table, f"skill section 0 doesn't list {c['trigger']!r}"
+    assert {c["expect"] for c in cases} == {"create", "edit", "variant", "import"}
+
+
+def test_hook_says_the_open_build_is_not_a_request(tmp_path, monkeypatch):
+    from wynntools import cli
+    monkeypatch.setattr(cli, "BUILDS", tmp_path)
+    ctx = cli._hook_context({"at": 1, "view": "editor", "file": "x.json", "dirty": False,
+                             "doc": {"name": "X", "level": 100}})
+    assert "NEW" in ctx and "ignore it" in ctx and "wt gear --save" in ctx
+
+
+def test_agents_md_states_the_new_means_new_rule():
+    assert "New means new" in (ROOT / "AGENTS.md").read_text()

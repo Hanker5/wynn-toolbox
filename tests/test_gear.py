@@ -57,3 +57,18 @@ def test_crafted_gear_lifts_stealing(gd):
                         require_major=["GREED", "MAGNET"], crafted=True), gd)
     assert total(gd, r.equipment, "eSteal") >= 110
     assert any(n.startswith("CR-") for n in r.equipment)
+
+
+def test_gear_save_refuses_to_overwrite_an_existing_build(tmp_path):
+    """A 'new build' request once edited the open build; --save must not silently replace one."""
+    import json
+
+    import pytest
+
+    from wynntools import cli
+    (tmp_path / "old.json").write_text("{}")
+    spec = tmp_path / "s.json"
+    spec.write_text(json.dumps({"class": "Mage", "level": 100, "objective": {"hp": 1}}))
+    with pytest.raises(SystemExit) as e:
+        cli.main(["gear", str(spec), "--save", str(tmp_path / "old.json")])
+    assert "already exists" in str(e.value) and "--edit" in str(e.value)
