@@ -632,6 +632,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     def progress_for(job):
         def on_progress(pr):
             job["progress"] = pr
+            job["progress_at"] = time.time()
             if job["cancel"]:
                 raise Cancelled()
         return on_progress
@@ -936,9 +937,13 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         async def stream():
             while not await request.is_disconnected():
                 j = jobs[jid]
-                yield "data: " + json.dumps({k: j.get(k) for k in ("state", "progress", "file", "error",
-                                                                   "result", "explanation", "note",
-                                                                   "search")}) + "\n\n"
+                now = time.time()
+                # elapsed is the job's own clock, not the search's last report, so it never stalls
+                clock = {"elapsed": now - j["started"],
+                         "idle": now - j["progress_at"] if j.get("progress_at") else None}
+                yield "data: " + json.dumps({**{k: j.get(k) for k in ("state", "progress", "file", "error",
+                                                                      "result", "explanation", "note",
+                                                                      "search")}, **clock}) + "\n\n"
                 if j["state"] != "running":
                     return
                 await asyncio.sleep(0.25)

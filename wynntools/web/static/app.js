@@ -1699,21 +1699,36 @@ function renderSolver(pre = {}) {
     S.job = job;                // the app window's close button warns while it runs
     cancelBtn.onclick = () => api("POST", `/api/jobs/${job}/cancel`);
     const es = new EventSource(`/api/jobs/${job}/events`);
+    // The clock runs here between server events (which come four times a second but stall
+    // while the search is inside one long step), so the time never freezes.
+    let last = null, base = 0, idle = null, at = performance.now();
+    const paint = () => {
+      const sec = base + (performance.now() - at) / 1000;
+      const time = ` · ${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
+      const quiet = idle != null && idle + (performance.now() - at) / 1000 > 5
+        ? ` · last step ${Math.floor(idle + (performance.now() - at) / 1000)}s ago` : "";
+      const p = last;
+      if (!p) { status.textContent = `Starting the search…${time}`; return; }
+      if (p.fraction == null) {       // rounds or builds checked, not a known fraction
+        bar.parentElement.classList.add("busy");
+        status.textContent = (p.text || "Searching…") + time + quiet;
+      } else {
+        bar.parentElement.classList.remove("busy");
+        bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
+        status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${p.text || `${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}`}${time}${quiet}`;
+      }
+    };
+    const ticker = setInterval(paint, 250);
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED) clearInterval(ticker); };
     es.onmessage = async (ev) => {
-      const j = JSON.parse(ev.data), p = j.progress;
-      if (p) {
-        const mm = Math.floor(p.elapsed / 60), ss = String(Math.floor(p.elapsed % 60)).padStart(2, "0");
-        const time = p.elapsed ? ` · ${mm}:${ss}` : "";
-        if (p.fraction == null) {       // rounds or builds checked, not a known fraction
-          bar.parentElement.classList.add("busy");
-          status.textContent = (p.text || (p.exact ? `Exact search · round ${p.nodes} · best possible ${p.best}` : "Searching…")) + time;
-        } else {
-          bar.parentElement.classList.remove("busy");
-          bar.style.width = `${(p.fraction * 100).toFixed(1)}%`;
-          status.textContent = `${(p.fraction * 100).toFixed(1)}% · ${p.text || `${fmt(p.nodes)} checked · best so far ${p.best ?? "—"}`}${time}`;
-        }
+      const j = JSON.parse(ev.data);
+      if (j.state === "running") {
+        if (typeof j.elapsed === "number") { base = j.elapsed; idle = j.idle; at = performance.now(); }
+        if (j.progress) last = j.progress;
+        paint();
       }
       if (j.state !== "running") {
+        clearInterval(ticker);
         es.close(); runBtn.disabled = upBtn.disabled = tradeBtn.disabled = false; cancelBtn.hidden = true;
         S.job = null;
         bar.parentElement.classList.remove("busy");

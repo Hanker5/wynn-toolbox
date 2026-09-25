@@ -145,8 +145,9 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
 
         def rounds(p):
             if progress:
-                progress({"fraction": None, "nodes": p["round"], "best": p["best"],
-                          "elapsed": p["elapsed"], "text": f"round {p['round']} · best bound {p['best']:g}"})
+                bound = f" · best bound {p['best']:g}" if p["best"] is not None else ""
+                progress({"fraction": None, "nodes": p["round"], "best": p["best"], "elapsed": p["elapsed"],
+                          "text": f"round {p['round']}{bound}" + (" · solving…" if p.get("solving") else "")})
         r = solve_gear_exact(spec, gd, progress=rounds, time_limit=time_limit)
         if r is not None and not r.proven:
             gap = (r.bound - r.score) / max(abs(r.score), 1e-9) * 100 if r.bound is not None else None

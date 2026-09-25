@@ -410,6 +410,9 @@ class GearModel:
             left = time_limit - (time.time() - t0)
             if left <= 0:
                 break
+            if progress:                               # a round can take seconds: say it has started
+                progress({"round": rnd, "cuts": len(cuts.lo), "best": bound, "solving": True,
+                          "elapsed": time.time() - t0})
             res = self._milp(c, cuts, left)
             if res is None:                            # nothing left: the incumbent is best
                 return incumbent and incumbent._replace(proven=True, bound=incumbent.value)

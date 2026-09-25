@@ -982,3 +982,20 @@ def test_health_regen_raw_can_be_required(page):
     box.press("Enter")
     page.get_by_role("spinbutton", name="Health regen (raw)", exact=True).fill("200")
     assert not page.errors
+
+
+def test_progress_clock_ticks_every_second(page):
+    page.click("#new-build")
+    page.get_by_role("combobox", name="Class").select_option("Shaman")
+    page.get_by_role("combobox", name="Tree preset").select_option("shaman-summoner")
+    page.get_by_role("combobox", name="Maximize").select_option("ehp")     # a local search: runs for minutes
+    page.click("#solver-run")
+    seen = []
+    for _ in range(14):                                                    # ~4.2 s
+        page.wait_for_timeout(300)
+        seen.append(page.inner_text("#solver-status"))
+    page.get_by_role("button", name="Cancel").click()
+    clocks = [t.split("·")[-1].strip() for t in seen if ":" in t.split("·")[-1]]
+    assert len({c for c in clocks if c[0].isdigit() and ":" in c}) >= 4, seen   # 0:00 0:01 0:02 0:03 ...
+    page.wait_for_function("document.querySelector('#solver-status').textContent === 'Cancelled.'", timeout=20000)
+    assert not page.errors
