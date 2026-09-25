@@ -15,6 +15,7 @@ from .derived import DERIVED
 from .gear_milp import GearModel, Infeasible
 from .gear_solver import DAMAGE_GOAL_PREFIX, MIN_ELEDEF, SKILL_FLOORS, SUM_FLOORS
 from .rules import SKILLS, skill_points
+from .statinfo import LABELS
 from .verify import SKILL_NAMES, build_skillpoints
 
 FLOOR_LABELS = {"hp": "Health", "mr": "Mana regen", "spd": "Walk speed", "hprRaw": "Health regen (raw)",
@@ -27,13 +28,14 @@ FLOOR_LABELS = {"hp": "Health", "mr": "Mana regen", "spd": "Walk speed", "hprRaw
 def label(key):
     if key.startswith(DAMAGE_GOAL_PREFIX):
         return f"{key[len(DAMAGE_GOAL_PREFIX):]} damage"
-    return FLOOR_LABELS.get(key, key)
+    return FLOOR_LABELS.get(key) or LABELS.get(key, key)
 
 
 def _constraints(spec):
     """The player's requirements the exact program can check, as (kind, key, text)."""
     out = [("force", slot, f"{name} in {slot}") for slot, name in (spec.force or {}).items()]
     out += [("major", m, f"major ID {m}") for m in spec.require_major]
+    out += [("cap", k, f"{label(k)} at most {v:,}") for k, v in spec.caps.items()]
     for k, v in spec.floors.items():
         if k in (*SUM_FLOORS, *SKILL_FLOORS, MIN_ELEDEF, "mana", "weapon_dps"):
             out.append(("floor", k, f"{label(k)} at least {v:,}"))
@@ -47,6 +49,7 @@ def _with(spec, keep):
         spec, objective={}, prefer={},
         force={s: n for s, n in spec.force.items() if ("force", s) in kinds},
         require_major=[m for m in spec.require_major if ("major", m) in kinds],
+        caps={k: v for k, v in spec.caps.items() if ("cap", k) in kinds},
         floors={k: v for k, v in spec.floors.items() if ("floor", k) in kinds})
 
 
@@ -179,7 +182,7 @@ def explain(spec, gd, found=None, time_limit=180):
             out["summary"] = "A build exists, but the search didn't finish; try again or allow more time."
         return out
     # deletion filter: kept items and major IDs first, so floors stay in the explanation
-    order = sorted(cons, key=lambda c: {"force": 0, "major": 1, "floor": 2}[c[0]])
+    order = sorted(cons, key=lambda c: {"force": 0, "major": 1, "floor": 2, "cap": 3}[c[0]])
     conflict = list(order)
     for c in order:
         trial = [x for x in conflict if x is not c]

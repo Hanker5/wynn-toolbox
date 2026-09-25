@@ -185,6 +185,9 @@ class GearModel:
             if key in fl:
                 terms, const = self.stat_terms(key)
                 rows.add(terms, lo=fl[key] - const - base_const.get(key, 0))
+        for key, cap in spec.caps.items():
+            terms, const = self.stat_terms(key)
+            rows.add(terms, hi=cap - const - base_const.get(key, 0))
         if MIN_ELEDEF in fl:
             for key in ELEDEF_KEYS:
                 terms, const = self.stat_terms(key)

@@ -44,6 +44,18 @@ def spec_from(raw, gd, inventory=None):
                 raise ValueError('"damage" minimums look like {"Spell Name": 15000}')
         elif not isinstance(v, (int, float)) or isinstance(v, bool):
             raise ValueError(f"minimum {k!r} needs a number, not {v!r}")
+    caps = dict(raw.get("caps") or {})
+    for k, v in caps.items():
+        if k not in SUM_FLOORS:
+            raise ValueError(f"unknown maximum {k!r}; maximums take an item stat such as spRaw1, hp or poison")
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise ValueError(f"maximum {k!r} needs a number, not {v!r}")
+    for key in ("require_major", "exclude_major"):
+        for m in raw.get(key) or []:
+            if m not in gd.majids:
+                raise ValueError(f"unknown major ID {m!r} in {key!r}")
+    if set(raw.get("require_major") or []) & set(raw.get("exclude_major") or []):
+        raise ValueError("a major ID can't be both required and excluded")
     prefer = raw.get("prefer") or {}
     if isinstance(prefer, list):
         prefer = {n: 0 for n in prefer}        # 0: a tiebreak only
@@ -61,6 +73,7 @@ def spec_from(raw, gd, inventory=None):
     exclude |= unavailable - forced
     return Spec(cls=raw["class"], level=int(raw["level"]), objective=objective, floors=floors,
                 require_major=list(raw.get("require_major") or []),
+                exclude_major=list(raw.get("exclude_major") or []), caps=caps,
                 force={k: v for k, v in (raw.get("force") or {}).items() if v},
                 exclude=exclude, exclude_tiers=set(raw.get("exclude_tiers") or []),
                 tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes") or []],

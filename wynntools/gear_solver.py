@@ -11,7 +11,7 @@ from itertools import product
 from operator import add
 
 from .codec import SLOTS
-from .rules import SKILLS, base_hp, max_mana, skill_points
+from .rules import ROLLED_IDS, SKILLS, base_hp, max_mana, skill_points
 from .skillpoints import set_bonus_stats
 from .verify import REQ, build_skillpoints
 from .verify import stat as _stat
@@ -32,7 +32,10 @@ DAMAGE_PCT = ["sdPct", "mdPct", "damPct", "rDamPct", "rSdPct", "rMdPct",
 #   Sums of item, tome and set-bonus stats (base HP included for "hp"), exact in
 #   every search. Elemental defences are the raw numbers the Summary shows; %
 #   bonuses come on top, so the final defence is at least this unless a % is negative.
-SUM_FLOORS = ("hp", "mr", "spd", "hprRaw", "eDef", "tDef", "wDef", "fDef", "aDef")
+_CORE_SUMS = ("hp", "mr", "spd", "hprRaw", "eDef", "tDef", "wDef", "fDef", "aDef")
+#   Any other item stat can be a minimum too (a "caps" entry is a maximum): its
+#   total over items, tomes and set bonuses, at the roll the search assumes.
+SUM_FLOORS = (*_CORE_SUMS, *sorted((ROLLED_IDS | {"hpBonus"}) - set(_CORE_SUMS)))
 #   Final skill points (assigned + gear + set bonuses). Met by assigning spare
 #   points when the gear alone falls short; the build then keeps them by hand.
 SKILL_FLOORS = tuple(SKILLS)
@@ -50,6 +53,13 @@ DERIVED_GOALS = DERIVED_FLOORS
 DAMAGE_GOAL_PREFIX = "damage:"      # "damage:<spell name>": that spell's headline number
 
 
+def _set_stat(stats, key):
+    """A set bonus's value for a stat ("hp" is its Health bonus; "-x" is x negated)."""
+    if key[0] == "-":
+        return -_set_stat(stats, key[1:])
+    return stats.get("hpBonus", 0) if key == "hp" else stats.get(key, 0)
+
+
 def derived_goal(key):
     return key in DERIVED_GOALS or key.startswith(DAMAGE_GOAL_PREFIX)
 
@@ -63,6 +73,8 @@ class Spec:
     # floors["damage"] = {spell name: minimum}: the spell's headline number as
     # WynnBuilder shows it (melee: average DPS). Checked exactly per build; needs atree.
     require_major: list = field(default_factory=list)   # e.g. ["GREED", "MAGNET"]
+    exclude_major: list = field(default_factory=list)   # major IDs no item may carry (forced items excepted)
+    caps: dict = field(default_factory=dict)     # stat -> maximum total (every search kind)
     force: dict = field(default_factory=dict)    # slot -> item name
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
@@ -149,6 +161,9 @@ def _usable(gd, spec):
             continue
         if name in spec.exclude or it.get("tier") in spec.exclude_tiers:
             continue
+        if spec.exclude_major and name not in (spec.force or {}).values() \
+                and set(it.get("majorIds") or ()) & set(spec.exclude_major):
+            continue
         if spec.inventory is not None:
             it = with_rolls(it, spec.inventory.rolls(name))
         for s in (("ring1", "ring2") if slot == "ring" else (slot,)):
@@ -225,8 +240,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
 
     def stat(obj, key):
         k = (id(obj), key)
-        if k not in memo:
-            memo[k] = _stat(obj, key, spec.roll)
+        if k not in memo:       # "-stat" is the stat negated: a maximum is a minimum of that
+            memo[k] = -_stat(obj, key[1:], spec.roll) if key[0] == "-" else _stat(obj, key, spec.roll)
         return memo[k]
     pools = _pools if _pools is not None else _usable(gd, spec)
     if spec.crafted and _pools is None:
@@ -255,16 +270,18 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
     if MIN_ELEDEF in fl:
         for k in ELEDEF_KEYS:
             lin[k] = max(lin.get(k, -1e18), fl[MIN_ELEDEF])
+    for k, cap in spec.caps.items():
+        lin["-" + k] = -cap
     fkeys = list(lin)
-    lin_floor = [lin[k] - sum(stat(t, k) for t in tomes) - (base_hp(spec.level) if k == "hp" else 0)
-                 for k in fkeys]
+    hp_base = lambda k: {"hp": base_hp(spec.level), "-hp": -base_hp(spec.level)}.get(k, 0)
+    lin_floor = [lin[k] - sum(stat(t, k) for t in tomes) - hp_base(k) for k in fkeys]
     nf = len(fkeys)
 
     def set_contrib(stats):
         """(objective, *floor keys) added by a set bonus's stats."""
         return (sum(w * (stats.get("hpBonus", 0) if k == "hp" else stats.get(k, 0))
                     for k, w in obj_keys.items()),
-                *[stats.get("hpBonus", 0) if k == "hp" else stats.get(k, 0) for k in fkeys])
+                *[_set_stat(stats, k) for k in fkeys])
 
     def set_tables(cl):
         """Per-set bound tables so pruning stays valid with set bonuses.
