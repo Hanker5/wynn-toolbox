@@ -3,3 +3,9 @@ run/
 .idea/
 *.iml
 bin/
+# Keep only the finished mod jar from the build output.
+build/*
+!build/libs/
+build/libs/*
+!build/libs/wynngpt-chest-export-*.jar
+build/libs/*-sources.jar

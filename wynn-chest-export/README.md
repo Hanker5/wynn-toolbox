@@ -4,7 +4,7 @@ A client-side Fabric mod for Minecraft 1.21.11. It puts a small WynnGPT button t
 
 ## Setup
 
-1. Build with `./gradlew build`. The jar is written to `build/libs/`. Put it in your mods folder together with Fabric API.
+1. Put `build/libs/wynngpt-chest-export-1.0.0.jar` in your mods folder together with Fabric API. (It's committed ready to use. After changing the mod, rebuild it with `./gradlew build`, which overwrites that jar, and commit the new one.)
 2. Start WynnGPT (`wt serve`).
 3. On first launch the mod creates `config/wynngpt-chest-export.json`. Set `builds_path` in that file to your WynnGPT `builds` folder, for example `/path/to/wynn-toolbox/builds`.
 
