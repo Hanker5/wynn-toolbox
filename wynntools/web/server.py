@@ -22,6 +22,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import buildfile
+from .. import gameimport
 from .. import inventory as inv_mod
 from .. import settings as settings_mod
 from .. import updates
@@ -913,6 +914,22 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             raise HTTPException(422, "action must be add or remove")
         inv_mod.save(i, inv_path)
         return i.to_json()
+
+    @app.post("/api/inventory/import")
+    async def import_inventory(request: Request):
+        """{"source": {...}, "slots": [{"name", "lore", "item_id", "count", ...}]}, sent by the
+        Fabric chest-export mod. Adds what it recognises; returns the inventory plus a summary."""
+        body = await request.json()
+        slots = body.get("slots") if isinstance(body, dict) else None
+        if not isinstance(slots, list) or not all(isinstance(s, dict) for s in slots):
+            raise HTTPException(422, "slots must be a list of objects")
+        # Kept so unrecognised names can be checked against what the game really sent.
+        (builds_dir / ".last-import.json").write_text(json.dumps(body, indent=1, ensure_ascii=False),
+                                                      encoding="utf-8")
+        i = inv()
+        result = gameimport.import_slots(i, gd, slots)
+        inv_mod.save(i, inv_path)
+        return {**i.to_json(), **result}
 
     @app.get("/api/spells")
     def spells_api(cls: str, preset: str = "", level: int = 105):

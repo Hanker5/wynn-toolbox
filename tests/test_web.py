@@ -147,6 +147,30 @@ def test_inventory_api_aspects_and_unavailable(client):
     assert post(action="remove", kind="unavailable", name="Galleon").json()["unavailable"] == {}
 
 
+def test_inventory_import_from_game_dump(client, tmp_path):
+    slots = [{"name": "\U000cf000§aGalleon\U000cf000", "lore": []}, {"name": "Galleon"}, {"name": "Mystery Thing"},
+             {"name": "Aspect of Runic Extravagance", "lore": ["Tier II"]}, {"name": ""}]
+    r = client.post("/api/inventory/import", json={"source": {"title": "Chest"}, "slots": slots})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["imported"] == {"items": 1, "tomes": 0, "aspects": 1, "rolls": 0}
+    assert body["unknown"] == ["Mystery Thing"]
+    assert body["items"] == {"Galleon": {}}
+    assert body["aspects"] == {"Mage": {"Aspect of Runic Extravagance": 2}}
+    assert (tmp_path / ".last-import.json").exists()
+    again = client.post("/api/inventory/import", json={"slots": slots}).json()
+    assert again["imported"] == {"items": 0, "tomes": 0, "aspects": 0, "rolls": 0}   # importing twice changes nothing
+    assert client.post("/api/inventory/import", json={"slots": "nope"}).status_code == 422
+
+
+def test_inventory_import_counts_tomes(client):
+    tome = "Blooming Tome of Defensive Mastery III"
+    two = client.post("/api/inventory/import", json={"slots": [{"name": tome}, {"name": tome}]}).json()
+    assert two["tomes"] == [tome, tome] and two["imported"]["tomes"] == 2
+    one = client.post("/api/inventory/import", json={"slots": [{"name": tome}]}).json()
+    assert one["tomes"] == [tome, tome]          # never lowers what the player owns
+
+
 def test_update_check_cache_is_not_a_build(client, tmp_path):
     """Regression: the update checker's own cache files (not build-shaped JSON)
     showed up in the builds list as unreadable builds."""

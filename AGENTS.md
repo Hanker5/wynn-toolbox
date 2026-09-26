@@ -175,9 +175,11 @@ buttons. Show them with `wt variants`; when the player picks one, `wt variants
 x.json --choose <file>` and, if they agree, `--trash-rest`.
 
 `builds/inventory.json` is the player's inventory, not a build. Change it with
-`wt own` (or the web app's Own buttons and Inventory page). When a player asks
-"what should I get next?", run `wt upgrades`; when they want a build they can
-wear today, run `wt gear --owned`.
+`wt own` (or the web app's Own buttons and Inventory page; the
+`wynn-chest-export` Fabric mod also fills it in-game through
+`POST /api/inventory/import`). When a player asks "what should I get next?",
+run `wt upgrades`; when they want a build they can wear today, run
+`wt gear --owned`.
 
 `builds/settings.json` (app settings, including the window size and an ignored
 update) and `builds/.server.json` (the running server's address) are not builds

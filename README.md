@@ -99,7 +99,9 @@ Run `uv run wt --help` (or `wt <command> --help`) for the full list.
 - **Inventory and upgrades**: record the items, tomes and aspects you own (with
   real rolls and aspect tiers; tabs, filters and an unavailable list in the app),
   build only from those (the search can also choose your tomes, or any tome), and
-  rank which unowned item would help most.
+  rank which unowned item would help most. The `wynn-chest-export` Fabric mod
+  (Minecraft 1.21.11) adds a button beside chests and your inventory that sends
+  what is in them to the running app.
 - **Crafting**: exact crafted-item stats (checked against WynnBuilder's own code)
   and suggestions for the best ingredients and layout for a slot and goal, plus
   where each ingredient drops; the gear search can include crafted pieces.

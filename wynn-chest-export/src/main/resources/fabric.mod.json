@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "wynngpt-chest-export",
+	"version": "${version}",
+	"name": "WynnGPT Chest Export",
+	"description": "Adds a button next to chests and the player inventory that sends their contents to the running WynnGPT app.",
+	"authors": [
+		"Henry Hays"
+	],
+	"license": "CC0-1.0",
+	"icon": "assets/wynngpt-chest-export/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.hankryhays.wynngptchestexport.WynnGPTChestExportClient"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"mixins": [
+		"wynngpt-chest-export.client.mixins.json"
+	]
+}
