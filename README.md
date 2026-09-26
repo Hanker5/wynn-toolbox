@@ -44,6 +44,11 @@ From then on, opening WynnGPT also starts your AI in the terminal panel.
 To switch, click the **AI** button in the sidebar (or run
 `wt config ai codex`).
 
+**Your builds** are listed on the left. Drag them into any order, and use
+**+ Group** to make collapsible groups (drag a build onto a group's name to
+file it). New builds appear at the top. Your AI can arrange them too: "put my
+mage builds in a Mage group".
+
 Each AI comes set up for the toolbox: a shared `build` skill, a prompt hook
 that tells it which build you have open, and (Claude Code, Gemini CLI)
 permission to run `wt` without asking. Say yes when it asks whether to trust

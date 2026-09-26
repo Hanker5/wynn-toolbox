@@ -1,6 +1,7 @@
 """App settings that stick between runs, stored as builds/settings.json.
 
-    {"ai": "claude", "check_updates": true, "ignored_update": null, "window": null}
+    {"ai": "claude", "check_updates": true, "ignored_update": null, "window": null,
+     "sidebar": null}
 
 "ai" is the AI assistant the web app starts in its terminal panel on open:
 a key of `web.terminal.AI_CLIS`, "shell" for a plain terminal, or null when
@@ -10,13 +11,18 @@ the player has not chosen yet (the app then shows its setup wizard).
 only when a newer one appears.
 "window": the app window's last size and position
 ({"width", "height", "x", "y", "maximized"}).
+"sidebar": how the player arranged the web app's Builds list, or null for
+the plain alphabetical list: {"items": [...]}, where each item is a build
+file name or a group {"group": name, "collapsed": bool, "builds": [files]}.
+See `wynntools.sidebar`.
 """
 import json
 import re
 from pathlib import Path
 
 DEFAULT = Path("builds/settings.json")
-DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None}
+DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None,
+            "sidebar": None}
 SHELL = "shell"
 WINDOW_KEYS = {"width", "height", "x", "y", "maximized"}
 
@@ -63,6 +69,10 @@ def _problem(key, value):
                 v is None or (isinstance(v, int) and not isinstance(v, bool)))
             if not ok:
                 return f"window.{k} has the wrong type"
+    elif key == "sidebar":
+        if value is not None:
+            from .sidebar import problem
+            return problem(value)
     return None
 
 

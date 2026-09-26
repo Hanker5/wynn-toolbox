@@ -1057,3 +1057,75 @@ def test_editor_pickers_mark_and_filter_owned_tomes_and_aspects(page, app):
     aspect.select_option("Aspect of Runic Extravagance")
     assert page.locator("select[aria-label='Aspect 1 tier'] option").count() == 1
     assert not page.errors
+
+
+# ------------------------------------------------------------------ the Builds list's order and groups
+def drag(pg, src, dst, where=0.5):
+    """Drag `src` onto `dst` with the mouse, landing at `where` (0 top .. 1 bottom) of it."""
+    a, b = pg.locator(src).first.bounding_box(), pg.locator(dst).first.bounding_box()
+    pg.mouse.move(a["x"] + 20, a["y"] + a["height"] / 2)
+    pg.mouse.down()
+    pg.mouse.move(a["x"] + 20, a["y"] + a["height"] / 2 + 12, steps=3)
+    pg.mouse.move(b["x"] + 20, b["y"] + b["height"] * where, steps=8)
+    pg.mouse.up()
+
+
+def order(pg):
+    """Top-level order: group names and build names, groups' builds indented."""
+    return pg.evaluate("""() => [...document.querySelectorAll('#build-list .bl-gname, #build-list li:not(.cand) .bl-name')]
+      .map((e) => (e.closest('.bl-group ul') ? '  ' : '') + e.textContent.replace(/\\d+$/, ''))""")
+
+
+def test_builds_list_groups_and_drag_to_reorder(page, app):
+    settings_file = Path(app.builds_dir) / "settings.json"
+    assert order(page) == ["shaman_105_crafted", "mage_105_gaia_lightbender",
+                           "original_user_build", "shaman_105_stormdrain"]   # by file name at first
+    drag(page, "#build-list li:has-text('stormdrain')", "#build-list li:has-text('crafted')", 0.2)
+    page.wait_for_function("document.querySelector('#build-list li').textContent.includes('stormdrain')")
+    assert order(page)[:2] == ["shaman_105_stormdrain", "shaman_105_crafted"]
+    assert not page.locator("#editor").is_visible()                   # a drag doesn't open the build
+
+    page.click("#new-group")
+    page.fill("#build-list .bl-rename", "Shaman")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".bl-group[data-group='Shaman'] .bl-empty")
+    drag(page, "#build-list li:has-text('crafted')", ".bl-group[data-group='Shaman'] .bl-ghead", 0.7)
+    page.wait_for_selector(".bl-group[data-group='Shaman'] li:has-text('crafted')")
+    drag(page, "#build-list li:has-text('stormdrain')", ".bl-group[data-group='Shaman'] li", 0.8)
+    page.wait_for_selector(".bl-group[data-group='Shaman'] li:has-text('stormdrain')")
+    assert order(page) == ["Shaman", "  shaman_105_crafted", "  shaman_105_stormdrain",
+                           "mage_105_gaia_lightbender", "original_user_build"]
+    drag(page, ".bl-group[data-group='Shaman'] .bl-ghead", "#build-list li:has-text('original')", 0.8)
+    page.wait_for_function("document.querySelector('#build-list > :last-child')?.dataset?.group === 'Shaman'")
+
+    page.click(".bl-group[data-group='Shaman'] .bl-ghead")               # collapse
+    page.wait_for_selector(".bl-group.collapsed[data-group='Shaman']")
+    assert page.locator("#build-list li:has-text('stormdrain')").count() == 0
+    saved = json.loads(settings_file.read_text())["sidebar"]
+    assert saved == {"items": ["gaia.json", "original.json",
+                               {"group": "Shaman", "collapsed": True, "builds": ["crafted.json", "stormdrain.json"]}]}
+    page.reload()
+    page.wait_for_selector(".bl-group.collapsed[data-group='Shaman']")   # remembered
+
+    page.hover(".bl-group[data-group='Shaman'] .bl-ghead")
+    page.click(".bl-group[data-group='Shaman'] button[title='Rename group']")
+    page.fill("#build-list .bl-rename", "Shamans")
+    page.keyboard.press("Enter")
+    page.wait_for_selector(".bl-group[data-group='Shamans']")
+    page.hover(".bl-group[data-group='Shamans'] .bl-ghead")
+    page.click(".bl-group[data-group='Shamans'] button[title^='Remove group']")
+    page.locator("#ask").get_by_role("button", name="Remove group").click()
+    page.wait_for_function("!document.querySelector('.bl-group')")
+    assert page.locator("#build-list li").count() == 4                 # its builds stay
+    assert not page.errors
+
+
+def test_builds_list_follows_wt_group(page, app):
+    """`wt group` (the AI) writes the layout to settings.json; the page picks it up."""
+    from wynntools import sidebar
+    sidebar.save({"items": [{"group": "Mage", "collapsed": True, "builds": ["gaia.json"]}]},
+                 Path(app.builds_dir) / "settings.json")
+    page.wait_for_selector(".bl-group.collapsed[data-group='Mage']", timeout=10000)
+    assert order(page)[-1] == "Mage"                                    # unplaced builds come first
+    assert page.locator("#build-list li:has-text('gaia')").count() == 0
+    assert not page.errors

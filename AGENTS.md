@@ -129,7 +129,8 @@ the sandbox, including the ones that talk to the web app.
 | `wt import <link> builds/x.json [--force]` | Save any WynnBuilder link as a build file. Prints what to know first (skill points set by hand for only some skills, retired item ids, items above the level, damage that can't be worked out); a build with problems needs `--force`. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
-| `wt builds` | List the build files (the app's sidebar); `▶` marks the one open in the app. |
+| `wt builds` | List the build files in the app sidebar's order and groups; `▶` marks the one open in the app. |
+| `wt group add NAME BUILD... \| out BUILD... \| rename OLD NEW \| delete NAME \| collapse\|expand NAME \| move ITEM --before\|--after ITEM \| --top \| --bottom` | Arrange the app's Builds list (the player can also drag builds and groups there). Only when the player asks. Candidates follow their parent; `delete` keeps the group's builds. |
 | `wt intake [spec.json \| builds/x.json]` | What a spec or build already answers and what is still to ask the player (class, level, goal, requirements, weapon, tomes, crafts, tree). |
 | `wt spec-check spec.json [--tree PRESET]` | Catch spec mistakes before a long search: typos, a wrong-class weapon, damage goals without `--tree`, several similar goal weights; says which search will run. Exit 1 on errors. |
 | `wt report builds/x.json` | The closing report: verified link, search kind, objective, and every assumption from rule 3 in one block. Build your answer from it. |
@@ -181,8 +182,8 @@ x.json --choose <file>` and, if they agree, `--trash-rest`.
 run `wt upgrades`; when they want a build they can wear today, run
 `wt gear --owned`.
 
-`builds/settings.json` (app settings, including the window size and an ignored
-update) and `builds/.server.json` (the running server's address) are not builds
+`builds/settings.json` (app settings, including the window size, an ignored
+update and the Builds list's order and groups) and `builds/.server.json` (the running server's address) are not builds
 either; change settings with `wt config`. `builds/.update.json`,
 `builds/update.log` and `builds/app.log` belong to the app too.
 
@@ -222,6 +223,9 @@ variable `WYNN_TOOLBOX=1` is set there), with the player watching the page.
   `wt import` and `wt edit` write to `builds/` and open the build in the page
   automatically; `wt show` opens any other one. The page
   never throws away the player's unsaved edits for this: it tells them instead.
+  A new build goes at the top of the list, outside any group; if the player
+  keeps builds in groups (`wt builds` shows them), offer to file it with
+  `wt group add`.
 - When the player wants their build changed or improved, change **that file**
   instead of making a new build: `wt edit` for a named change,
   `wt gear --edit` to search for a better one. Use `--save-as` only when they

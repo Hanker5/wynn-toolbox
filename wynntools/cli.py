@@ -801,16 +801,30 @@ def cmd_show(a):
 
 
 def cmd_builds(a):
-    """The player's build files, like the web app's sidebar."""
+    """The player's build files, in the web app sidebar's order and groups."""
+    if not _print_builds():
+        print("No build files yet in builds/.")
+    return 0
+
+
+def _print_builds():
+    """Print the build list as the sidebar arranges it; False if there are no builds."""
+    from . import sidebar
     gd = GameData()
     v = _view() or {}
-    files = [p for p in sorted(BUILDS.glob("*.json"))
-             if p.name not in ("inventory.json", "settings.json") and not p.name.startswith(".")]
-    if not files:
-        print("No build files yet in builds/.")
-        return 0
-    for p in files:
-        mark = "▶" if p.name == v.get("file") else " "
+    builds = sidebar.scan(BUILDS)
+    if not builds:
+        return False
+    layout = sidebar.arrange(builds, sidebar.load(BUILDS / "settings.json"))
+    top, kids = set(sidebar.top_level(builds)), {}
+    for f, parent in builds:
+        if f not in top:
+            kids.setdefault(parent, []).append(f)
+
+    def row(name, indent):
+        p = BUILDS / name
+        mark = "▶" if name == v.get("file") else " "
+        label = f"{mark} {indent}{str(p):<{max(36 - len(indent), 1)}}"
         try:
             doc = buildfile.read(p)
             st = doc.get("status") or {}
@@ -819,12 +833,69 @@ def cmd_builds(a):
             cls = gd.weapon_class(weapon) if weapon else "?"
             key = " · ".join(f"{k} {t[k]:,}" for k in ("hp", "eSteal", "poison", "lb") if t.get(k))
             state = "verified" if st.get("verified") else "HAS PROBLEMS" if st else "not checked"
-            print(f"{mark} {str(p):<36} {doc.get('name') or p.stem} · {cls} Lv. {doc.get('level')} "
+            print(f"{label} {doc.get('name') or p.stem} · {cls} Lv. {doc.get('level')} "
                   f"· {state}" + (f" · {key}" if key else ""))
         except (ValueError, KeyError, OSError, NotImplementedError) as e:
-            print(f"{mark} {str(p):<36} can't read: {e}")
+            print(f"{label} can't read: {e}")
+        for k in kids.get(name, []):
+            row(k, indent + "  ")
+
+    for it in layout["items"]:
+        if isinstance(it, dict):
+            n = len(it["builds"])
+            print(f"  {'▸' if it['collapsed'] else '▾'} {it['group']} ({n} build{'' if n == 1 else 's'}"
+                  f"{', collapsed' if it['collapsed'] else ''})")
+            for f in it["builds"]:
+                row(f, "    ")
+        else:
+            row(it, "")
     if v.get("file"):
         print("▶ = open in the web app" + (" (with unsaved edits)" if v.get("dirty") else ""))
+    return True
+
+
+def cmd_group(a):
+    """Arrange the web app's Builds list: groups and order."""
+    from . import sidebar
+    path = BUILDS / "settings.json"
+    builds = sidebar.scan(BUILDS)
+    files, top = {f for f, _ in builds}, set(sidebar.top_level(builds))
+
+    def build(name):
+        f = Path(name).name
+        if not f.endswith(".json"):
+            f += ".json"
+        if f not in files:
+            raise SystemExit(f"no build file {f} in {BUILDS}/")
+        if f not in top:
+            raise SystemExit(f"{f} is a candidate: it always follows its parent build")
+        return f
+
+    def item(name):
+        """A group name, or else a build file."""
+        return name if name in sidebar.groups(layout) else build(name)
+
+    layout = sidebar.arrange(builds, sidebar.load(path))
+    try:
+        if a.action == "add":
+            layout = sidebar.add(layout, a.name, [build(f) for f in a.files])
+        elif a.action == "out":
+            layout = sidebar.ungroup(layout, [build(f) for f in a.files])
+        elif a.action == "rename":
+            layout = sidebar.rename(layout, a.old, a.new)
+        elif a.action == "delete":
+            layout = sidebar.delete(layout, a.name)
+        elif a.action in ("collapse", "expand"):
+            layout = sidebar.collapse(layout, a.name, a.action == "collapse")
+        elif a.action == "move":
+            layout = sidebar.move(layout, item(a.item),
+                                  before=item(a.before) if a.before else None,
+                                  after=item(a.after) if a.after else None,
+                                  top=a.top, bottom=a.bottom)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    sidebar.save(layout, path)
+    _print_builds()
     return 0
 
 
@@ -1286,6 +1357,9 @@ def cmd_config(a):
     from . import settings
     if a.key is None:
         for k, v in settings.load(a.file).items():
+            if k == "sidebar" and v:               # the Builds list's layout: `wt builds` shows it
+                n = sum(isinstance(it, dict) for it in v["items"])
+                v = f"arranged by hand, {n} group{'' if n == 1 else 's'} (see `wt builds`)"
             print(f"{k} = {v if v is not None else '(not set)'}")
         return 0
     if a.key not in ("ai", "check_updates"):
@@ -1505,8 +1579,31 @@ def main(argv=None):
     s = sub.add_parser("show", help="open a build file in the web app")
     s.add_argument("build")
     s.set_defaults(fn=cmd_show)
-    s = sub.add_parser("builds", help="list build files (the web app's sidebar)")
+    s = sub.add_parser("builds", help="list build files in the web app sidebar's order and groups")
     s.set_defaults(fn=cmd_builds)
+    s = sub.add_parser("group", help="arrange the web app's Builds list: groups and order")
+    g = s.add_subparsers(dest="action", required=True)
+    x = g.add_parser("add", help="put builds at the end of a group (made at the top if new)")
+    x.add_argument("name")
+    x.add_argument("files", nargs="+", metavar="BUILD")
+    x = g.add_parser("out", help="take builds out of their groups")
+    x.add_argument("files", nargs="+", metavar="BUILD")
+    x = g.add_parser("rename", help="rename a group")
+    x.add_argument("old")
+    x.add_argument("new")
+    x = g.add_parser("delete", help="remove a group; its builds stay, outside any group")
+    x.add_argument("name")
+    for act in ("collapse", "expand"):
+        x = g.add_parser(act, help=f"{act} a group in the web app")
+        x.add_argument("name")
+    x = g.add_parser("move", help="move a build or group (next to a build in a group = into it)")
+    x.add_argument("item", help="a build file or a group name")
+    where = x.add_mutually_exclusive_group(required=True)
+    where.add_argument("--before", metavar="ITEM")
+    where.add_argument("--after", metavar="ITEM")
+    where.add_argument("--top", action="store_true")
+    where.add_argument("--bottom", action="store_true")
+    s.set_defaults(fn=cmd_group)
     s = sub.add_parser("edit", help="change items, tomes, level, name or tree in a build file, then re-check it")
     s.add_argument("build")
     s.add_argument("--item", action="append", metavar="SLOT=NAME",

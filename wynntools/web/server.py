@@ -515,10 +515,12 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         and a `tools` event with the `wt` commands running (the terminal
         panel's progress bars) whenever that list changes."""
         def watched():
-            # The inventory is reserved (not a build) but the page still reloads it when it changes.
+            # The inventory and settings are reserved (not builds) but the page still
+            # reloads them when they change: settings hold the Builds list's layout (`wt group`).
             files = {p.name: version(p) for p in builds_dir.glob("*.json") if p.name not in RESERVED}
-            if inv_path.exists():
-                files[inv_path.name] = version(inv_path)
+            for p in (inv_path, settings_path):
+                if p.exists():
+                    files[p.name] = version(p)
             return files
 
         async def stream():

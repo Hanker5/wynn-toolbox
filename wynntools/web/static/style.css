@@ -53,13 +53,38 @@ a { color: var(--accent); }
 .import summary { cursor: pointer; color: var(--muted); }
 .import[open] { display: flex; flex-direction: column; gap: 6px; }
 .msg { font-size: 12px; color: var(--muted); min-height: 1em; }
-#build-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.bl-head { display: flex; align-items: center; justify-content: space-between; }
+.bl-head button { text-transform: none; letter-spacing: 0; }
+#build-list { position: relative; display: flex; flex-direction: column; gap: 3px; user-select: none; }
+#build-list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+#build-list > p { margin: 0; }
 #build-list li { padding: 6px 8px; border-radius: var(--radius); cursor: pointer; border: 1px solid transparent; display: flex; gap: 8px; align-items: center; }
 #build-list li:hover { background: var(--panel-2); }
 #build-list li.active { background: var(--panel-2); border-color: var(--line); }
 #build-list .bl-text { min-width: 0; }
 #build-list .bl-name { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 #build-list .bl-sub { color: var(--muted); font-size: 12px; }
+/* groups: a header that collapses, its builds indented under a guide line */
+.bl-group { display: flex; flex-direction: column; gap: 3px; }
+.bl-ghead { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: var(--radius); cursor: pointer;
+  border: 1px solid transparent; color: var(--muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.bl-ghead:hover { background: var(--panel-2); color: var(--text); }
+.bl-ghead.has-active { color: var(--accent); border-color: var(--line); }
+.bl-caret { width: 10px; text-align: center; }
+.bl-gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bl-gcount { font-weight: 400; }
+.bl-gactions { display: none; gap: 2px; }
+body:not(.bl-dragging) .bl-ghead:hover .bl-gactions, .bl-ghead:focus-within .bl-gactions { display: flex; }
+.bl-ghead button.icon { padding: 0 5px; font-size: 11px; line-height: 16px; border-color: transparent; background: none; color: var(--muted); }
+.bl-ghead button.icon:hover { color: var(--text); border-color: var(--line); }
+.bl-rename { flex: 1; min-width: 0; padding: 1px 6px; font-size: 12px; text-transform: none; }
+.bl-group > ul { margin-left: 9px !important; padding-left: 6px !important; border-left: 1px solid var(--line); }
+.bl-empty { margin-left: 9px; padding: 6px 8px 6px 14px; border-left: 1px solid var(--line); color: var(--muted); font-size: 12px; font-style: italic; }
+/* dragging */
+body.bl-dragging, body.bl-dragging * { cursor: grabbing !important; }
+#build-list .dragging { opacity: .4; }
+.bl-ghead.drop-into { background: rgba(79, 209, 224, .12); border-color: var(--accent); color: var(--text); }
+.bl-drop-line { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); border-radius: 1px; pointer-events: none; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
 .dot.ok { background: var(--ok); } .dot.bad { background: var(--bad); }
 

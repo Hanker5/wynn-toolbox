@@ -509,17 +509,61 @@ function invUnavailable(body, inv, again) {
 }
 
 // ------------------------------------------------------------------ sidebar
+// The player's own order and collapsible groups: settings.json "sidebar", kept
+// in the same form as wynntools/sidebar.py (which `wt builds` and `wt group` use).
+S.layout = { items: [] };
+S.layoutSeq = 0;                                   // bumped by every local change
+
+/** Mirror of wynntools.sidebar.arrange: builds not placed yet first (alphabetical),
+ * then the saved items, leaving out files that are gone and candidates (they follow their parent). */
+function arrangeList(builds, layout) {
+  const files = new Set(builds.map((b) => b.file));
+  const top = new Set(builds.filter((b) => !(b.parent && files.has(b.parent))).map((b) => b.file));
+  const placed = new Set(), out = [];
+  for (const it of layout?.items || []) {
+    if (typeof it === "object") {
+      const keep = it.builds.filter((f) => top.has(f) && !placed.has(f));
+      keep.forEach((f) => placed.add(f));
+      out.push({ ...it, builds: keep });
+    } else if (top.has(it) && !placed.has(it)) { placed.add(it); out.push(it); }
+  }
+  return { items: [...[...top].filter((f) => !placed.has(f)).sort(), ...out] };
+}
+
+const copyLayout = (l) => ({ items: l.items.map((it) => (typeof it === "object" ? { ...it, builds: [...it.builds] } : it)) });
+const layoutGroups = () => S.layout.items.filter((it) => typeof it === "object");
+const groupOf = (file) => layoutGroups().find((g) => g.builds.includes(file));
+
 async function loadList() {
-  S.builds = await api("GET", "/api/builds");
-  const ul = $("#build-list"); ul.replaceChildren();
-  if (!S.builds.length) ul.append(h("li", { class: "muted" }, "No builds yet."));
-  const files = new Set(S.builds.map((b) => b.file));
+  const seq = S.layoutSeq;
+  const [builds, settings] = await Promise.all([api("GET", "/api/builds"), api("GET", "/api/settings")]);
+  S.builds = builds;
+  // A drag or rename saved while this was loading wins over what was read.
+  S.layout = arrangeList(builds, seq === S.layoutSeq ? settings.sidebar : S.layout);
+  renderList();
+}
+
+async function saveLayout(layout) {
+  S.layoutSeq++;
+  S.layout = arrangeList(S.builds, layout);
+  renderList();
+  try { await api("PUT", "/api/settings", { sidebar: S.layout }); }
+  catch (e) { toast(`Couldn't save the list: ${e.message}`); S.layoutSeq++; await loadList(); }
+}
+
+function renderList() {
+  if (S.drag || S.renaming) { S.listStale = true; return; }   // redrawn when that ends
+  S.listStale = false;
+  const box = $("#build-list"); box.replaceChildren();
+  if (!S.layout.items.length) { box.append(h("p", { class: "muted" }, "No builds yet.")); return; }
+  const byFile = new Map(S.builds.map((b) => [b.file, b]));
   const kids = (f) => S.builds.filter((b) => b.parent === f);
   const item = (b, cand) => {
     const t = b.totals || {};
     const key = t.poison ? `poison ${fmt(t.poison)}` : t.eSteal ? `Stealing ${t.eSteal}%` : `♥ ${fmt(t.hp)}`;
     const n = kids(b.file).length;
-    return h("li", { class: (S.cur?.file === b.file ? "active" : "") + (cand ? " cand" : ""), onclick: () => openBuild(b.file) },
+    return h("li", { class: (S.cur?.file === b.file ? "active" : "") + (cand ? " cand" : ""), "data-file": cand ? null : b.file,
+      onclick: () => openBuild(b.file) },
       itemIcon(CLASS_WEAPON[b.class] || "", cand ? 22 : 28),
       h("div", { class: "bl-text" },
         h("div", { class: "bl-name" }, h("span", { class: "dot " + (b.error ? "bad" : b.verified ? "ok" : "bad") }),
@@ -527,11 +571,210 @@ async function loadList() {
           n ? h("span", { class: "badge-count", title: `${n} candidate${n > 1 ? "s" : ""}` }, n) : null),
         h("div", { class: "bl-sub" }, b.error ? "can't read file" : `${cand ? "candidate · " : `${b.class || "?"} · Lv. ${b.level} · `}${key}`)));
   };
-  for (const b of S.builds) {
-    if (b.parent && files.has(b.parent)) continue;           // listed under its build
-    ul.append(item(b, false));
-    for (const k of kids(b.file)) ul.append(item(k, true));
+  const rows = (files) => files.flatMap((f) => [item(byFile.get(f), false), ...kids(f).map((k) => item(k, true))]);
+  let run = null;                                  // loose builds go in runs of <ul>
+  for (const it of S.layout.items) {
+    if (typeof it !== "object") {
+      if (!run) box.append(run = h("ul", { class: "bl-list" }));
+      run.append(...rows([it]));
+      continue;
+    }
+    run = null;
+    box.append(groupBox(it, rows));
   }
+}
+
+function groupBox(g, rows) {
+  const toggle = () => saveLayout({ items: S.layout.items.map((x) => (x === g ? { ...g, collapsed: !g.collapsed } : x)) });
+  const holdsOpen = g.builds.some((f) => f === S.cur?.file || S.builds.some((b) => b.file === S.cur?.file && b.parent === f));
+  const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+  const n = g.builds.length;
+  return h("div", { class: "bl-group" + (g.collapsed ? " collapsed" : ""), "data-group": g.group },
+    h("div", { class: "bl-ghead" + (g.collapsed && holdsOpen ? " has-active" : ""), onclick: toggle,
+      title: g.collapsed ? "Show this group's builds" : "Hide this group's builds" },
+      h("span", { class: "bl-caret", "aria-hidden": "true" }, g.collapsed ? "▸" : "▾"),
+      h("span", { class: "bl-gname", role: "button", "aria-expanded": String(!g.collapsed) }, g.group),
+      h("span", { class: "bl-gcount", title: `${n} build${n === 1 ? "" : "s"}` }, n),
+      h("span", { class: "bl-gactions" },
+        h("button", { class: "icon", title: "Rename group", "aria-label": `Rename ${g.group}`, onclick: stop(() => renameGroup(g.group)) }, "✎"),
+        h("button", { class: "icon", title: "Remove group (its builds stay)", "aria-label": `Remove ${g.group}`, onclick: stop(() => removeGroup(g.group)) }, "✕"))),
+    g.collapsed ? null
+      : n ? h("ul", { class: "bl-list" }, rows(g.builds))
+        : h("div", { class: "bl-empty" }, "Empty: drag builds here"));
+}
+
+function newGroup() {
+  const names = new Set(layoutGroups().map((g) => g.group));
+  let name = "New group", i = 2;
+  while (names.has(name)) name = `New group ${i++}`;
+  saveLayout({ items: [{ group: name, collapsed: false, builds: [] }, ...S.layout.items] });
+  renameGroup(name);
+}
+
+function renameGroup(old) {
+  const el = $(`#build-list .bl-group[data-group="${CSS.escape(old)}"] .bl-gname`);
+  if (!el) return;
+  S.renaming = true;
+  const input = h("input", { class: "bl-rename", value: old, "aria-label": "Group name" });
+  const done = (keep) => {
+    if (!S.renaming) return;
+    S.renaming = false;
+    const name = input.value.trim();
+    if (!keep || name === old) { renderList(); return; }
+    if (!name || name.endsWith(".json")) { toast("That can't be a group's name"); renderList(); return; }
+    if (layoutGroups().some((g) => g.group === name)) { toast(`There is already a group called “${name}”`); renderList(); return; }
+    saveLayout({ items: S.layout.items.map((x) => (typeof x === "object" && x.group === old ? { ...x, group: name } : x)) });
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") done(true); else if (e.key === "Escape") done(false); });
+  input.addEventListener("blur", () => done(true));
+  input.addEventListener("click", (e) => e.stopPropagation());
+  el.replaceWith(input);
+  input.focus(); input.select();
+}
+
+async function removeGroup(name) {
+  const g = layoutGroups().find((x) => x.group === name);
+  if (!g) return;
+  const n = g.builds.length;
+  if (n && !await ask(`Remove the group “${name}”?`, [`Its ${n} build${n === 1 ? "" : "s"} stay${n === 1 ? "s" : ""} in the list, just outside a group.`],
+    [{ label: "Remove group", value: true, danger: true }, { label: "Cancel", value: false }])) return;
+  saveLayout({ items: S.layout.items.flatMap((x) => (typeof x === "object" && x.group === name ? x.builds : [x])) });
+}
+
+// Dragging with pointer events: HTML5 drag-and-drop is unreliable in the app
+// window's Qt WebEngine. A drag starts after a few pixels, so a click still opens.
+function blockRect(li) {                          // a build row plus its candidates
+  const r = li.getBoundingClientRect();
+  let top = r.top, bottom = r.bottom;
+  for (let n = li.nextElementSibling; n?.classList.contains("cand"); n = n.nextElementSibling) bottom = n.getBoundingClientRect().bottom;
+  return { top, bottom };
+}
+
+/** Where a drop at (x, y) would land: {into, ref, after, line, hi}, or null. */
+function dropTarget(x, y) {
+  const d = S.drag, list = $("#build-list");
+  const lr = list.getBoundingClientRect();
+  if (x < lr.left || x > lr.right) return null;
+  const el = document.elementFromPoint(x, y);
+  if (el === list) return d.target;                // a gap between rows: keep the last spot
+  if (!el || !list.contains(el)) {                 // below the last item: the end of the list
+    return y > lr.bottom - 1 || (el && el.closest("#sidebar") && y > lr.top)
+      ? { into: null, ref: null, after: true, line: lr.bottom, left: lr.left } : null;
+  }
+  const half = (r) => y > (r.top + r.bottom) / 2;
+  const group = el.closest(".bl-group");
+  let li = el.closest("li");
+  while (li?.classList.contains("cand")) li = li.previousElementSibling;
+  if (d.group != null) {                           // groups only move among top-level items
+    const box = group || li;
+    if (!box) return { into: null, ref: null, after: true, line: lr.bottom, left: lr.left };
+    const r = group ? group.getBoundingClientRect() : blockRect(li);
+    const ref = group ? group.dataset.group : li.dataset.file;
+    return { into: null, ref, after: half(r), line: half(r) ? r.bottom : r.top, left: lr.left };
+  }
+  if (group && (el.closest(".bl-ghead") || el.closest(".bl-empty"))) {
+    const head = group.querySelector(".bl-ghead").getBoundingClientRect();
+    if (el.closest(".bl-ghead") && y < head.top + head.height * 0.3)
+      return { into: null, ref: group.dataset.group, after: false, line: head.top, left: lr.left };
+    return { into: group.dataset.group, ref: null, after: true, hi: group.querySelector(".bl-ghead") };
+  }
+  if (li) {
+    const r = blockRect(li);
+    return { into: group?.dataset.group ?? null, ref: li.dataset.file, after: half(r), line: half(r) ? r.bottom : r.top,
+      left: li.getBoundingClientRect().left };
+  }
+  if (group) {
+    const r = group.getBoundingClientRect();
+    return { into: null, ref: group.dataset.group, after: half(r), line: half(r) ? r.bottom : r.top, left: lr.left };
+  }
+  return null;
+}
+
+function applyDrop(layout, d, t) {
+  const out = copyLayout(layout);
+  let moving;
+  if (d.group != null) moving = out.items.splice(out.items.findIndex((x) => x.group === d.group), 1)[0];
+  else {
+    moving = d.file;
+    for (const list of [out.items, ...out.items.filter((x) => typeof x === "object").map((g) => g.builds)]) {
+      const i = list.indexOf(d.file);
+      if (i >= 0) list.splice(i, 1);
+    }
+  }
+  const list = t.into == null ? out.items : out.items.find((x) => x.group === t.into).builds;
+  const i = t.ref == null ? list.length : list.findIndex((x) => x === t.ref || x.group === t.ref);
+  if (t.ref != null && i < 0) return layout;
+  list.splice(i + (t.ref != null && t.after ? 1 : 0), 0, moving);
+  return out;
+}
+
+function showDrop(t) {
+  const list = $("#build-list");
+  list.querySelector(".bl-drop-line")?.remove();
+  for (const el of list.querySelectorAll(".drop-into")) el.classList.remove("drop-into");
+  if (!t) return;
+  if (t.hi) { t.hi.classList.add("drop-into"); return; }
+  const lr = list.getBoundingClientRect();
+  list.append(h("div", { class: "bl-drop-line", style: `top:${Math.round(t.line - lr.top) - 1}px;left:${Math.round(t.left - lr.left)}px` }));
+}
+
+function endDrag(commit) {
+  const d = S.drag;
+  if (!d) return;
+  clearInterval(d.scroller);
+  document.body.classList.remove("bl-dragging");
+  window.removeEventListener("keydown", d.onKey, true);
+  S.drag = null;
+  showDrop(null);
+  S.justDragged = true; setTimeout(() => { S.justDragged = false; }, 0);
+  const t = commit && d.target;
+  const self = t && (t.ref === (d.group ?? d.file) || t.into === d.group && d.group != null);
+  if (t && !self) saveLayout(applyDrop(S.layout, d, t));
+  else renderList();
+}
+
+function initListDrag() {
+  const list = $("#build-list"), side = $("#sidebar");
+  list.addEventListener("click", (e) => { if (S.justDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
+  list.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || S.drag || S.renaming || e.target.closest("button, input")) return;
+    const head = e.target.closest(".bl-ghead"), li = e.target.closest("li[data-file]");
+    if (!head && !li) return;
+    const src = head ? head.closest(".bl-group") : li;
+    const start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    const move = (ev) => {
+      if (ev.pointerId !== start.id) return;
+      if (!S.drag) {
+        if (Math.hypot(ev.clientX - start.x, ev.clientY - start.y) < 5) return;
+        S.drag = head ? { group: src.dataset.group } : { file: li.dataset.file };
+        S.drag.y = ev.clientY;
+        S.drag.onKey = (k) => { if (k.key === "Escape") { k.preventDefault(); stop(); endDrag(false); } };
+        window.addEventListener("keydown", S.drag.onKey, true);
+        document.body.classList.add("bl-dragging");
+        src.classList.add("dragging");
+        for (let n = li?.nextElementSibling; n?.classList.contains("cand"); n = n.nextElementSibling) n.classList.add("dragging");
+        // Scroll the sidebar while the pointer is near its top or bottom edge.
+        S.drag.scroller = setInterval(() => {
+          const d = S.drag; if (!d) return;
+          const r = side.getBoundingClientRect();
+          const dy = d.y < r.top + 36 ? -8 : d.y > r.bottom - 36 ? 8 : 0;
+          if (dy) { side.scrollTop += dy; d.target = dropTarget(d.x, d.y); showDrop(d.target); }
+        }, 16);
+      }
+      S.drag.x = ev.clientX; S.drag.y = ev.clientY;
+      S.drag.target = dropTarget(ev.clientX, ev.clientY);
+      showDrop(S.drag.target);
+    };
+    const up = (ev) => { if (ev.pointerId !== start.id) return; stop(); if (S.drag) endDrag(ev.type === "pointerup"); };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  });
 }
 
 // ------------------------------------------------------------------ build editor
@@ -2137,7 +2380,11 @@ function watch() {
 async function showRequested(file) {
   const c = S.cur;
   if (c?.dirty && c.file !== file) { toast(`The AI saved ${file}. It's in the list on the left.`); return; }
+  const top = S.builds.find((b) => b.file === file)?.parent || file;
+  const g = groupOf(top) || groupOf(file);
+  if (g?.collapsed) await saveLayout({ items: S.layout.items.map((x) => (x === g ? { ...g, collapsed: false } : x)) });
   await openBuild(file);
+  $("#build-list li.active")?.scrollIntoView({ block: "nearest" });
   toast(`Opened ${file}`);
 }
 
@@ -2149,6 +2396,8 @@ async function boot() {
   $("#new-build").onclick = () => { renderSolver(); show("solver"); };
   $("#open-inventory").onclick = async () => { await renderInventory(); show("inventory"); };
   $("#open-compare").onclick = () => { renderCompare(); show("compare"); };
+  $("#new-group").onclick = newGroup;
+  initListDrag();
   $("#import-go").onclick = async () => {
     const link = $("#import-link").value.trim(), name = $("#import-name").value.trim();
     if (!link) return;

@@ -18,7 +18,8 @@ def client(tmp_path):
     return TestClient(app, base_url=f"http://127.0.0.1:{PORT}", headers={"x-wt-token": TOKEN})
 
 
-DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None}
+DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None,
+            "sidebar": None}
 
 
 def test_defaults_and_round_trip(tmp_path):
@@ -44,6 +45,25 @@ def test_update_and_window_settings(tmp_path):
     # A hand-edited bad value falls back to the default instead of breaking the app.
     f.write_text(json.dumps({"ai": "codex", "window": "huge", "check_updates": 0}))
     assert settings.load(f) == {**DEFAULTS, "ai": "codex"}
+
+
+def test_sidebar_setting(tmp_path):
+    f = tmp_path / "settings.json"
+    layout = {"items": ["a.json", {"group": "Mage", "collapsed": True, "builds": ["b.json"]}]}
+    assert settings.save({"sidebar": layout}, f)["sidebar"] == layout
+    assert settings.save({"ai": "codex"}, f)["sidebar"] == layout      # other keys leave it alone
+    for bad in ({"items": "a.json"}, ["a.json"], {"items": ["a.json", "a.json"]},
+                {"items": ["../a.json"]}, {"items": ["notes.txt"]},
+                {"items": [{"group": "", "collapsed": False, "builds": []}]},
+                {"items": [{"group": "x.json", "collapsed": False, "builds": []}]},
+                {"items": [{"group": "G", "collapsed": False, "builds": []},
+                           {"group": "G", "collapsed": False, "builds": []}]},
+                {"items": [{"group": "G", "collapsed": "no", "builds": []}]},
+                {"items": ["a.json", {"group": "G", "collapsed": False, "builds": ["a.json"]}]}):
+        with pytest.raises(ValueError):
+            settings.save({"sidebar": bad}, f)
+    f.write_text(json.dumps({"sidebar": {"items": [1]}}))               # hand-edited nonsense
+    assert settings.load(f)["sidebar"] is None
 
 
 def test_bad_values_rejected_and_bad_files_ignored(tmp_path):
