@@ -27,7 +27,7 @@ from .. import inventory as inv_mod
 from .. import settings as settings_mod
 from .. import updates
 from .. import variants
-from ..codec import SLOTS, TOME_SLOTS
+from ..codec import SLOTS, TOME_SLOTS, powder_name
 from ..damage import POWDER_SPECIALS
 from ..data import VERSIONS, GameData
 from ..derived import DAMAGE_KEYS, DERIVED
@@ -324,6 +324,45 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             return item_summary(gd.item(name))
         except (KeyError, ValueError, NotImplementedError) as e:
             raise HTTPException(404, str(e).strip('"'))
+
+    @app.post("/api/item/powdered")
+    async def item_powdered(request: Request):
+        """An item's summary with its powders applied, as the build's totals count
+        them: armor gets flat health and elemental defences, a weapon's neutral
+        damage converts. `powder_effect` is what the powders added to armor."""
+        from ..damage import ELEMENTS, armor_powder_stats, weapon_stats
+        from ..rules import js_round
+        body = await request.json()
+        powders = body.get("powders") or []
+        if not isinstance(powders, list) or not all(
+                isinstance(p, str) and re.fullmatch(r"[etwfa][1-7]", p) for p in powders):
+            raise HTTPException(422, "powders are element + tier, like t6")
+        try:
+            it = gd.item(body.get("name") or "")
+        except (KeyError, ValueError, NotImplementedError) as e:
+            raise HTTPException(422, str(e).strip('"'))
+        pids = [buildfile.powder_id(p) for p in powders]
+        out = item_summary(it)
+        pids = pids[:out["slots"]]                    # powders past the slots don't count
+        out["powders"] = [powder_name(p) for p in pids]
+        out["powder_effect"] = {}
+        if not pids:
+            return out
+        if it.get("category") == "armor":
+            fx = {k: v for k, v in armor_powder_stats(it, pids).items() if v}
+            out["powder_effect"] = fx
+            out["hp_base"] += fx.get("hp", 0)
+            if fx.get("hp"):
+                out["stats"]["hp"] = out["stats"].get("hp", 0) + fx["hp"]
+            for k, v in fx.items():
+                if k != "hp":
+                    lo, mid, hi = out["ids"].get(k, [0, 0, 0])
+                    out["ids"][k] = [lo + v, mid + v, hi + v]
+        elif it.get("category") == "weapon":
+            dam = weapon_stats(it, pids, gd)["damages"]
+            out["damage"] = {f"{e}Dam": f"{js_round(lo)}-{js_round(hi)}"
+                             for e, (lo, hi) in zip(ELEMENTS, dam) if hi > 0}
+        return out
 
     @app.post("/api/craft-suggest")
     async def craft_suggest(request: Request):

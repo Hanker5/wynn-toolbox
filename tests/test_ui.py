@@ -7,6 +7,7 @@ failing with a conflict because nanosecond file stamps rounded in JavaScript.
     uv run pytest -m ui        # needs: uv run playwright install chromium
 """
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -1128,4 +1129,32 @@ def test_builds_list_follows_wt_group(page, app):
     page.wait_for_selector(".bl-group.collapsed[data-group='Mage']", timeout=10000)
     assert order(page)[-1] == "Mage"                                    # unplaced builds come first
     assert page.locator("#build-list li:has-text('gaia')").count() == 0
+    assert not page.errors
+
+
+def test_powders_show_in_the_pieces_own_stats(page):
+    """Armor powders add health: the Summary counted it, but the slot's own line
+    and hover card still showed the bare item."""
+    open_build(page, "shaman_105_stormdrain")
+    slot = ".slot:has(input[aria-label='chestplate'])"
+    hp = lambda: int(page.inner_text(f"{slot} .eq-line .hp").replace("♥", "").replace(",", ""))  # noqa: E731
+    bare = hp()
+
+    def card():
+        page.mouse.move(0, 0)
+        page.hover(f"{slot} .eq-icon-wrap")
+        page.wait_for_selector("#tooltip:not([hidden]) .item-card", timeout=5000)
+        text = page.inner_text("#tooltip")
+        return text, int(re.search(r"♥ Health\n([\d,]+)", text)[1].replace(",", ""))
+    _, bare_base = card()
+    box = page.locator("input[aria-label='chestplate powders']")
+    box.fill("t6")
+    box.press("Tab")
+    page.wait_for_function(f"!document.querySelector(\"{slot} .eq-line .hp\").textContent.includes('{bare:,}')")
+    assert hp() > bare
+    text, base = card()
+    assert "[1/1] powders" in text and base - bare_base == hp() - bare     # the same health added
+    box.fill("")
+    box.press("Tab")
+    page.wait_for_function(f"document.querySelector(\"{slot} .eq-line .hp\").textContent.includes('{bare:,}')")
     assert not page.errors

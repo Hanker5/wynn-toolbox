@@ -144,6 +144,21 @@ async function itemInfo(slot, name) {
   return S.items[name] || null;
 }
 
+/** The item as the build counts it: with its powders applied (server-side, the
+ * same numbers as the totals). Falls back to the plain item. */
+S.powdered = new Map();
+async function powderedInfo(name, powders) {
+  if (!name) return null;
+  if (!powders?.length) return S.items[name] || null;
+  const key = `${name}|${powders.join("")}`;
+  if (!S.powdered.has(key)) {
+    const it = await api("POST", "/api/item/powdered", { name, powders }).catch(() => null);
+    if (!it) return S.items[name] || null;
+    S.powdered.set(key, { ...it, cls: TYPE_CLASS[it.type] });
+  }
+  return S.powdered.get(key);
+}
+
 function displayName(name) {
   if (!name) return "";
   return name.startsWith("CR-") ? `Crafted ${S.items[name]?.type || "item"}` : name;
@@ -195,7 +210,10 @@ function itemCard(it) {
       h("span", {}, h("span", { class: mid >= 0 ? "pos" : "neg" }, `${sign(mid)}${unit}`), range)));
   }
   for (const m of it.majors) lines.push(h("div", { class: "ic-major" }, `+${majorName(m)}`));
-  if (it.slots) lines.push(h("div", { class: "ic-sub muted" }, `[${it.slots}] powder slots`));
+  if (it.powders?.length) lines.push(h("div", { class: "ic-sub muted" }, `[${it.powders.length}/${it.slots}] powders `,
+    it.powders.map((p) => h("span", { class: `powder ${POWDER_EL[p[0]]}` }, `${ELEMENTS[ELEM_BY_PREFIX[p[0]]].sym}${p[1]}`)),
+    " (counted in the stats above)"));
+  else if (it.slots) lines.push(h("div", { class: "ic-sub muted" }, `[${it.slots}] powder slots`));
   if (it.set) lines.push(h("div", { class: "ic-set" }, `${it.set} set piece`));
   if (it.craft) {
     const counts = {};
@@ -1040,17 +1058,29 @@ function slotView(slot) {
   const icon = h("div", { class: "eq-icon-wrap" }, itemIcon(typeNow(), 44, S.items[cur()]?.tier));
   const input = h("input", { class: "eq-name tier-" + (S.items[cur()]?.tier || "none"), value: displayName(cur()),
     placeholder: `No ${slotLabel(slot).toLowerCase()}`, "aria-label": slot, spellcheck: "false" });
-  const meta = h("div", { class: "eq-line" }, itemLine(S.items[cur()]));
+  // What the line and hover card show: the item with this slot's powders applied.
+  let view = S.items[cur()];
+  const meta = h("div", { class: "eq-line" }, itemLine(view));
+  const powders = () => (POWDER_SLOTS.includes(slot) ? (S.cur.doc.powders || [])[POWDER_SLOTS.indexOf(slot)] || [] : []);
+  const loadView = async () => {
+    const want = `${cur()}|${powders().join("")}`;
+    const got = await powderedInfo(cur(), powders());
+    if (want !== `${cur()}|${powders().join("")}`) return;     // changed again meanwhile
+    view = got; meta.replaceChildren(...itemLine(view));
+  };
   const craftBox = h("div", { class: "craft-box", hidden: true });
-  const powderBox = POWDER_SLOTS.includes(slot) ? powderInput(slot, () => S.items[cur()]) : null;
+  const powderBox = POWDER_SLOTS.includes(slot) ? powderInput(slot, () => S.items[cur()], loadView) : null;
   const refresh = () => {
     input.value = displayName(cur());
     input.className = "eq-name tier-" + (S.items[cur()]?.tier || "none");
     icon.replaceChildren(itemIcon(typeNow(), 44, S.items[cur()]?.tier));
-    meta.replaceChildren(...itemLine(S.items[cur()]));
+    view = S.items[cur()];
+    meta.replaceChildren(...itemLine(view));
     ownBtn.redraw?.();
     powderBox?.redraw();
+    loadView();
   };
+  loadView();
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
     onclick: () => openCraft(slot, i, craftBox, refresh) }, "Craft…");
   const ownBtn = ownButton(() => cur());
@@ -1076,8 +1106,8 @@ function slotView(slot) {
     if (!input.value.trim()) { edit((x) => { x.equipment[i] = null; }); refresh(); }
   });
   input.addEventListener("blur", () => setTimeout(() => { if (input.value.trim()) input.value = displayName(cur()); }, 160));
-  attachTooltip(icon, () => S.items[cur()]);
-  attachTooltip(meta, () => S.items[cur()]);
+  attachTooltip(icon, () => view);
+  attachTooltip(meta, () => view);
   return h("div", { class: "slot" }, icon,
     h("div", { class: "eq-body" },
       h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)),
@@ -1098,7 +1128,7 @@ function parsePowders(text) {
   }
   return out;
 }
-function powderInput(slot, item) {
+function powderInput(slot, item, onChange) {
   const k = POWDER_SLOTS.indexOf(slot);
   const cur = () => (S.cur.doc.powders || [])[k] || [];
   const chips = h("span", { class: "powder-chips" });
@@ -1119,6 +1149,7 @@ function powderInput(slot, item) {
     if (bad) return;
     edit((x) => { x.powders = x.powders || [[], [], [], [], []]; x.powders[k] = got; });
     box.value = got.join(" "); draw();
+    onChange?.();
   });
   draw();
   const wrap = h("div", { class: "powder-row" }, box, chips);

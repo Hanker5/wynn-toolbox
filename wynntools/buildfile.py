@@ -36,7 +36,7 @@ SP_STATUS = ("sp_need", "sp_total", "sp_available", "sp_final", "sp_manual", "sp
              "sp_auto_need", "sp_auto_final", "sp_effective")
 
 
-def _powder_id(name):
+def powder_id(name):
     return POWDER_ELEMENTS.index(name[0]) * POWDER_TIERS + int(name[1:]) - 1
 
 
@@ -46,7 +46,7 @@ def to_build(doc, gd):
     b.tomes = [None if t is None else gd.tome(t)["id"] for t in tomes] \
         + [None] * (len(TOME_SLOTS) - len(tomes))
     if doc.get("powders"):
-        b.powders = [[_powder_id(p) for p in slot] for slot in doc["powders"]]
+        b.powders = [[powder_id(p) for p in slot] for slot in doc["powders"]]
     from .skillpoints import check_manual
     check_manual(doc.get("skillpoints"))
     b.skillpoints = doc.get("skillpoints")

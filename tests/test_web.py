@@ -356,3 +356,35 @@ def test_solve_chooses_owned_tomes(client):
     chosen = [t for t in doc["tomes"] if t]
     assert chosen and set(chosen) <= set(have) and doc["status"]["verified"]
     assert doc["spec"]["tome_pool"] == "owned"
+
+
+def test_powdered_item_matches_what_the_totals_count(client, links):
+    """The slot line and hover card showed the bare item while the Summary
+    counted its powders (armor: health and elemental defences)."""
+    client.post("/api/import", json={"link": links["shaman_105_stormdrain"]["hash"], "file": "p.json"})
+    doc = client.get("/api/builds/p.json").json()
+    chest = doc["equipment"][1]
+    bare = client.get(f"/api/item?name={chest}").json()
+    slots = bare["slots"]
+    assert slots, "the test needs a chestplate with powder slots"
+    powders = ["t6", "e6", "a6", "w6"][:slots]
+    got = client.post("/api/item/powdered", json={"name": chest, "powders": powders + ["f6"] * 3}).json()
+    assert got["powders"] == powders                       # only as many as the item has slots
+    fx = got["powder_effect"]
+    assert fx["hp"] > 0 and got["hp_base"] == bare["hp_base"] + fx["hp"]
+    assert got["stats"]["hp"] == bare["stats"]["hp"] + fx["hp"]
+
+    def totals(pw):
+        body = {k: doc[k] for k in ("name", "level", "equipment", "tomes", "tree", "skillpoints")}
+        return client.post("/api/check", json={**body, "powders": [[], pw, [], [], []]}).json()["status"]["totals"]
+    before, after = totals([]), totals(powders)
+    assert after["hp"] - before["hp"] == fx["hp"]
+    for k, v in fx.items():
+        if k != "hp":
+            assert after[k] - before[k] == v
+            assert got["ids"][k][1] == bare["ids"].get(k, [0, 0, 0])[1] + v
+
+    weapon = client.post("/api/item/powdered", json={"name": doc["equipment"][8], "powders": ["t6"]}).json()
+    assert "tDam" in weapon["damage"]                     # neutral damage converts
+    assert client.post("/api/item/powdered", json={"name": chest, "powders": ["x9"]}).status_code == 422
+    assert client.post("/api/item/powdered", json={"name": "Nope", "powders": []}).status_code == 422
