@@ -99,9 +99,9 @@ Run `uv run wt --help` (or `wt <command> --help`) for the full list.
 - **Inventory and upgrades**: record the items, tomes and aspects you own (with
   real rolls and aspect tiers; tabs, filters and an unavailable list in the app),
   build only from those (the search can also choose your tomes, or any tome), and
-  rank which unowned item would help most. The `wynn-chest-export` Fabric mod
-  (Minecraft 1.21.11) adds a button beside chests and your inventory that sends
-  what is in them to the running app.
+  rank which unowned item would help most. The optional
+  [chest-export mod](#optional-the-chest-export-mod) fills this in from the
+  game.
 - **Crafting**: exact crafted-item stats (checked against WynnBuilder's own code)
   and suggestions for the best ingredients and layout for a slot and goal, plus
   where each ingredient drops; the gear search can include crafted pieces.
@@ -154,6 +154,39 @@ permissions, so don't try to expose the app to other machines.
 
 See `AGENTS.md` for the rules the AI follows and `knowledge/mechanics.md` for
 what is proven, what was tested in game, and what is still unknown.
+
+## Optional: the chest-export mod
+
+Typing in everything you own is slow, so there's a small client-side
+[Fabric](https://fabricmc.net) mod that does it for you. WynnGPT works fine
+without it.
+
+It adds a **WynnGPT** button beside every container screen (chests, your bank,
+your own inventory). Click it while WynnGPT is open and every item in that
+screen is sent to the app. The app adds the items, tomes and aspects it
+recognises to your inventory, with the real rolls of identified items read
+from their tooltips. It only adds: nothing you already set is overwritten or
+removed. A chat message says how many items, tomes and aspects it added and
+how many it didn't recognise.
+
+**Setup** (Minecraft **1.21.11**, Fabric Loader and
+[Fabric API](https://modrinth.com/mod/fabric-api)):
+
+1. Copy the ready-built jar into your Minecraft `mods` folder:
+   `wynn-chest-export/build/libs/wynngpt-chest-export-1.0.0.jar`, inside
+   the WynnGPT folder (`%LOCALAPPDATA%\WynnToolbox` on Windows,
+   `~/WynnToolbox` on macOS and Linux, or your clone).
+2. Start Minecraft once. The mod creates `config/wynngpt-chest-export.json`
+   in your Minecraft folder. Set `builds_path` in it to WynnGPT's `builds`
+   folder, for example `C:\\Users\\you\\AppData\\Local\\WynnToolbox\\builds`
+   (JSON needs doubled backslashes) or `/home/you/WynnToolbox/builds`.
+3. Open WynnGPT, then open a chest in game and click the button.
+
+If chat says WynnGPT isn't running, open the app and click again (the mod
+finds it through `builds/.server.json`, so `builds_path` must be right). Launchers installed as a Flatpak (Prism
+Launcher from Flathub, for example) can't see the `builds` folder until you
+allow it; see [`wynn-chest-export/README.md`](wynn-chest-export/README.md)
+for the command, and for building the mod yourself.
 
 ## Limits
 
