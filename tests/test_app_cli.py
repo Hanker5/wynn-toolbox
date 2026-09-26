@@ -275,6 +275,20 @@ def test_events_stream_sends_running_tools(app, builds):
     assert t["elapsed"] >= 3
 
 
+def test_events_stream_reports_inventory_changes(app, builds):
+    """The Inventory page reloads on this event (e.g. after the chest-export mod imports)."""
+    (builds / "inventory.json").write_text("{}")
+    req = urllib.request.Request(f"http://127.0.0.1:{app.port}/api/events", headers={"x-wt-token": TOKEN})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        time.sleep(0.2)
+        (builds / "inventory.json").write_text('{"items": {"Galleon": {}}}')
+        for _ in range(20):
+            line = r.readline().decode()
+            if line.startswith("data: "):
+                break
+    assert json.loads(line.removeprefix("data: "))["changed"] == ["inventory.json"]
+
+
 def test_a_command_that_cannot_measure_itself_is_estimated_from_past_runs(builds):
     """The exact gear search has no percentage of its own, so the bar is worked
     out from how long the last few runs took: 90% at that time, then creeping."""

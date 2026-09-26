@@ -513,8 +513,15 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         """Server-sent events whenever a build file is added, changed or removed,
         and a `tools` event with the `wt` commands running (the terminal
         panel's progress bars) whenever that list changes."""
+        def watched():
+            # The inventory is reserved (not a build) but the page still reloads it when it changes.
+            files = {p.name: version(p) for p in builds_dir.glob("*.json") if p.name not in RESERVED}
+            if inv_path.exists():
+                files[inv_path.name] = version(inv_path)
+            return files
+
         async def stream():
-            seen = {x["file"]: x["mtime"] for x in listing()}
+            seen = watched()
             seen_show = show_req["seq"]
             seen_tools = []
             while not await request.is_disconnected():
@@ -524,8 +531,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                     seen_tools = tools
                     yield f"event: tools\ndata: {json.dumps(tools)}\n\n"
                 poll_show_file()
-                now = {p.name: version(p) for p in builds_dir.glob("*.json")
-                       if p.name not in RESERVED}
+                now = watched()
                 changed = [f for f in now if seen.get(f) != now[f]]
                 removed = [f for f in seen if f not in now]
                 msg = {}
