@@ -20,7 +20,9 @@ Set `"capture": true` in `config/wynngpt-chest-export.json` to show the button o
 
 ## Reading every page at once
 
-With `"walk_pages": true`, the button in an ender chest turns the pages for you: back to page 1 with the previous arrow, then forward until the last page, reading each one, and sends them all as one export (shift-click still exports only the open page). It only clicks items named exactly like the page arrows ("Page 3 >>>>>"), waits for each page to arrive, and leaves at least `page_delay_ticks` (default 6; 20 ticks is a second) between clicks. Your clicks in the chest are ignored while it runs; closing the chest stops it and sends the pages read so far. It's off by default until the page arrows are confirmed against samples from the game.
+In an ender chest, the button turns the pages for you: back to page 1 with the previous arrow, forward to the last page you own, then "Storage Type" switches to the other chest (Account or Character) and it reads that one too, and sends everything as one export. Shift-click exports only the open page; `"walk_pages": false` makes that the default.
+
+It clicks nothing but the arrows (slots 51 and 52) and the switch (47), each only when its name and tooltip say so ("Page 3 >>>>>" with "Click to go"; "Storage Type" with "Click to switch"). On the last page you own, the next slot is still called "Page N >>>>>" but offers to buy the page: it never clicks that, and never "Quick Actions" (46), which would dump your inventory into the bank. It waits for each page to arrive, leaves at least `page_delay_ticks` (default 6; 20 ticks is a second) between clicks, and ignores your clicks while it runs. Closing the chest stops it and sends the pages read so far; only a chest read to its last page has pages past that dropped in the app.
 
 ## Development
 

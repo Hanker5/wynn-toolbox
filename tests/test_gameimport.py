@@ -195,3 +195,24 @@ def test_real_pages_are_read(gd):
     assert len(heroism) == 2 and len({c.fp for c in heroism}) == 2           # two copies, different rolls
     assert all(c.rolls.get("ls") for c in heroism)                           # read from the tooltips
     assert not any(s["slot"] >= 45 for key, _, s in inv.slots() if not key.startswith("inventory"))   # no arrows
+
+
+def test_the_walker_clicks_only_real_arrows_and_the_switch():
+    """The page walker's click rule (PageWalker.java), applied to real slots: on the last page
+    bought, slot 52 is still named "Page 15 >>>>>" but offers to buy the page; it must never
+    be clicked, and neither must Quick Actions (46)."""
+    walker = (MOD / "PageWalker.java").read_text(encoding="utf-8")
+    hint, purchase = java_string(walker, "ARROW_HINT"), java_string(walker, "PURCHASE")
+    switch, switch_hint = java_string(walker, "SWITCH_NAME"), java_string(walker, "SWITCH_HINT")
+
+    def clickable(export, slot):
+        s = next(x for x in real(export)["storage"] if x["slot"] == slot)
+        name, lore = clean(s["name"]), [clean(line) for line in s.get("lore") or []]
+        if slot == 47:
+            return name == switch and switch_hint in lore
+        return bool(re.match(r"^Page \d+\s*[<>]", name)) and hint in lore and not any(purchase in x for x in lore)
+
+    assert clickable("account-p7.json", 51) and clickable("account-p7.json", 52)
+    assert clickable("account-p14-last.json", 51) and not clickable("account-p14-last.json", 52)
+    assert clickable("account-p1.json", 47) and not clickable("account-p1.json", 46)
+    assert page_of(real("account-p14-last.json")["storage"]) == 14

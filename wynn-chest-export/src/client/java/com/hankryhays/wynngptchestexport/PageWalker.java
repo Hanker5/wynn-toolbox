@@ -5,14 +5,17 @@ import com.google.gson.JsonObject;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,6 +35,12 @@ public final class PageWalker {
 	private static final Pattern ARROW = Pattern.compile("^Page (\\d+)\\s*([<>])");
 	private static final int SWITCH_SLOT = 47;
 	private static final String SWITCH_NAME = "Storage Type";
+	private static final String SWITCH_HINT = "Click to switch";
+	// A real arrow's tooltip ends "Click to go". On the last page bought, the next-page slot
+	// is still named "Page N >>>>>" but offers to buy the page ("Purchase the page ..."):
+	// never click that.
+	private static final String ARROW_HINT = "Click to go";
+	private static final String PURCHASE = "Purchase";
 	private static final int PREVIOUS_SLOT = 51;
 	private static final int NEXT_SLOT = 52;
 	private static final int STORAGE_SLOTS = 45;
@@ -234,12 +243,20 @@ public final class PageWalker {
 			return null;
 		}
 		Matcher m = ARROW.matcher(name(slot.getItem()));
-		return m.find() && m.group(2).equals(direction) ? Integer.parseInt(m.group(1)) : null;
+		List<String> lore = lore(slot.getItem());
+		boolean real = lore.contains(ARROW_HINT) && lore.stream().noneMatch(line -> line.contains(PURCHASE));
+		return m.find() && m.group(2).equals(direction) && real ? Integer.parseInt(m.group(1)) : null;
+	}
+
+	private static List<String> lore(ItemStack stack) {
+		return stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines().stream()
+			.map(line -> StorageScreens.strip(line.getString())).toList();
 	}
 
 	private static boolean named(AbstractContainerMenu menu, int containerSlot, String name) {
 		Slot slot = slot(menu, containerSlot);
-		return slot != null && !slot.getItem().isEmpty() && name(slot.getItem()).equals(name);
+		return slot != null && !slot.getItem().isEmpty() && name(slot.getItem()).equals(name)
+			&& lore(slot.getItem()).contains(SWITCH_HINT);
 	}
 
 	private static Slot slot(AbstractContainerMenu menu, int containerSlot) {

@@ -38,13 +38,13 @@ public final class ExportConfig {
 		}
 	}
 
-	/** "walk_pages": true makes the button in an ender chest read every page (off until the page arrows are confirmed). */
+	/** The button in an ender chest reads every page of both chests, unless "walk_pages" is false. */
 	public static boolean walkPages() {
 		JsonObject json = read();
 		try {
-			return json != null && json.has("walk_pages") && json.get("walk_pages").getAsBoolean();
+			return json == null || !json.has("walk_pages") || json.get("walk_pages").getAsBoolean();
 		} catch (RuntimeException e) {
-			return false;
+			return true;
 		}
 	}
 
