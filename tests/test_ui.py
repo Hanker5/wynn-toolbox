@@ -1224,6 +1224,12 @@ def test_storage_pages_search_and_show(page, app):
     galleon.click()                                            # details: the other copy, one click away
     playwright.expect(page.locator(".slot-detail")).to_contain_text("1 other copy you own")
     playwright.expect(page.locator(".slot-detail")).to_contain_text("Stealing +9%")
+    # a real roll shows where it lands in its range (as Wynntils rates it), not the range
+    playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text(re.compile(r"This copy: \d+\.\d% overall"))
+    lo, _, hi = page.evaluate("S.items['Galleon'].ids.eSteal")
+    playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text(f"+14% {round(100 * (14 - lo) / (hi - lo))}%")
+    assert page.evaluate("rollPct('spRaw1', -4, -4, -1)") == 100             # the lowest spell cost is best
+    assert round(page.evaluate("rollPct('hprPct', -124, -186, -100)")) == 72  # a negative ID: by value
     page.keyboard.press("ArrowRight")                          # → : the next exported page
     playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_attribute("aria-pressed", "true")
     page.keyboard.press("ArrowLeft")

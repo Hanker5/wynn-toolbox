@@ -182,6 +182,21 @@ function itemLine(it) {
   return out;
 }
 
+/** Where a real roll lands in its range, 0-100 (100 = best), as Wynntils rates it: by value,
+ * except spell costs, where the lowest cost is best. Null when the ID can't roll. */
+function rollPct(key, v, lo, hi) {
+  if (lo === hi) return null;
+  const t = Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
+  return 100 * (/^sp(Raw|Pct)\d/.test(key) ? 1 - t : t);
+}
+/** The average of a copy's roll percentages (Wynntils' overall %), or null without real rolls. */
+function rollQuality(it) {
+  const got = Object.entries(it?._actual || {}).map(([k, v]) => { const r = it.ids?.[k]; return r ? rollPct(k, v, r[0], r[2]) : null; })
+    .filter((x) => x != null);
+  return got.length ? got.reduce((a, b) => a + b, 0) / got.length : null;
+}
+const pctClass = (p) => (p >= 96 ? "pct-top" : p >= 80 ? "pct-good" : p >= 30 ? "pct-mid" : "pct-low");
+
 /** WynnBuilder-style item card, shown on hover. */
 function itemCard(it) {
   const title = it.craft ? `Crafted ${it.type}` : it.name;
@@ -202,16 +217,21 @@ function itemCard(it) {
       h("span", {}, elemTag(s), `${ELEMENTS[s].name} Min`), h("span", {}, fmt(v))));
   }
   const ids = Object.entries(it.ids || {});
+  const overall = rollQuality(it);
+  if (overall != null) lines.splice(2, 0, h("div", { class: "ic-sub" }, "This copy: ",
+    h("span", { class: `roll-pct ${pctClass(overall)}` }, `${overall.toFixed(1)}%`), h("span", { class: "muted" }, " overall")));
   if (ids.length) lines.push(h("div", { class: "ic-gap" }));
   for (const [k, [lo, mid, hi]] of ids) {
     const [label, unit, el] = idLabel(k);
     const real = it._actual?.[k], v = real ?? mid;
-    const range = lo !== hi ? h("span", { class: "muted range" }, ` ${fmt(lo)} to ${fmt(hi)}`) : null;
+    const pct = real != null ? rollPct(k, real, lo, hi) : null;
+    const after = pct != null ? h("span", { class: `roll-pct ${pctClass(pct)}`, title: `${fmt(lo)} to ${fmt(hi)}` }, ` ${Math.round(pct)}%`)
+      : lo !== hi ? h("span", { class: "muted range" }, ` ${fmt(lo)} to ${fmt(hi)}`) : null;
     lines.push(h("div", { class: "ic-row" }, h("span", {}, elemTag(el), label),
       h("span", {}, h("span", { class: `${v >= 0 ? "pos" : "neg"}${real != null ? " real" : ""}`,
-        title: real != null ? "This copy's real roll" : null }, `${sign(v)}${unit}`), range)));
+        title: real != null ? "This copy's real roll" : null }, `${sign(v)}${unit}`), after)));
   }
-  if (it._actual && Object.keys(it._actual).length) lines.push(h("div", { class: "ic-sub muted" }, "Underlined: this copy's real rolls"));
+  if (overall != null) lines.push(h("div", { class: "ic-sub muted" }, "Underlined: this copy's rolls; % is where each lands in its range (100% = best)"));
   for (const m of it.majors) lines.push(h("div", { class: "ic-major" }, `+${majorName(m)}`));
   if (it.powders?.length) lines.push(h("div", { class: "ic-sub muted" }, `[${it.powders.length}/${it.slots}] powders `,
     it.powders.map((p) => h("span", { class: `powder ${POWDER_EL[p[0]]}` }, `${ELEMENTS[ELEM_BY_PREFIX[p[0]]].sym}${p[1]}`)),
@@ -390,6 +410,12 @@ const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const findQuery = () => invPrefs.find.trim().toLowerCase();
 const matches = (name) => { const q = findQuery(); return !!q && name.toLowerCase().includes(q); };
 
+/** "78%": a copy's overall roll (the average of where each ID lands), or null. */
+function qualityBadge(it, rolls) {
+  const q = rollQuality(withRolls(it, rolls));
+  return q == null ? null : h("span", { class: `roll-pct ${pctClass(q)}`, title: "Overall roll: the average of where each ID lands in its range" }, `${q.toFixed(1)}%`);
+}
+
 /** A tile for what isn't gear: tomes, aspects, and everything else a page holds. */
 function slotGlyph(s) {
   const text = s.kind === "tome" ? "Tome" : s.kind === "aspect" ? `Asp ${s.tier || ""}`.trim()
@@ -433,7 +459,8 @@ async function drawFound(box) {
     const r = h("div", { class: `found-row${go ? " go" : ""}`, onclick: go },
       h("div", { class: `cell ${hit.kind}` }, it ? itemIcon(it.type, 28, it.tier) : slotGlyph(hit)),
       h("div", { class: "inv-main" },
-        h("span", { class: `inv-name${it ? ` tier-${it.tier}` : ""}` }, hit.name, hit.count > 1 ? ` ×${hit.count}` : ""),
+        h("span", { class: `inv-name${it ? ` tier-${it.tier}` : ""}` }, hit.name, hit.count > 1 ? ` ×${hit.count}` : "",
+          it ? [" ", qualityBadge(it, hit.rolls)] : null),
         h("div", { class: "muted" }, hit.where),
         hit.rolls && Object.keys(hit.rolls).length ? h("div", { class: "eq-line" }, rollsText(hit.rolls)) : null),
       go ? h("button", { class: "mini", "aria-label": `Show ${hit.name}: ${hit.where}`,
@@ -533,19 +560,22 @@ async function invStorage(body, inv, again) {
     o.places.push(p);
   }
   const placeButton = (p, text, label) => {
-    const on = p.key === place.key, hits = hitsOf(p);
-    return h("button", { class: `mini pill${on ? " on" : ""}${hits ? " hit" : ""}`, "aria-pressed": on ? "true" : "false",
+    const on = p.key === place.key, hits = hitsOf(p), n = Object.keys(p.pages).length;
+    return h("button", { class: `nav-place${on ? " on" : ""}${hits ? " hit" : ""}`, "aria-pressed": on ? "true" : "false",
       "aria-label": label, title: hits ? `${plural(hits, "match", "matches")} for “${invPrefs.find.trim()}”` : null,
       onclick: () => { Object.assign(invPrefs, { place: p.key, page: 1, selected: null }); redraw(); } },
-      text, hits ? h("span", { class: "hit-count" }, String(hits)) : null);
+      h("span", { class: "nav-text" }, text),
+      hits ? h("span", { class: "hit-count" }, String(hits))
+        : p.max_pages > 1 ? h("span", { class: "nav-meta" }, plural(n, "page")) : null);
   };
-  const ownerRow = (o) => {
-    if (!o.who) return h("div", { class: "owner" }, h("span", { class: "owner-name" }, "Account"),
-      h("span", { class: "owner-places" }, o.places.map((p) => placeButton(p, "Ender chest", p.label))));
+  const ownerBlock = (o) => {
+    if (!o.who) return h("div", { class: "nav-group" }, h("div", { class: "nav-owner" }, h("span", { class: "owner-name" }, "Account")),
+      o.places.map((p) => placeButton(p, "Ender chest", p.label)));
     const c = inv.characters?.[o.who] || {};
     const name = h("span", { class: "owner-name", title: `Character ${o.who}` },
-      c.name || (c.class ? `${c.class}` : "Character"), h("span", { class: "muted owner-id" }, c.name ? "" : ` ${o.who}`));
+      c.name || c.class || "Character", c.name ? null : h("span", { class: "muted owner-id" }, ` ${o.who}`));
     const edit = h("button", { class: "mini ghost", title: "Name this character", "aria-label": `Rename character ${o.who}` }, "✎");
+    const head = h("div", { class: "nav-owner" }, name, edit);
     edit.onclick = () => {
       const input = h("input", { class: "rename", value: c.name || "", placeholder: c.class ? `${c.class} ${o.who}` : o.who,
         "aria-label": "Character name", maxlength: 40 });
@@ -554,34 +584,35 @@ async function invStorage(body, inv, again) {
         toast(input.value.trim() ? `Named “${input.value.trim()}”` : "Name cleared"); redraw();
       };
       input.onkeydown = (e) => { if (e.key === "Enter") save(); if (e.key === "Escape") redraw(); };
-      name.replaceWith(input); edit.replaceWith(h("button", { class: "mini", onclick: save }, "Save"));
+      head.replaceChildren(input, h("button", { class: "mini", onclick: save }, "Save"));
       input.focus(); input.select();
     };
     const label = (p) => (p.kind === "inventory" ? "Inventory" : "Ender chest");
-    return h("div", { class: "owner" }, h("span", { class: "owner-label" }, name, edit),
-      h("span", { class: "owner-places" }, o.places.map((p) => placeButton(p, label(p), p.label))));
+    return h("div", { class: "nav-group" }, head, o.places.map((p) => placeButton(p, label(p), p.label)));
   };
-  const picker = h("div", { class: "place-picker", role: "group", "aria-label": "Storage" }, owners.map(ownerRow));
+  const picker = h("nav", { class: "place-nav", role: "group", "aria-label": "Storage" }, owners.map(ownerBlock));
 
   // Pages: only up to the last page seen (the rest aren't bought, or not exported yet).
-  let strip = null;
+  let strip = null, arrows = null;
   if (place.max_pages > 1) {
     const last = Math.max(...exported, invPrefs.page);
     const at = exported.indexOf(invPrefs.page);
     const go = (n) => { Object.assign(invPrefs, { page: n, selected: null }); redraw(); };
     const prev = exported[at - 1], next = exported[at + 1];
-    strip = h("div", { class: "page-strip", role: "group", "aria-label": "Pages" },
+    arrows = h("span", { class: "page-arrows" },
       h("button", { class: "mini page-prev", disabled: prev === undefined, "aria-label": "Previous page",
         title: "Previous page (←)", onclick: () => go(prev) }, "‹"),
+      h("span", { class: "muted" }, `${invPrefs.page} / ${last}`),
+      h("button", { class: "mini page-next", disabled: next === undefined, "aria-label": "Next page",
+        title: "Next page (→)", onclick: () => go(next) }, "›"));
+    strip = h("div", { class: "page-strip", role: "group", "aria-label": "Pages" },
       range(1, last + 1).map((n) => {
         const has = exported.includes(n), on = n === invPrefs.page, hits = has ? hitsIn(place, String(n)) : 0;
         return h("button", { class: `mini page${on ? " on" : ""}${has ? "" : " missing"}${hits ? " hit" : ""}`, disabled: !has,
           "aria-pressed": on ? "true" : "false", "aria-label": `Page ${n}`,
           title: !has ? `Page ${n}: not exported yet` : `Page ${n} · exported ${ago(place.pages[n].updated)}` +
             (hits ? ` · ${plural(hits, "match", "matches")}` : ""), onclick: () => go(n) }, String(n));
-      }),
-      h("button", { class: "mini page-next", disabled: next === undefined, "aria-label": "Next page",
-        title: "Next page (→)", onclick: () => go(next) }, "›"));
+      }));
   }
 
   const slots = new Map((page?.slots || []).map((s) => [s.slot, s]));
@@ -602,7 +633,7 @@ async function invStorage(body, inv, again) {
     const c = h("div", { class: `cell ${s.kind}${q ? (matches(s.name) ? " hit" : " dim") : ""}${k === invPrefs.selected ? " selected" : ""}`,
       "data-slot": k, role: "button", tabindex: "0", "aria-label": `${label}: ${s.where}`,
       onclick: () => select(k), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(k); } } },
-      it ? itemIcon(it.type, 36, it.tier) : slotGlyph(s), s.count > 1 ? h("span", { class: "cell-count" }, String(s.count)) : null);
+      it ? itemIcon(it.type, 40, it.tier) : slotGlyph(s), s.count > 1 ? h("span", { class: "cell-count" }, String(s.count)) : null);
     // No hover card on the selected slot: the panel beside the grid already shows it.
     if (it) attachTooltip(c, () => (invPrefs.selected === k ? null : withRolls(S.items[s.name], s.rolls)));
     else attachTip(c, () => (invPrefs.selected === k ? null : slotCard(s)));
@@ -624,37 +655,42 @@ async function invStorage(body, inv, again) {
     const s = slots.get(invPrefs.selected);
     if (!s) {
       const gear = (page?.slots || []).filter((x) => x.kind === "item");
-      setKids(detail, h("div", { class: "panel-h" }, "On this page"),
+      detail.classList.remove("has-item");
+      setKids(detail, h("div", { class: "detail-block wide" }, h("div", { class: "panel-h" }, "Gear on this page"),
         gear.length ? h("div", { class: "detail-list" }, gear.map((x) => {
           const it = S.items[x.name];
           return h("button", { class: "detail-row", onclick: () => select(x.slot), "aria-label": `Select ${x.name}` },
-            itemIcon(it?.type, 24, it?.tier), h("span", { class: `tier-${it?.tier}` }, x.name));
+            itemIcon(it?.type, 24, it?.tier), h("span", { class: `tier-${it?.tier} detail-name` }, x.name),
+            qualityBadge(it, x.rolls));
         })) : h("p", { class: "muted" }, "No gear on this page."),
-        h("p", { class: "hint" }, "Click a slot to see its rolls and where your other copies are."));
+        h("p", { class: "hint" }, "Click a slot to see its rolls and where your other copies are.")));
       return;
     }
     const others = s.kind === "item"
       ? S.inv.copies.filter((c) => c.name === s.name && !(c.place === place.key && c.page === invPrefs.page && c.slot === s.slot))
       : findOwned(s.name.toLowerCase()).filter((x) => x.name === s.name && !(x.place === place.key && x.page === invPrefs.page && x.slot === s.slot));
     const it = s.kind === "item" ? withRolls(S.items[s.name], s.rolls) : null;
+    detail.classList.add("has-item");
     setKids(detail,
-      h("div", { class: "detail-where muted" }, s.where),
-      it ? itemCard(it) : slotCard(s),
-      others.length ? h("div", { class: "detail-others" },
+      h("div", { class: "detail-block" }, h("div", { class: "detail-where muted" }, s.where), it ? itemCard(it) : slotCard(s),
+        h("button", { class: "mini ghost", onclick: () => select(invPrefs.selected) }, "Close")),
+      others.length ? h("div", { class: "detail-block detail-others" },
         h("div", { class: "panel-h" }, `${plural(others.length, "other copy", "other copies")} you own`),
         others.map((c) => h("div", { class: "detail-other" },
           c.place === "hand" ? h("span", { class: "muted" }, "added by hand")
             : h("button", { class: "linkish", onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
-          c.rolls && Object.keys(c.rolls).length ? h("div", { class: "eq-line" }, rollsText(c.rolls)) : null)))
-        : s.kind === "item" ? h("p", { class: "muted" }, "Your only copy.") : null);
+          h("div", { class: "eq-line" }, qualityBadge(S.items[s.name], c.rolls), " ", rollsText(c.rolls)))))
+        : s.kind === "item" ? h("div", { class: "detail-block" }, h("p", { class: "muted" }, "Your only copy.")) : null);
   }
   drawDetail();
 
-  body.append(picker, strip || "", h("div", { class: "storage-view" },
-    h("div", { class: "chest" },
-      h("div", { class: "chest-head" }, h("span", { class: "panel-h" },
-        place.label + (place.max_pages > 1 ? ` · page ${invPrefs.page}` : "")), h("span", { class: "muted" }, summary)),
-      grid),
+  body.append(h("div", { class: "storage-layout" }, picker,
+    h("section", { class: "chest", "aria-label": place.label },
+      h("div", { class: "chest-head" },
+        h("div", { class: "chest-title" }, h("span", { class: "panel-h" },
+          place.label + (place.max_pages > 1 ? ` · page ${invPrefs.page}` : "")), h("span", { class: "muted chest-summary" }, summary)),
+        arrows),
+      strip, grid),
     detail));
   return () => {                                    // once on the page: flash the slot Show asked for
     if (invPrefs.flash == null) return;
@@ -729,6 +765,7 @@ async function invItems(body, inv, names, again) {
             : h("button", { class: "linkish copy-where", "aria-label": `Show ${n}: ${c.where}`, title: "Show it in its ender chest page",
               onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
           sameRolls[c.fp] > 1 ? h("span", { class: "badge", title: "Another copy has exactly the same rolls" }, "identical rolls") : null,
+          qualityBadge(it, c.rolls),
           copies.length > 1 ? h("button", { class: "mini ghost danger",
             title: c.place === "hand" ? "Remove this copy" : "Remove this copy (until you next export that page)",
             "aria-label": `Remove this copy of ${n}`, onclick: async () => { await setOwned(n, false, { fp: c.fp }); redraw(); } }, "✕") : null),
