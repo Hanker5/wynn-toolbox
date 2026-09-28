@@ -1198,13 +1198,14 @@ def test_powders_show_in_the_pieces_own_stats(page):
 
 
 def test_storage_pages_search_and_show(page, app):
-    """Exported ender chest pages are drawn slot by slot; the search finds every copy and
-    Show opens its page with the slot highlighted; the Items tab lists each copy."""
+    """Exported ender chest pages are drawn slot by slot; the search finds every copy, marks
+    it in the grid and the page strip, and Show opens its page with the slot selected; a
+    slot's details list your other copies; the Items tab filters and lists each copy."""
     import os
 
-    def export(n, storage):
+    def export(n, storage, me="a1b2c3d4"):
         arrows = [{"slot": 51, "name": f"Page {n - 1} <<<<<"}, {"slot": 52, "name": f"Page {n + 1} >>>>>"}]
-        return {"version": 2, "kind": "account", "character": {"id": "a1b2c3d4"}, "storage": storage + arrows,
+        return {"version": 2, "kind": "account", "character": {"id": me}, "storage": storage + arrows,
                 "inventory": [{"slot": 0, "name": "Spring"}]}
     pad = "\U000cffff"
     for body in (export(2, [{"slot": 4, "name": "Galleon", "lore": [f"Stealing{pad}+14%"]},
@@ -1216,24 +1217,56 @@ def test_storage_pages_search_and_show(page, app):
     page.get_by_role("tab", name="Storage").click()
     page.wait_for_selector(".chest-grid .cell.item")
     assert page.locator(".chest .cell").count() == 45
-    playwright.expect(page.get_by_role("img", name=re.compile(r"^Galleon: Account ender chest · page 2 · row 1, column 5"))).to_be_visible()
-    playwright.expect(page.get_by_role("button", name="Page 7", exact=True)).to_be_disabled()      # not exported yet
+    galleon = page.get_by_role("button", name=re.compile(r"^Galleon: Account ender chest · page 2 · row 1, column 5"))
+    playwright.expect(galleon).to_be_visible()
+    playwright.expect(page.get_by_role("button", name="Page 3", exact=True)).to_be_disabled()   # not exported
+    assert page.get_by_role("button", name="Page 6", exact=True).count() == 0              # past the last page
+    galleon.click()                                            # details: the other copy, one click away
+    playwright.expect(page.locator(".slot-detail")).to_contain_text("1 other copy you own")
+    playwright.expect(page.locator(".slot-detail")).to_contain_text("Stealing +9%")
+    page.keyboard.press("ArrowRight")                          # → : the next exported page
+    playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_attribute("aria-pressed", "true")
+    page.keyboard.press("ArrowLeft")
+    playwright.expect(page.get_by_role("button", name="Page 2", exact=True)).to_have_attribute("aria-pressed", "true")
+
     page.get_by_label("Find an item").fill("galleon")
     playwright.expect(page.locator(".found-row")).to_have_count(2)
+    playwright.expect(page.locator(".chest .cell.hit")).to_have_count(1)                  # marked in the grid,
+    playwright.expect(page.locator(".chest .cell.dim")).to_have_count(1)                  # the rest faded,
+    playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_class(re.compile(r"\bhit\b"))
     if os.environ.get("WT_SHOTS"):
         page.locator("#inventory").screenshot(path=f"{os.environ['WT_SHOTS']}/80-inventory-storage.png")
-    page.get_by_role("button", name=re.compile("^Show Galleon: Account ender chest · page 5")).click()
-    page.wait_for_selector('.chest .cell.flash[data-slot="0"]')
+    page.locator(".found-row", has_text="page 5").click()      # a whole result row opens it
+    page.wait_for_selector('.chest .cell.flash.selected[data-slot="0"]')
     playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_attribute("aria-pressed", "true")
     page.get_by_label("Find an item").fill("nothing like this")
     playwright.expect(page.locator(".inv-found")).to_contain_text("You don't have anything called")
+    page.get_by_label("Find an item").press("Escape")          # Esc clears the search
+    playwright.expect(page.locator(".inv-found")).to_be_hidden()
+
     page.get_by_role("button", name=re.compile("inventory$")).click()            # the character's inventory
-    playwright.expect(page.get_by_role("img", name=re.compile("^Spring: .* · inventory · hotbar 1"))).to_be_visible()
-    page.get_by_label("Find an item").fill("")
+    playwright.expect(page.get_by_role("button", name=re.compile("^Spring: .* · inventory · hotbar 1"))).to_be_visible()
+    page.get_by_role("button", name="Rename character a1b2c3d4").click()
+    page.get_by_label("Character name").fill("Bow main")
+    page.get_by_label("Character name").press("Enter")
+    playwright.expect(page.locator(".owner-name", has_text="Bow main")).to_be_visible()
+
     page.get_by_role("tab", name="Items").click()
     playwright.expect(page.locator(".inv-item:has-text('Galleon') .copy-row")).to_have_count(2)
+    page.get_by_role("button", name=re.compile("^Weapons")).click()
+    playwright.expect(page.locator(".inv-item")).to_have_count(1)                        # Spring only
+    page.get_by_role("button", name=re.compile("^All")).click()
+    page.get_by_label("Only items I have more than once").check()
+    playwright.expect(page.locator(".inv-item")).to_have_count(1)                        # Galleon only
+    page.get_by_label("Find an item").fill("spring")                # on this tab it filters the list
+    playwright.expect(page.locator(".inv-item")).to_have_count(0)
+    playwright.expect(page.locator(".inv-found")).to_be_hidden()
+    page.get_by_label("Find an item").fill("")
+    page.get_by_label("Only items I have more than once").uncheck()
     if os.environ.get("WT_SHOTS"):
         page.locator("#inventory").screenshot(path=f"{os.environ['WT_SHOTS']}/81-inventory-items.png")
+    page.get_by_role("button", name=re.compile("^Show Galleon: Account ender chest · page 5")).click()
+    page.wait_for_selector('.chest .cell.selected[data-slot="0"]')
     assert not page.errors
 
 

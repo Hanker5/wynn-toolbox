@@ -526,3 +526,53 @@ details.more > summary { cursor: pointer; font-size: 12px; color: var(--muted); 
 }
 .copy-box { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; font-size: 12px; }
 .copy-box select { max-width: 100%; font-size: 12px; }
+
+/* Inventory, second pass: owners, page arrows, slot details, search hits, item filters */
+.place-picker { display: flex; flex-direction: column; gap: 6px; }
+.owner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.owner-label, .owner-name { display: inline-flex; align-items: center; gap: 4px; min-width: 150px; font-weight: 600; }
+.owner-label .owner-name { min-width: 0; }
+.owner-label { min-width: 150px; }
+.owner-id { font-weight: 400; font-size: 12px; }
+.owner-places { display: flex; gap: 6px; flex-wrap: wrap; }
+.owner input.rename { width: 150px; padding: 2px 6px; }
+.pill.hit, .page.hit { box-shadow: inset 0 -2px 0 var(--accent); }
+.hit-count { margin-left: 6px; font-size: 11px; font-weight: 700; color: var(--accent); }
+.page-strip { align-items: center; }
+.page-strip .page-prev, .page-strip .page-next { min-width: 28px; font-weight: 700; }
+.storage-view { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.chest-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.cell[role=button] { cursor: pointer; }
+.cell[role=button]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cell.other { opacity: 0.6; }
+.cell.selected { outline: 2px solid #ffe27a; outline-offset: 1px; }
+.cell.hit { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 1; }
+.cell.dim { opacity: 0.25; }
+.slot-detail { flex: 1; min-width: 260px; max-width: 420px; display: flex; flex-direction: column; gap: 8px; padding: 10px; }
+.slot-detail .item-card { background: var(--panel-2); border-radius: 6px; padding: 8px; }
+.detail-list { display: flex; flex-direction: column; gap: 2px; max-height: 360px; overflow: auto; }
+.detail-row { display: flex; align-items: center; gap: 8px; background: none; border: 0; padding: 3px 4px; border-radius: 4px; text-align: left; cursor: pointer; }
+.detail-row:hover { background: var(--panel-2); }
+.detail-others { display: flex; flex-direction: column; gap: 6px; }
+.detail-other { display: flex; flex-direction: column; gap: 2px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-align: left; font: inherit; }
+.linkish:hover { text-decoration: underline; }
+.found-row.go { cursor: pointer; }
+.found-row.go:hover { background: var(--panel-3); }
+button.mini.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+button.mini.ghost:hover, button.mini.ghost:focus-visible { border-color: var(--line); color: var(--text); }
+button.mini.ghost.danger:hover { color: var(--bad); }
+.items-toolbar { display: flex; flex-direction: column; gap: 8px; }
+.type-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-n { margin-left: 5px; font-size: 11px; color: var(--muted); }
+.pill.on .chip-n { color: inherit; }
+.items-count { margin: 0; font-size: 12px; }
+.item-sub { font-size: 12px; }
+.copy-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.copy-head .copy-where { flex: 1; min-width: 0; }
+.copy-rolls { font-size: 12px; }
+.items-toolbar .inv-filter select { width: auto; flex: none; }
+.items-toolbar .inv-filter > .ac { flex: 1; min-width: 200px; }
+.linkish { white-space: normal; overflow-wrap: anywhere; }
+.inv-body > .place-picker { margin-top: 2px; }
+.detail-list { max-height: 420px; }
