@@ -1307,3 +1307,28 @@ def test_editor_picks_which_copy_a_slot_uses(page, app):
     if os.environ.get("WT_SHOTS"):
         page.locator(".slot:has(input[aria-label='boots'])").screenshot(path=f"{os.environ['WT_SHOTS']}/82-copy-picker.png")
     assert not page.errors
+
+
+def test_tomes_show_ranges_rolls_and_where_each_copy_is(page, app):
+    """The Tomes tab shows each tome's ranges; owned copies list where they are (equipped
+    or in a chest) with how well they rolled; equipped tomes have their own Storage entry."""
+    pad, tome = "\U000cffff", "Courageous Tome of Defensive Mastery II"
+    for body in ({"version": 2, "kind": "tomes", "character": {"id": "a1b2c3d4"}, "inventory": [],
+                  "storage": [{"slot": 11, "name": tome, "lore": [f"Health{pad}+345", f"Fire Defence{pad}+10%"]}]},
+                 {"version": 2, "kind": "account", "character": {"id": "a1b2c3d4"}, "inventory": [],
+                  "storage": [{"slot": 0, "name": tome, "lore": [f"Health{pad}+265", f"Fire Defence{pad}+8%"]}]}):
+        page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
+                      "'application/json'}, body: JSON.stringify(b)})", body)
+    page.click("#open-inventory")
+    page.get_by_role("tab", name="Tomes").click()
+    card = page.locator(".tome-card.owned", has_text=tome)            # (not "... Mastery III")
+    playwright.expect(card).to_contain_text("Health +265 80 to 345")            # the range, as items show it
+    playwright.expect(card.locator(".badge")).to_have_text("equipped")
+    playwright.expect(card.locator(".tome-copy")).to_have_count(2)
+    playwright.expect(card.locator(".tome-copy", has_text="equipped")).to_contain_text("100.0%")   # a perfect roll
+    page.get_by_role("tab", name="Storage").click()
+    page.locator(".nav-place", has_text="Equipped tomes").click()
+    page.locator(".tome-row", has_text=tome).click()
+    playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text("This copy: 100.0% overall")
+    playwright.expect(page.locator(".slot-detail")).to_contain_text("1 other copy you own")
+    assert not page.errors

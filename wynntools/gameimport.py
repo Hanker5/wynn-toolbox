@@ -165,6 +165,9 @@ def classify(gd, slot):
         return out
     if name in gd.tome_by_name:
         out["kind"] = "tome"
+        found = read_rolls(gd.tome_by_name[name], slot.get("lore"))       # tomes roll too
+        if found:
+            out["rolls"] = found
     else:
         got = _aspect(gd, name, slot.get("lore"))
         if got is not None:
@@ -291,6 +294,14 @@ def import_export(inv, gd, body):
         done.setdefault(key, set()).add(n)
         tops[(key, n)] = p.get("storage")
         classified += slots
+    if kind == "tomes":             # the Mastery Tomes menu: the tomes this character has equipped
+        tomes = [c for c in (classify(gd, s) for s in body.get("storage") or []) if c and c["kind"] == "tome"]
+        inv.set_page(f"tomes:{cid}", 1, tomes, when)
+        labels.append("equipped tomes")
+        classified += tomes
+    elif kind == "aspects":         # the Aspects menu: raises the tiers owned
+        classified += [c for c in (classify(gd, s) for s in body.get("storage") or []) if c and c["kind"] == "aspect"]
+        labels.append("aspects")
     removed_pages = 0
     complete = body.get("complete")          # true, or the chests ("account", "character") read to the end
     for key, seen in done.items():

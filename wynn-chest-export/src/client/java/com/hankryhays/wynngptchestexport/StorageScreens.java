@@ -12,10 +12,11 @@ import net.minecraft.world.item.component.ItemLore;
 import java.util.List;
 import java.util.regex.Pattern;
 
-/** Which of the player's own storages a screen shows: their inventory or one of their ender chests. */
+/** Which of the player's own screens this is: their inventory, an ender chest, or their tomes or aspects. */
 public final class StorageScreens {
 	public enum Kind {
-		INVENTORY("inventory"), ACCOUNT("account"), CHARACTER("character"), UNKNOWN("unknown");
+		INVENTORY("inventory"), ACCOUNT("account"), CHARACTER("character"), TOMES("tomes"), ASPECTS("aspects"),
+		UNKNOWN("unknown");
 
 		public final String id;
 
@@ -29,6 +30,10 @@ public final class StorageScreens {
 	private static final String BANK_TITLE = "\uDAFF\uDFF0\uE00F\uDAFF\uDF68";
 	private static final String ACCOUNT_TITLE = BANK_TITLE + "\uF000";
 	private static final String CHARACTER_TITLE = BANK_TITLE + "\uF001";
+	// The Mastery Tomes menu (the tomes a character has equipped) and the Aspects menu,
+	// as Wynntils matches them (MasteryTomesContainer, AspectsContainer).
+	private static final String TOMES_TITLE = "\uDAFF\uDFDB\uE005";
+	private static final String ASPECTS_TITLE = "\uDAFF\uDFEA\uE002";
 
 	// The Character Info compass's first tooltip line is the character's id, e.g. "§7a1b2c3d4".
 	private static final int CHARACTER_INFO_SLOT = 7;
@@ -51,6 +56,12 @@ public final class StorageScreens {
 		}
 		if (title.contains(CHARACTER_TITLE)) {
 			return Kind.CHARACTER;
+		}
+		if (title.contains(TOMES_TITLE)) {
+			return Kind.TOMES;
+		}
+		if (title.contains(ASPECTS_TITLE)) {
+			return Kind.ASPECTS;
 		}
 		return Kind.UNKNOWN;
 	}

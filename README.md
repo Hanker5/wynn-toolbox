@@ -166,8 +166,9 @@ Typing in everything you own is slow, so there's a small client-side
 [Fabric](https://fabricmc.net) mod that does it for you. WynnGPT works fine
 without it.
 
-It adds a **WynnGPT** button beside your own inventory and your Account and
-Character ender chests (not loot chests, trades or shops). Click it while
+It adds a **WynnGPT** button beside your own inventory, your Account and
+Character ender chests, and your Mastery Tomes and Aspects menus (not loot
+chests, trades or shops). Click it while
 WynnGPT is open and the page you're looking at, plus your inventory, is sent
 to the app. The Inventory page then shows each ender chest page slot by slot,
 just as the game lays it out, with the real rolls of identified items read

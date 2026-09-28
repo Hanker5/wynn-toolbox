@@ -189,7 +189,8 @@ x.json --choose <file>` and, if they agree, `--trash-rest`.
 `builds/inventory.json` is the player's inventory, not a build. It keeps every
 copy of an item: copies added by hand, and "places" mirroring the Account
 ender chest (shared by every character), each character's Character ender
-chest and each character's inventory, page by page and slot by slot, as the
+chest, each character's inventory and each character's equipped tomes, page
+by page and slot by slot, as the
 `wynn-chest-export` Fabric mod last exported them (`POST /api/inventory/import`;
 each export replaces the pages it shows). Two copies of an item are two
 entries, with their own rolls. Change it with `wt own` (or the web app's Own

@@ -203,6 +203,13 @@ entries may be stated as fact.
 - Whether two copies of the same tome can sit in paired slots (both mobXp slots,
   for example). WynnBuilder allows it. The tome-choosing search (`tome_pool`) keeps
   to the copies a player owns, but with `any` it can pick one twice.
+- **How widely a tome's IDs roll.** WynnBuilder rolls them 30-130% like item IDs
+  (its perfect-roll totals count tomes at 130%, and `-m live` matches them), and the
+  Inventory page rates a tome's real rolls on that range. Five real rolls read from
+  exports (2026-09-28) sat at 100, 100, 100, 101 and 121% of base, which fits that
+  range but could also mean tomes roll narrower. In-game test: compare a tome's
+  percentage in Wynntils' tooltip with the app's, or record the rolls of a dozen
+  copies of one tome.
 - Tome "levels" (100, 120) are not player-level requirements (they exceed the
   level cap); the search doesn't filter tomes by level. Only guild tomes carry
   skill points (data), and only they count in item skill requirements.

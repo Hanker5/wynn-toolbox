@@ -615,3 +615,12 @@ button.mini.ghost.danger:hover { color: var(--bad); }
   .storage-layout { grid-template-columns: minmax(0, 1fr); }
   .slot-detail { position: static; }
 }
+.tome-stats { display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
+.tome-stat .range { font-size: 12px; }
+.tome-copies { display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.tome-copy { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.tome-list { display: flex; flex-direction: column; gap: 4px; min-width: calc(9 * 50px + 8 * 3px); }
+.tome-row { display: grid; grid-template-columns: 50px minmax(0, 1fr) auto; align-items: center; gap: 10px; background: var(--panel-2); border: 1px solid transparent; border-radius: 4px; padding: 4px 10px 4px 4px; text-align: left; cursor: pointer; }
+.tome-row .glyph { width: 42px; height: 42px; display: grid; place-items: center; background: var(--panel-3); border-radius: 3px; color: #ffe27a; }
+.tome-row:hover { border-color: var(--line); }
+.tome-row.selected { border-color: #ffe27a; }

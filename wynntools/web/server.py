@@ -389,11 +389,13 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     def tomes():
         out = {}
         for t in gd.tome_by_name.values():
+            stats = {k: v for k, v in t.items()
+                     if isinstance(v, (int, float)) and not isinstance(v, bool)
+                     and k not in ("id", "lvl", "remapID") and v}
             out.setdefault(t["type"], []).append(
-                {"name": gd.name(t), "lvl": t.get("lvl"),
-                 "stats": {k: v for k, v in t.items()
-                           if isinstance(v, (int, float)) and not isinstance(v, bool)
-                           and k not in ("id", "lvl", "remapID") and v}})
+                {"name": gd.name(t), "lvl": t.get("lvl"), "tier": t.get("tier"), "stats": stats,
+                 # [worst, typical, best], as items' ids: tomes roll too
+                 "ids": {k: [stat(t, k, "min"), stat(t, k), stat(t, k, "max")] for k in stats}})
         for v in out.values():
             v.sort(key=lambda t: (-(t["lvl"] or 0), t["name"]))
         return out

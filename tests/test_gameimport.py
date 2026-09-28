@@ -212,3 +212,29 @@ def test_pages_are_not_dropped_when_the_last_page_read_still_has_a_next_arrow(gd
     done = {**early, "pages": [{"kind": "account", "page": 14, "storage": real("account-p14-last.json")["storage"]}]}
     import_export(inv, gd, done)              # read to page 14, whose next slot offers to buy page 15
     assert sorted(inv.places["account"]["pages"], key=int) == ["1", "7", "14"]
+
+
+def test_tomes_keep_their_rolls_and_equipped_ones_are_tracked_per_character(gd):
+    """A tome's real rolls are read like an item's; the Mastery Tomes menu's tomes are that
+    character's equipped tomes; a copy added by hand is claimed by one found in the game."""
+    tome = "Courageous Tome of Defensive Mastery II"
+    inv = Inventory(tomes=[tome])
+    lore = [f"Health{PAD}+301", f"Fire Defence{PAD}+9%"]
+    r = import_export(inv, gd, export("tomes", [{"slot": 11, "name": tome, "lore": lore},
+                                                 {"slot": 40, "name": "Close"}]))
+    assert "equipped tomes" in r["message"] and r["imported"]["claimed"] == 1
+    assert inv.tomes == [] and inv.tome_counts() == {tome: 1}
+    equipped = inv.tome_copies(tome)
+    assert [(c.place, c.rolls) for c in equipped] == [(f"tomes:{ME}", {"hpBonus": 301, "fDefPct": 9})]
+    assert inv.where(equipped[0].place, 1, 11).endswith("· equipped tomes")
+    import_export(inv, gd, export("account", page(4, {"name": tome, "lore": [f"Health{PAD}+265"]})))
+    view = inv.view()["tome_copies"]
+    assert [(c["equipped"], c["rolls"]) for c in view] == [(False, {"hpBonus": 265}), (True, {"hpBonus": 301, "fDefPct": 9})]
+    import_export(inv, gd, export("tomes", []))                 # unequipped: gone from there
+    assert inv.tome_counts() == {tome: 1}
+
+
+def test_the_aspects_menu_raises_the_tiers_owned(gd):
+    inv = Inventory()
+    import_export(inv, gd, export("aspects", [{"slot": 18, "name": "Aspect of Runic Extravagance", "lore": ["Tier II"]}]))
+    assert inv.aspect_tier("Mage", "Aspect of Runic Extravagance") == 2

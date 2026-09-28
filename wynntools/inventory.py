@@ -51,7 +51,7 @@ DEFAULT = Path("builds/inventory.json")
 VERSION = 2
 
 # Pages each ender chest can have (Wynntils' AccountBankContainer / CharacterBankContainer).
-PAGES = {"account": 21, "character": 12, "inventory": 1}
+PAGES = {"account": 21, "character": 12, "inventory": 1, "tomes": 1}
 STORAGE_SLOTS = 45           # an ender chest page's own slots: 5 rows of 9
 HAND = "hand"                # the "place" of a copy added by hand
 _ARMOR = {36: "boots", 37: "leggings", 38: "chestplate", 39: "helmet"}
@@ -125,7 +125,7 @@ def place_character(key):
 
 
 def _place_order(key):
-    return ({"account": 0, "character": 1, "inventory": 2}.get(place_kind(key), 3), key)
+    return ({"account": 0, "character": 1, "inventory": 2, "tomes": 3}.get(place_kind(key), 4), key)
 
 
 @dataclass
@@ -196,6 +196,16 @@ class Inventory:
         out = {}
         for c in self.copies():
             out[c.name] = out.get(c.name, 0) + 1
+        return out
+
+    def tome_copies(self, name=None):
+        """Every tome the player owns (or of `name`): added by hand (no rolls known), then
+        in pages and equipped, with their rolls."""
+        out = [Copy(t, {}, index=k) for k, t in enumerate(self.tomes) if name is None or t == name]
+        for key, page, s in self.slots():
+            if s.get("kind") == "tome" and (name is None or s["name"] == name):
+                for _ in range(max(int(s.get("count") or 1), 1)):
+                    out.append(Copy(s["name"], s.get("rolls") or {}, key, page, s.get("slot")))
         return out
 
     def tome_counts(self):
@@ -292,6 +302,8 @@ class Inventory:
             return f"{self.character_label(cid)} · Character ender chest"
         if kind == "inventory":
             return f"{self.character_label(cid)} · inventory"
+        if kind == "tomes":
+            return f"{self.character_label(cid)} · equipped tomes"
         return "added by hand"
 
     def where(self, place, page=None, slot=None):
@@ -302,6 +314,8 @@ class Inventory:
         if place_kind(place) == "inventory":
             if slot is not None:
                 parts.append(inventory_slot_label(slot))
+        elif place_kind(place) == "tomes":
+            pass                         # the tome menu: where it sits there doesn't matter
         else:
             if page is not None:
                 parts.append(f"page {page}")
@@ -329,7 +343,7 @@ class Inventory:
                        "slot": s.get("slot"), "where": self.where(key, page, s.get("slot"))}
                 if s.get("count", 1) != 1:
                     hit["count"] = s["count"]
-                if s.get("kind") == "item":
+                if s.get("kind") in ("item", "tome"):
                     hit["rolls"] = s.get("rolls") or {}
                     hit["fp"] = fingerprint(s.get("rolls"))
                 out.append(hit)
@@ -344,11 +358,14 @@ class Inventory:
         out["copies"] = [{"name": c.name, "rolls": c.rolls, "fp": c.fp, "place": c.place, "page": c.page,
                           "slot": c.slot, "index": c.index, "where": self.where(c.place, c.page, c.slot)}
                          for c in self.copies()]
+        out["tome_copies"] = [{"name": c.name, "rolls": c.rolls, "fp": c.fp, "place": c.place, "page": c.page,
+                               "slot": c.slot, "index": c.index, "equipped": place_kind(c.place) == "tomes",
+                               "where": self.where(c.place, c.page, c.slot)} for c in self.tome_copies()]
         out["place_list"] = [{"key": k, "kind": place_kind(k), "character": place_character(k),
                               "label": self.place_label(k), "max_pages": PAGES.get(place_kind(k), 1),
                               "pages": {n: {**p, "slots": [{**s, "where": self.where(k, int(n), s.get("slot")),
                                                            **({"fp": fingerprint(s.get("rolls"))}
-                                                              if s.get("kind") == "item" else {})}
+                                                              if s.get("kind") in ("item", "tome") else {})}
                                                           for s in p.get("slots") or []]}
                                         for n, p in (self.places[k].get("pages") or {}).items()}}
                              for k in sorted(self.places, key=_place_order)]

@@ -410,6 +410,19 @@ const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const findQuery = () => invPrefs.find.trim().toLowerCase();
 const matches = (name) => { const q = findQuery(); return !!q && name.toLowerCase().includes(q); };
 
+/** A tome shaped like an item (its ranges as ids), for item cards and roll percentages. */
+function tomeItem(name) {
+  if (!S.tomeIndex) {
+    S.tomeIndex = {};
+    for (const [type, list] of Object.entries(S.tomes || {})) for (const t of list) S.tomeIndex[t.name] = { ...t, tomeType: type };
+  }
+  const t = S.tomeIndex[name];
+  return t ? { name: t.name, tier: t.tier, type: `${tomeTypeLabel(t.tomeType).toLowerCase()} tome`, lvl: t.lvl, ids: t.ids || {},
+    stats: { ...t.stats }, majors: [], slots: 0, hp_base: 0, damage: {}, reqs: [0, 0, 0, 0, 0] } : null;
+}
+/** The item card's subject for a slot: gear, or a tome; null for the rest. */
+const slotItem = (s) => (s.kind === "item" ? S.items[s.name] : s.kind === "tome" ? tomeItem(s.name) : null);
+
 /** "78%": a copy's overall roll (the average of where each ID lands), or null. */
 function qualityBadge(it, rolls) {
   const q = rollQuality(withRolls(it, rolls));
@@ -454,10 +467,10 @@ async function drawFound(box) {
   await Promise.all([...new Set(hits.filter((x) => x.kind === "item").map((x) => x.name))].map((n) => itemInfo("any", n)));
   if (q !== findQuery()) return;                     // typed on meanwhile
   const row = (hit) => {
-    const it = hit.kind === "item" ? S.items[hit.name] : null;
+    const it = slotItem(hit);
     const go = hit.place !== "hand" ? () => showSlot(hit.place, hit.page, hit.slot) : null;
     const r = h("div", { class: `found-row${go ? " go" : ""}`, onclick: go },
-      h("div", { class: `cell ${hit.kind}` }, it ? itemIcon(it.type, 28, it.tier) : slotGlyph(hit)),
+      h("div", { class: `cell ${hit.kind}` }, hit.kind === "item" && it ? itemIcon(it.type, 28, it.tier) : slotGlyph(hit)),
       h("div", { class: "inv-main" },
         h("span", { class: `inv-name${it ? ` tier-${it.tier}` : ""}` }, hit.name, hit.count > 1 ? ` ×${hit.count}` : "",
           it ? [" ", qualityBadge(it, hit.rolls)] : null),
@@ -587,7 +600,7 @@ async function invStorage(body, inv, again) {
       head.replaceChildren(input, h("button", { class: "mini", onclick: save }, "Save"));
       input.focus(); input.select();
     };
-    const label = (p) => (p.kind === "inventory" ? "Inventory" : "Ender chest");
+    const label = (p) => ({ inventory: "Inventory", tomes: "Equipped tomes" }[p.kind] || "Ender chest");
     return h("div", { class: "nav-group" }, head, o.places.map((p) => placeButton(p, label(p), p.label)));
   };
   const picker = h("nav", { class: "place-nav", role: "group", "aria-label": "Storage" }, owners.map(ownerBlock));
@@ -635,12 +648,24 @@ async function invStorage(body, inv, again) {
       onclick: () => select(k), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(k); } } },
       it ? itemIcon(it.type, 40, it.tier) : slotGlyph(s), s.count > 1 ? h("span", { class: "cell-count" }, String(s.count)) : null);
     // No hover card on the selected slot: the panel beside the grid already shows it.
-    if (it) attachTooltip(c, () => (invPrefs.selected === k ? null : withRolls(S.items[s.name], s.rolls)));
+    if (it || s.kind === "tome") attachTooltip(c, () => (invPrefs.selected === k ? null : withRolls(slotItem(s), s.rolls)));
     else attachTip(c, () => (invPrefs.selected === k ? null : slotCard(s)));
     cells.set(k, c);
     return c;
   };
-  const grid = place.kind === "inventory"
+  const tomeRow = (s) => {
+    const t = tomeItem(s.name);
+    const r = h("button", { class: `tome-row${s.slot === invPrefs.selected ? " selected" : ""}`, "data-slot": s.slot,
+      "aria-label": `${s.name}: ${s.where}`, onclick: () => select(s.slot) },
+      slotGlyph(s), h("span", { class: `tier-${t?.tier} detail-name` }, s.name), qualityBadge(t, s.rolls));
+    attachTooltip(r, () => (invPrefs.selected === s.slot ? null : withRolls(tomeItem(s.name), s.rolls)));
+    cells.set(s.slot, r);
+    return r;
+  };
+  const grid = place.kind === "tomes"
+    ? h("div", { class: "tome-list" }, (page?.slots || []).length ? page.slots.filter((s) => s.kind === "tome").map(tomeRow)
+      : h("p", { class: "muted" }, "No tomes equipped."))
+    : place.kind === "inventory"
     ? h("div", { class: "inv-layout" },
       h("div", { class: "chest-grid equip-row", title: "Helmet, chestplate, leggings, boots, offhand" }, [39, 38, 37, 36, 40].map(cell)),
       h("div", { class: "chest-grid" }, range(9, 36).map(cell)),
@@ -654,13 +679,13 @@ async function invStorage(body, inv, again) {
   function drawDetail() {
     const s = slots.get(invPrefs.selected);
     if (!s) {
-      const gear = (page?.slots || []).filter((x) => x.kind === "item");
+      const gear = (page?.slots || []).filter((x) => x.kind === "item" || (place.kind === "tomes" && x.kind === "tome"));
       detail.classList.remove("has-item");
       setKids(detail, h("div", { class: "detail-block wide" }, h("div", { class: "panel-h" }, "Gear on this page"),
         gear.length ? h("div", { class: "detail-list" }, gear.map((x) => {
-          const it = S.items[x.name];
+          const it = slotItem(x);
           return h("button", { class: "detail-row", onclick: () => select(x.slot), "aria-label": `Select ${x.name}` },
-            itemIcon(it?.type, 24, it?.tier), h("span", { class: `tier-${it?.tier} detail-name` }, x.name),
+            x.kind === "tome" ? slotGlyph(x) : itemIcon(it?.type, 24, it?.tier), h("span", { class: `tier-${it?.tier} detail-name` }, x.name),
             qualityBadge(it, x.rolls));
         })) : h("p", { class: "muted" }, "No gear on this page."),
         h("p", { class: "hint" }, "Click a slot to see its rolls and where your other copies are.")));
@@ -669,7 +694,7 @@ async function invStorage(body, inv, again) {
     const others = s.kind === "item"
       ? S.inv.copies.filter((c) => c.name === s.name && !(c.place === place.key && c.page === invPrefs.page && c.slot === s.slot))
       : findOwned(s.name.toLowerCase()).filter((x) => x.name === s.name && !(x.place === place.key && x.page === invPrefs.page && x.slot === s.slot));
-    const it = s.kind === "item" ? withRolls(S.items[s.name], s.rolls) : null;
+    const it = withRolls(slotItem(s), s.rolls);
     detail.classList.add("has-item");
     setKids(detail,
       h("div", { class: "detail-block" }, h("div", { class: "detail-where muted" }, s.where), it ? itemCard(it) : slotCard(s),
@@ -679,8 +704,8 @@ async function invStorage(body, inv, again) {
         others.map((c) => h("div", { class: "detail-other" },
           c.place === "hand" ? h("span", { class: "muted" }, "added by hand")
             : h("button", { class: "linkish", onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
-          h("div", { class: "eq-line" }, qualityBadge(S.items[s.name], c.rolls), " ", rollsText(c.rolls)))))
-        : s.kind === "item" ? h("div", { class: "detail-block" }, h("p", { class: "muted" }, "Your only copy.")) : null);
+          h("div", { class: "eq-line" }, qualityBadge(slotItem(s), c.rolls), " ", rollsText(c.rolls)))))
+        : s.kind === "item" || s.kind === "tome" ? h("div", { class: "detail-block" }, h("p", { class: "muted" }, "Your only copy.")) : null);
   }
   drawDetail();
 
@@ -813,23 +838,27 @@ function invTomes(body, inv, f, again) {
       return h("section", { class: "panel" }, h("div", { class: "panel-h" }, `${tomeTypeLabel(type)} · ${have} owned`),
         h("div", { class: "inv-grid" }, all.map((t) => {
           const n = c[t.name] || 0;
+          const mine = (inv.tome_copies || []).filter((x) => x.name === t.name);
+          const equipped = mine.filter((x) => x.equipped).length;
+          const item = tomeItem(t.name);
           return h("div", { class: `inv-item tome-card${n ? " owned" : ""}` },
-            h("div", { class: "row" }, h("span", { class: "inv-name" }, t.name), h("span", { class: "grow" }),
+            h("div", { class: "row" }, h("span", { class: `inv-name tier-${t.tier}` }, t.name), h("span", { class: "grow" }),
+              equipped ? h("span", { class: "badge ok", title: "Equipped on a character" }, equipped > 1 ? `${equipped} equipped` : "equipped") : null,
               h("span", { class: "muted" }, `Lv. ${t.lvl}`)),
-            h("div", { class: "eq-line" }, Object.entries(t.stats).flatMap(([a, b], i) => {
-              const [l, u] = idLabel(a);
-              return [i ? " · " : "", h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`)];
+            h("div", { class: "tome-stats" }, Object.entries(t.stats).map(([a, b]) => {
+              const [l, u] = idLabel(a), [worst, , best] = t.ids?.[a] || [b, b, b];
+              return h("div", { class: "tome-stat" }, h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`),
+                worst !== best ? h("span", { class: "muted range" }, ` ${fmt(worst)} to ${fmt(best)}`) : null);
             })),
+            mine.length ? h("div", { class: "tome-copies" }, mine.map((x) => h("div", { class: "tome-copy" },
+              x.place === "hand" ? h("span", { class: "muted" }, "added by hand")
+                : h("button", { class: "linkish", title: "Show where it is", "aria-label": `Show ${t.name}: ${x.where}`,
+                  onclick: () => showSlot(x.place, x.page, x.slot) }, x.equipped ? `equipped · ${x.where.split(" · ")[0]}` : x.where),
+              qualityBadge(item, x.rolls), Object.keys(x.rolls).length ? h("span", { class: "eq-line" }, rollsText(x.rolls)) : null))) : null,
             h("div", { class: "row stepper" },
               hand[t.name] ? h("button", { class: "mini", "aria-label": `Own one fewer ${t.name}`, onclick: () => step(t.name, -1) }, "−") : null,
-              n > (hand[t.name] || 0) ? (() => {
-                const at = findOwned(t.name.toLowerCase()).filter((x) => x.name === t.name && x.place !== "hand");
-                return h("button", { class: "linkish muted", title: at.map((x) => x.where).join("\n"),
-                  "aria-label": `Show where ${t.name} is kept`, onclick: () => at[0] && showSlot(at[0].place, at[0].page, at[0].slot) },
-                  `${n - (hand[t.name] || 0)} in storage`);
-              })() : null,
               n ? h("span", { class: "count" }, `×${n}`) : null,
-              h("button", { class: `mini own${n ? " on" : ""}`, "aria-label": `Own ${t.name}`,
+              h("button", { class: `mini own${n ? " on" : ""}`, "aria-label": `Own ${t.name}`, title: n ? "Add a copy by hand" : null,
                 onclick: () => step(t.name, +1) }, n ? "+" : "☆ Own")));
         })));
     }).filter(Boolean);

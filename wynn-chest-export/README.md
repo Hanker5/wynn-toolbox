@@ -1,6 +1,6 @@
 # WynnGPT Chest Export
 
-A client-side Fabric mod for Minecraft 1.21.11. It puts a small WynnGPT button to the right of the player's own inventory and their Account and Character ender chests (recognised by the glyphs Wynncraft titles them with). Clicking the button sends that storage's slots, the player's whole inventory and the active character's id to the running WynnGPT app, which records them in `builds/inventory.json`.
+A client-side Fabric mod for Minecraft 1.21.11. It puts a small WynnGPT button to the right of the player's own inventory, their Account and Character ender chests, and their Mastery Tomes and Aspects menus (recognised by the glyphs Wynncraft titles them with, as Wynntils does). Clicking the button sends that storage's slots, the player's whole inventory and the active character's id to the running WynnGPT app, which records them in `builds/inventory.json`.
 
 ## Setup
 
