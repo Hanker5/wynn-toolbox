@@ -98,9 +98,8 @@ def check_spec(raw, gd, tree=None, inventory=None):
     kind = kind_for(spec)
     if needs_tree(spec) and not tree and not spec.atree:
         errors.append("damage goals or minimums need an ability tree: pass --tree PRESET")
-    if spec.tome_pool != "fixed" and kind != "exact":
-        errors.append("'tome_pool' owned/any needs the exact search; damage-model goals and minimums "
-                      "can't use it (list the tomes instead, or drop those goals)")
+    if spec.tome_pool != "fixed" and kind == "shortlists":
+        errors.append("'tome_pool' owned/any can't go with the shortlist search; leave out --shortlists")
     if spec.tome_pool == "owned" and not spec.tome_supply:
         warnings.append("'tome_pool' is owned but the inventory has no tomes: no tome will be chosen "
                         "(`wt own add --tome NAME`)")

@@ -10,11 +10,10 @@ Rough priority order. Want to take one? Say so in an issue first; see
 2. ~~**Real item rolls.**~~ Done: `wt own --roll` and the Inventory page;
    `wt gear --owned` and `wt upgrades` use them.
    Tomes and aspects are in the inventory too (tabbed Inventory page); the exact
-   search can choose tomes from it or from any tome (`tome_pool`). The
-   `wynn-chest-export` mod imports items (with their real rolls, read from the
-   tooltip), tomes and aspects from chests. Still to do:
-   choosing tomes in the shortlist and local searches (damage-model goals), and
-   in `wt upgrades`.
+   and local searches can choose tomes from it or from any tome (`tome_pool`).
+   The `wynn-chest-export` mod imports items (with their real rolls, read from
+   the tooltip), tomes and aspects from chests. Still to do: choosing tomes in
+   the shortlist search and in `wt upgrades`.
 3. **Differential tests for decoding and the tree.** Encoding of powders, skill
    points, aspects, tomes and crafts is checked against WynnBuilder's own JS;
    extend the same harness to full-link decoding and ability-tree activation.

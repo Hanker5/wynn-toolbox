@@ -100,6 +100,51 @@ def test_edit_checks_items_and_slots(builds, capsys):
     assert "updated" in out
 
 
+def test_edit_puts_tomes_only_in_slots_of_their_type(builds, capsys, gd):
+    """WynnBuilder counts a tome in a slot of another type as an empty slot, so
+    `wt edit --tome` refuses it (and verify flags one found in a link)."""
+    from wynntools.codec import TOME_SLOTS, to_link
+    from wynntools.verify import check_link
+    f = str(builds / "storm.json")
+    before = buildfile.read(f)["tomes"]
+    code, out = run(capsys, "edit", f, "--tome", "weaponTome1=Blooming Tome of Defensive Mastery III")
+    assert code == 1 and "is an armorTome and can't go in weaponTome1" in out
+    assert "put it in armorTome1 or armorTome2 or armorTome3 or armorTome4" in out
+    assert buildfile.read(f)["tomes"] == before
+    code, out = run(capsys, "edit", f, "--tome", "armorTome2=Blooming Tome of Defensive Mastery III")
+    assert code == 0 and buildfile.read(f)["tomes"][3] == "Blooming Tome of Defensive Mastery III"
+    b = buildfile.to_build(buildfile.read(f), gd)
+    b.tomes[TOME_SLOTS.index("guildTome1")] = gd.tome("Abyssal Tome of Combat Mastery III")["id"]
+    ok, rep = check_link(to_link(b, gd), gd)
+    assert not ok and any("is a weaponTome and can't go in guildTome1" in p for p in rep["problems"])
+
+
+def test_aspects_list_recommend_and_edit(builds, capsys, tmp_path):
+    f = str(builds / "storm.json")
+    inv = tmp_path / "inv.json"
+    inv.write_text(json.dumps({"aspects": {"Shaman": {"Aspect of the Beckoned Legion": 1}}}))
+    code, out = run(capsys, "aspects", f, "--inventory", str(inv))
+    assert code == 0 and "Aspect of the Beckoned Legion  (Fabled · owned: tier 1)" in out
+    assert "works through: Puppet Master  [in your tree]" in out
+    assert "not modelled in WynnBuilder's data" in out            # text-only aspects say so
+    code, out = run(capsys, "aspects", f, "--owned", "--recommend", "--goal", "puppet_dps",
+                    "--inventory", str(inv))
+    assert code == 0 and "Aspect of the Beckoned Legion (tier 1)" in out and "your inventory" in out
+    assert '--aspect "Aspect of the Beckoned Legion=1"' in out
+    assert "needs --goal" in run(capsys, "aspects", f, "--recommend", "--inventory", str(inv))[1]
+
+    code, out = run(capsys, "edit", f, "--aspect", "Beckoned Legion", "--inventory", str(inv))
+    assert code == 0 and "Aspect of the Beckoned Legion tier 1 (owned)" in out
+    code, out = run(capsys, "edit", f, "--aspect", "Aspect of Stances", "--tier", "2", "--inventory", str(inv))
+    assert "tier 2 (not owned: a goal to collect)" in out
+    assert buildfile.read(f)["aspects"][:2] == [["Aspect of the Beckoned Legion", 1], ["Aspect of Stances", 2]]
+    assert "has tiers 1-3, not 4" in run(capsys, "edit", f, "--aspect", "Stances=4")[1]
+    assert "several Shaman aspects" in run(capsys, "edit", f, "--aspect", "Embodiment")[1]
+    assert "no Shaman aspect named" in run(capsys, "edit", f, "--aspect", "Aspect of Nothing")[1]
+    run(capsys, "edit", f, "--remove-aspect", "Stances")
+    assert buildfile.read(f)["aspects"][:2] == [["Aspect of the Beckoned Legion", 1], None]
+
+
 def test_a_crashed_server_is_not_running(builds, capsys):
     """Liveness is the heartbeat on .server.json, not a process id: Codex's
     sandbox has its own process namespace and can't see the server."""

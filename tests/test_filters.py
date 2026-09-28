@@ -123,3 +123,40 @@ def test_set_filters_are_checked(gd):
         spec_from({**BASE, "require_sets": {"Cindercurse": 0}}, gd)
     with pytest.raises(ValueError, match="both required and excluded"):
         spec_from({**BASE, "require_sets": {"Cindercurse": 2}, "exclude_sets": ["Cindercurse"]}, gd)
+
+
+def test_illegal_set_combinations_are_never_searched(gd):
+    """The game allows one Master Hive piece at a time (WynnBuilder: "illegal item
+    combination"), however much a spec rewards two. Every search keeps to that."""
+    spec = spec_from({**MAGE_HP, "topn": 5, "prefer": {"Obsidian-Framed Helmet": 10**5,
+                                                       "Hephaestus-Forged Sabatons": 10**5}}, gd)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r is not None and _sets_worn(gd, r).get("Master Hive") == 1
+
+
+def test_forcing_an_illegal_set_combination_is_explained(gd):
+    from wynntools.explain import explain
+    spec = spec_from({**MAGE_HP, "force": {"helmet": "Obsidian-Framed Helmet",
+                                           "boots": "Hephaestus-Forged Sabatons"}}, gd)
+    with pytest.raises(ValueError, match="pieces of the Master Hive set; the game allows at most 1"):
+        solve_gear_exact(spec, gd)
+    assert solve_gear(spec, gd) is None
+    ex = explain(spec, gd)
+    assert "Master Hive" in ex["summary"] and "at most 1" in ex["summary"]
+    with pytest.raises(ValueError, match="at most 1 piece of the Master Hive"):
+        spec_from({**BASE, "require_sets": {"Master Hive": 2}}, gd)
+
+
+def test_max_set_pieces(gd):
+    spec = spec_from({**MAGE_HP, "max_set_pieces": {"Master Hive": 0}, "topn": 5}, gd)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r is not None and not _sets_worn(gd, r).get("Master Hive")
+    two = spec_from({**MAGE_HP, "objective": {"sdPct": 1}, "require_major": ["CINDERCURSE"],
+                     "max_set_pieces": {"Cindercurse": 2}}, gd)       # the major needs 3 pieces
+    assert solve_gear_exact(two, gd) is None
+    with pytest.raises(ValueError, match="unknown set"):
+        spec_from({**BASE, "max_set_pieces": {"Nope": 1}}, gd)
+    with pytest.raises(ValueError, match="piece count of 0 or more"):
+        spec_from({**BASE, "max_set_pieces": {"Cindercurse": -1}}, gd)
+    with pytest.raises(ValueError, match="can't need 3 pieces and allow at most 2"):
+        spec_from({**BASE, "require_sets": {"Cindercurse": 3}, "max_set_pieces": {"Cindercurse": 2}}, gd)

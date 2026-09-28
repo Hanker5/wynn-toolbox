@@ -3,9 +3,9 @@
 Each check here exists because the design session produced a wrong answer
 without it; see knowledge/mechanics.md "Mistakes the verifiers catch".
 """
-from .codec import SLOTS, TOME_SLOTS, decode, encode, link_hash
+from .codec import SLOTS, TOME_SLOTS, decode, encode, link_hash, tome_kind
 from .skillpoints import WYNN_ORDER, SPItem, apply_manual, calculate_skillpoints, set_bonus_stats
-from .rules import SKILLS, base_hp, max_mana, poison_per_second, rolled, skill_points
+from .rules import SKILLS, base_hp, legal_set_pieces, max_mana, poison_per_second, rolled, skill_points
 
 REQ = [s + "Req" for s in SKILLS]
 SKILL_NAMES = {"str": "Strength", "dex": "Dexterity", "int": "Intelligence", "def": "Defence",
@@ -215,7 +215,9 @@ def summarize(build, gd, roll="base", inventory=None):
     mana_spare_int = mana_min if msp.manual[2] else \
         max_mana(totals["maxMana"], min(100, msp.assigned[2] + max(spare, 0)) + int_from_items)
     sets = [{"name": name, "pieces": count, "of": len(gd.sets[name]["items"]),
-             "bonus": {k: v for k, v in gd.sets[name]["bonuses"][count - 1].items()}}
+             "bonus": {k: v for k, v in gd.sets[name]["bonuses"][count - 1].items() if k != "illegal"},
+             "most": legal_set_pieces(gd.sets[name]),
+             "illegal": bool(gd.sets[name]["bonuses"][count - 1].get("illegal"))}
             for name, count in sorted(sp.set_counts.items())]
     return {"totals": totals, "totals_max": totals_max, "roll": roll,
             "sp_need": dict(zip(SKILLS, msp.assigned)), "sp_total": msp.total_assigned,
@@ -229,6 +231,19 @@ def summarize(build, gd, roll="base", inventory=None):
             "mana_min_int": mana_min, "mana_spare_into_int": mana_spare_int,
             "poison_per_second": poison_per_second(totals["poison"]),
             "sets": sets, "set_majors": sorted(set_majors)}
+
+
+def illegal_set_text(st):
+    """The problem line for a summary's set entry the game won't allow."""
+    most = st["most"]
+    return (f"illegal item combination: {st['pieces']} pieces of the {st['name']} set; the game "
+            f"lets you wear at most {most} (WynnBuilder shows the same warning)")
+
+
+def wrong_tome_text(tome, slot, gd):
+    return (f"{gd.name(tome)} is a{'n' * (tome['type'][0] in 'aeiou')} {tome['type']} and can't go in "
+            f"{slot} (that slot takes a{'n' * (tome_kind(slot)[0] in 'aeiou')} {tome_kind(slot)}; "
+            f"WynnBuilder leaves it empty)")
 
 
 def check_link(link, gd=None, inventory=None):
@@ -258,6 +273,12 @@ def check_link(link, gd=None, inventory=None):
                for k in SKILLS if s["sp_need"][k] < s["sp_auto_need"][k]]
         report["problems"].append("skill points set by hand are too low to wear every item: "
                                   + ", ".join(low))
+    for slot, t in zip(TOME_SLOTS, build.tomes):
+        if t is not None and gd.tome(t)["type"] != tome_kind(slot):
+            report["problems"].append(wrong_tome_text(gd.tome(t), slot, gd))
+    for st in s["sets"]:
+        if st["illegal"]:
+            report["problems"].append(illegal_set_text(st))
     if build.weapon is not None:
         from .rules import ability_points
         tree = gd.tree(gd.weapon_class(build.weapon))

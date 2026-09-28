@@ -11,7 +11,7 @@ from itertools import combinations, product
 from operator import add
 
 from .codec import SLOTS
-from .rules import ROLLED_IDS, SKILLS, base_hp, max_mana, skill_points
+from .rules import ROLLED_IDS, SKILLS, base_hp, legal_set_pieces, max_mana, skill_points
 from .skillpoints import set_bonus_stats
 from .verify import REQ, build_skillpoints
 from .verify import stat as _stat
@@ -85,6 +85,7 @@ class Spec:
     caps: dict = field(default_factory=dict)     # stat -> maximum total (every search kind)
     require_sets: dict = field(default_factory=dict)    # set name -> at least this many pieces worn
     exclude_sets: list = field(default_factory=list)    # set names none of whose pieces are used (forced items excepted)
+    max_set_pieces: dict = field(default_factory=dict)  # set name -> at most this many pieces worn
     force: dict = field(default_factory=dict)    # slot -> item name
     exclude: set = field(default_factory=set)    # item names never to use
     exclude_tiers: set = field(default_factory=set)     # e.g. {"Mythic"}
@@ -102,6 +103,39 @@ class Spec:
     at_most_one: list = field(default_factory=list)     # groups of item names: use one at most
     prefer: dict = field(default_factory=dict)   # item name -> bonus in objective units
     spare_sp: str | None = None                  # derived goals: "goal" (default) or "none"
+    # What a re-searched build already has, counted by the damage model from the start:
+    # its aspects (5 (aspect id, tier) or None), and powders by slot index (SLOTS)
+    # -> (item name, [powder ids]): they count while that item stays in that slot.
+    aspects: list | None = None
+    powders: dict = field(default_factory=dict)
+
+    def set_limits(self, gd):
+        """{set name: most pieces a build may wear}: `max_set_pieces`, and the game's
+        own limit on sets WynnBuilder calls illegal past a count (always applied)."""
+        out = {}
+        for name, st in gd.sets.items():
+            n = legal_set_pieces(st)
+            if n is not None:
+                out[name] = n
+        for name, n in self.max_set_pieces.items():
+            out[name] = min(n, out.get(name, n))
+        return out
+
+    def build(self, names, tomes=None, manual=None):
+        """A codec.Build for a candidate (9 names), as the damage model should see
+        it: the tree, `tomes` (default the spec's), and the aspects and powders
+        the spec keeps."""
+        from .codec import POWDERABLE, Build
+        powders = [[] for _ in POWDERABLE]
+        for k, slot in enumerate(POWDERABLE):
+            kept = self.powders.get(slot)
+            if kept and names[slot] == kept[0]:
+                powders[k] = list(kept[1])
+        return Build(equipment=list(names), level=self.level, powders=powders,
+                     tomes=list(tomes) if tomes is not None else
+                     list(self.tomes) + [None] * (14 - len(self.tomes)),
+                     skillpoints=manual, atree=set(self.atree or ()),
+                     aspects=list(self.aspects) if self.aspects and any(self.aspects) else None)
 
     def derived_floors(self):
         """{key: minimum} of the floors only the damage model can check."""
@@ -375,10 +409,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
     last_metrics = {}
 
     def derived_ok(names_now, manual):
-        from .codec import Build
         from .derived import metrics, value
-        b = Build(equipment=list(names_now), level=spec.level, tomes=tome_ids,
-                  atree=set(spec.atree or ()), skillpoints=manual)
+        b = spec.build(names_now, tome_ids, manual)
         m = metrics(b, gd, spec.roll, spec.inventory)
         last_metrics["m"] = m
         return all(value(m, k[len(DAMAGE_GOAL_PREFIX):] if k.startswith(DAMAGE_GOAL_PREFIX) else k) >= v
@@ -418,6 +450,10 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
         for name in group:
             group_of.setdefault(name, []).append(gi)
     group_cnt = [0] * len(spec.at_most_one)
+    set_limits = spec.set_limits(gd)
+    lim_max = list(set_limits.values())
+    lim_of = {n: i for i, s in enumerate(set_limits) for n in gd.sets[s]["items"]}
+    lim_cnt = [0] * len(lim_max)
 
     def candidates(slot, force):
         pool = pools[slot]
@@ -557,7 +593,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                     return
                 set_stats, set_majors = set_bonus_stats(sp.set_counts, gd.sets)
                 if not _majors_ok(spec, chosen, set_majors) or any(
-                        sp.set_counts.get(n, 0) < need for n, need in spec.require_sets.items()):
+                        sp.set_counts.get(n, 0) < need for n, need in spec.require_sets.items()) or any(
+                        sp.set_counts.get(n, 0) > most for n, most in set_limits.items()):
                     return
                 a = set_contrib(set_stats)
                 total = val + a[0]
@@ -597,10 +634,15 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 gs = group_of.get(nm, ())
                 if any(group_cnt[g] and not names.get(nm) for g in gs):
                     continue               # "at most one of these" already used
+                li = lim_of.get(nm, -1)
+                if li >= 0 and lim_cnt[li] >= lim_max[li]:
+                    continue               # more pieces of a set than the game or spec allows
                 chosen.append(c)
                 names[nm] = names.get(nm, 0) + 1
                 for g in gs:
                     group_cnt[g] += 1
+                if li >= 0:
+                    lim_cnt[li] += 1
                 if si >= 0:
                     set_cnt[si] += 1
                 dfs(k + 1, val + o, tuple(map(add, fsum, fv)),
@@ -611,6 +653,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                 names[nm] -= 1
                 for g in gs:
                     group_cnt[g] -= 1
+                if li >= 0:
+                    lim_cnt[li] -= 1
                 if si >= 0:
                     set_cnt[si] -= 1
 

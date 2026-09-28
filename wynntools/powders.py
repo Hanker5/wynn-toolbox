@@ -100,12 +100,15 @@ def score_current(build, gd, measure, roll="base", inventory=None):
     return value(m, measure[len("damage:"):] if measure.startswith("damage:") else measure)
 
 
-def plan_armor(build, gd, goal="hp", tier=None, roll="base", inventory=None):
-    """{"powders": {slot: [names]}, "hp", "eledefs", "before": {...}, "goal", "tier"}."""
+def plan_armor(build, gd, goal="hp", tier=None, roll="base", inventory=None, only=None):
+    """{"powders": {slot: [names]}, "hp", "eledefs", "before": {...}, "goal", "tier"}.
+    `only`: the armor slots to powder (default all four); the others keep the
+    powders they have, and the plan counts them."""
     tier = tier or top_tier(build.level)
-    slots = {s: _slots(gd, build.equipment[i]) for i, s in enumerate(ARMOR_SLOTS)}
+    only = [s for s in ARMOR_SLOTS if only is None or s in only]
+    slots = {s: _slots(gd, build.equipment[i]) for i, s in enumerate(ARMOR_SLOTS) if s in only}
     total = sum(slots.values())
-    raw, pct, hp0 = _defences_without_armor_powders(build, gd, roll, inventory)
+    raw, pct, hp0 = _defences_without_armor_powders(build, gd, roll, inventory, only)
     if goal.startswith("special:"):
         e = goal[len("special:"):]
         if e not in SKP_ELEMENTS:
@@ -137,7 +140,7 @@ def plan_armor(build, gd, goal="hp", tier=None, roll="base", inventory=None):
     # hand the mix out piece by piece
     pool = [e for e, c in zip(SKP_ELEMENTS, mix) for _ in range(c)]
     out = {}
-    for s in ARMOR_SLOTS:
+    for s in only:
         out[s] = [powder_name(pid(e, tier)) for e in pool[:slots[s]]]
         pool = pool[slots[s]:]
     cur_hp, cur_ed = _current_armor(build, gd, roll, inventory)
@@ -158,9 +161,10 @@ def _compositions(n, k):
             yield tuple(parts)
 
 
-def _defences_without_armor_powders(build, gd, roll, inventory):
-    """Raw elemental defences, their % bonuses and health, as if the armor had no powders."""
-    k_armor = [POWDERABLE.index(i) for i in range(4)]
+def _defences_without_armor_powders(build, gd, roll, inventory, only=ARMOR_SLOTS):
+    """Raw elemental defences, their % bonuses and health, as if the armor in
+    `only` had no powders."""
+    k_armor = [POWDERABLE.index(i) for i, s in enumerate(ARMOR_SLOTS) if s in only]
     saved = [build.powders[k] for k in k_armor]
     for k in k_armor:
         build.powders[k] = []

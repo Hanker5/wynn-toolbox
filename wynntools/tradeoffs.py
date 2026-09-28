@@ -11,6 +11,7 @@ import dataclasses
 
 from .gear_local import LocalSearch
 from .gear_solver import Result
+from .search import local_event
 
 LABELS = ("max damage", "balanced", "tanky", "max survival")
 
@@ -34,8 +35,9 @@ def tradeoffs(spec, gd, damage="melee_dps", tank="ehp", steps=(1 / 3, 2 / 3), sh
 
         def tick(p):
             if progress:
-                progress({**p, "fraction": None if p["fraction"] is None
-                          else (len(runs) + p["fraction"]) / share})
+                ev = local_event(p)
+                progress({**ev, "fraction": None if ev["fraction"] is None
+                          else (len(runs) + ev["fraction"]) / share})
         ls = LocalSearch(s, gd, progress=tick, time_limit=time_limit)
         r = ls.run()
         runs.append(r)
@@ -65,7 +67,8 @@ def tradeoffs(spec, gd, damage="melee_dps", tank="ehp", steps=(1 / 3, 2 / 3), sh
         options.append({
             "label": label,
             "result": Result(_value(m, damage), ev.names, ev.sp_assigned, 0,
-                             skillpoints=ev.manual, metrics=m),
+                             skillpoints=ev.manual, metrics=m,
+                             tomes=ev.tomes if spec.tome_pool != "fixed" else None),
             "damage": _value(m, damage), "tank": _value(m, tank), "hp": m["hp"], "hpr": m["hpr"],
             "ehp": m["ehp"], "sp_total": sum(ev.sp_assigned), "skillpoints": ev.manual,
             "sp_assigned": ev.sp_assigned,

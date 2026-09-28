@@ -41,8 +41,10 @@ questions; you run the commands.
      hand: the output says which, and the build keeps them. If a mana floor
      relied on spare points going into Intelligence, say so; WynnBuilder won't
      do that itself.
-   - **Aspects are empty** in solver builds; say so. (Players can add them in
-     the editor or the build file's `aspects`; they change damage, not totals.)
+   - **Aspects are empty** in new solver builds; say so. (Players can add them in
+     the editor, `wt edit --aspect`, or the build file's `aspects`; they change
+     damage, not totals. `wt aspects --recommend` ranks them by a goal. A
+     re-search of a build keeps its aspects and counts them while searching.)
    - Tomes are **goals to collect** unless the player said they own them. When
      the search chose them (`tome_pool` / `--tomes`), say from which pool: the
      player's inventory, or any tome (goals to collect); and that a tome may fill
@@ -92,7 +94,8 @@ questions; you run the commands.
      spell damage; or `--shortlists`): can miss the best build; run
      `--confirm` and say the result is best-within-shortlists.
    - **local** (a derived goal: `ehp`, `hpr`, `melee_dps`, `puppet_dps`,
-     `summon_dps`, `damage:<spell>`): a good build, not proven best. Say so.
+     `summon_dps`, `damage:<spell>`; or damage-model minimums with
+     `tome_pool`): a good build, not proven best. Say so.
 
 10. **New means new.** The open build is context, not a request. Only "this
     build", "my build", "it" or "improve/change ..." means edit it; "new",
@@ -125,7 +128,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt gear spec.json --parent builds/x.json --name NAME` | Save the result as a named candidate of an existing build (`builds/x--name.json`). |
 | `wt tradeoffs spec.json --damage puppet_dps --tree PRESET [--parent builds/x.json]` | A few legal builds from max damage to max effective HP, side by side (HP, regen, EHP, skill points, puppet DPS); `--parent` saves each as a candidate. |
 | `wt variants builds/x.json [--choose builds/x--y.json] [--trash-rest]` | A build's candidates side by side; choose one (its gear goes into the build, which keeps its name) and trash the rest (to `builds/.trash`). |
-| `wt powders builds/x.json --weapon puppet_dps --armor eledef [--write]` | Suggest weapon and armor powders separately: a damage number or `special:<name>` for the weapon; `hp`, `eledef` or `special:<e\|t\|w\|f\|a>` for the armor. |
+| `wt powders builds/x.json --weapon puppet_dps --armor eledef [--write [weapon\|armor\|helmet,boots\|all]]` | Suggest weapon and armor powders separately: a damage number or `special:<name>` for the weapon; `hp`, `eledef` or `special:<e\|t\|w\|f\|a>` for the armor. `--write SCOPE` writes only those parts (armor slots named: only they are planned; the rest keep their powders and count) and prints each slot's before -> after. A bare `--write` refuses to replace powders already on a piece; name the scope. |
 | `wt import <link> builds/x.json [--force]` | Save any WynnBuilder link as a build file. Prints what to know first (skill points set by hand for only some skills, retired item ids, items above the level, damage that can't be worked out); a build with problems needs `--force`. |
 | `wt link builds/x.json [--write]` | Re-check a build file after edits; `--write` updates its link and status. |
 | `wt current` | What the player is looking at in the web app: the build file, its full report and link, and any **unsaved** edits in the page. |
@@ -135,7 +138,8 @@ the sandbox, including the ones that talk to the web app.
 | `wt spec-check spec.json [--tree PRESET]` | Catch spec mistakes before a long search: typos, a wrong-class weapon, damage goals without `--tree`, several similar goal weights; says which search will run. Exit 1 on errors. |
 | `wt report builds/x.json` | The closing report: verified link, search kind, objective, and every assumption from rule 3 in one block. Build your answer from it. |
 | `wt show builds/x.json` | Open a build in the player's web app. |
-| `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --level N --name ... --tree-preset P [--lock SLOTS] [--auto-sp] [--save-as builds/y.json]` | Change a build file safely (checks names and slots), re-check it, and open it in the app. `--lock` keeps slots in later searches; `--auto-sp` puts skill points back to automatic. `--save-as` makes a variant and leaves the original alone. |
+| `wt edit builds/x.json --item helmet="Name" --tome armorTome1="Name" --aspect "Name[=TIER]" [--tier N] [--remove-aspect NAME] --level N --name ... --tree-preset P [--lock SLOTS] [--auto-sp] [--save-as builds/y.json]` | Change a build file safely (checks names, slots and tome types: a tome goes only in a slot of its type), re-check it, and open it in the app. `--aspect` fills an empty aspect slot (or re-tiers that aspect); the tier defaults to the one owned, else the top tier. `--lock` keeps slots in later searches; `--auto-sp` puts skill points back to automatic. `--save-as` makes a variant and leaves the original alone. |
+| `wt aspects builds/x.json [--owned] [--tiers] [--recommend --goal puppet_dps]` | The class's aspects: what each tier does, the tree nodes it works through and whether the build's tree has them (and which WynnBuilder's data doesn't model). `--recommend` ranks aspects for the empty slots by a damage-model goal (the build spec's by default); `--owned` uses only the inventory's, at the tier owned. Local, not proven best. |
 | `wt damage <link or build file> [--perfect] [--parts] [--special auto\|Curse:7] [--armor-boost e=300]` | WynnBuilder's right column: melee DPS, every spell's damage or healing, mana costs, effective HP, elemental defences, and which powder specials the powders give. Typical rolls by default; `--perfect` matches the WynnBuilder page. `--special`/`--armor-boost` switch powder specials on (not WynnBuilder's default). |
 | `wt compare <a> <b> [--perfect]` | Two builds (links or files) side by side: gear, totals, skill points, spell damage, effective HP. The web app's "Compare builds" page shows the same. |
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. Every class has a generic preset per archetype (`archer-boltslinger`, `warrior-paladin`, `mage-riftwalker`, ...); none is tuned for a particular goal. |
@@ -147,10 +151,10 @@ the sandbox, including the ones that talk to the web app.
 | spec `floors` | any item stat as a minimum (`sdPct`, `poison`, `spRaw1`, `xpb`, ... every ID in `wynntools/statinfo.py`), and `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef`/`tDef`/`wDef`/`fDef`/`aDef` (raw, as the Summary shows), `min_eledef` (every elemental defence), `str`/`dex`/`int`/`def`/`agi` (final skill points: met with spare points set by hand if the gear falls short), and damage-model ones: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage`. |
 | spec `objective` | Item stats (`eSteal`, `hp`, ...), `min_eledef` (exact), or derived goals: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage:<spell>` (local search; damage ones need `--tree`, or a build's own tree with `--edit`). |
 | spec `caps` / `exclude_major` | `caps`: `{stat: maximum}` on any item stat (every search kind). `exclude_major`: major IDs no item or set bonus may give (forced items are kept, so forcing pieces that trigger it finds nothing). |
-| spec `require_sets` / `exclude_sets` | `require_sets`: `{set name: pieces}` wear at least that many pieces of a set (its bonus is then in every total). `exclude_sets`: sets none of whose pieces are used (forced items excepted). A `require_major` can also be met through a set bonus. |
+| spec `require_sets` / `max_set_pieces` / `exclude_sets` | `require_sets`: `{set name: pieces}` wear at least that many pieces of a set (its bonus is then in every total). `max_set_pieces`: `{set name: pieces}` at most that many (the build form's "At most N pieces of a set"). `exclude_sets`: sets none of whose pieces are used (forced items excepted). A `require_major` can also be met through a set bonus. Sets WynnBuilder calls an "illegal item combination" past a count (the Hive sets: one piece) are always capped, and a build over the limit fails `wt verify`. |
 | spec acquisition keys | `exclude`, `exclude_tiers` (e.g. `["Mythic"]`), `at_most_one` (lists of item names), `prefer` (names: a tiebreak), `force`, and `--owned`. The inventory's unavailable list is always left out. |
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. Tomes come from the inventory too, unless the spec lists tomes. |
-| `wt gear spec.json --tomes owned\|any` (spec `"tome_pool"`) | The exact search also chooses the tomes the spec leaves empty: from the inventory, or any tome. Not with damage-model goals or minimums (they use other searches). Chosen tomes are saved in the build. |
+| `wt gear spec.json --tomes owned\|any` (spec `"tome_pool"`) | The search also chooses the tomes the spec leaves empty: from the inventory, or any tome. The exact and local searches both do (damage-model minimums then run the local search); only `--shortlists` can't. Chosen tomes are saved in the build. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
 | `wt config [ai [claude\|codex\|gemini\|shell\|none]]` / `wt config check_updates on\|off` | Show or change the AI assistant the web app starts in its terminal, or turn the update check off (`builds/settings.json`). |

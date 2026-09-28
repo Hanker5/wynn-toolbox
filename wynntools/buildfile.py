@@ -26,7 +26,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from .codec import POWDER_ELEMENTS, POWDER_TIERS, TOME_SLOTS, Build, powder_name, to_link
+from .codec import POWDER_ELEMENTS, POWDER_TIERS, POWDERABLE, TOME_SLOTS, Build, powder_name, to_link
 from .data import LATEST
 from .verify import check_link
 
@@ -92,6 +92,44 @@ def from_build(b, gd):
         doc["aspects"] = [None if a is None else [names[a[0]], a[1]] for a in b.aspects]
     doc["skillpoints"] = b.skillpoints
     return doc
+
+
+def keep_in_search(spec, doc, gd):
+    """Make a search from build file `doc` count what the build already has from
+    the start: its aspects (while the class stays) and the powders on its items
+    (while each item stays in its slot). Sets spec.aspects and spec.powders."""
+    equipment = list(doc.get("equipment") or [None] * 9)
+    if doc.get("aspects") and any(doc["aspects"]) and equipment[8] \
+            and gd.weapon_class(equipment[8]) == spec.cls:
+        ids = {a["displayName"]: a["id"] for a in gd.aspects(spec.cls)}
+        spec.aspects = [None if not e or e[0] not in ids else (ids[e[0]], int(e[1]))
+                        for e in list(doc["aspects"])[:5]]
+        spec.aspects += [None] * (5 - len(spec.aspects))
+    spec.powders = {}
+    for k, slot in enumerate(POWDERABLE):
+        got = (doc.get("powders") or [])[k] if k < len(doc.get("powders") or []) else []
+        if got and equipment[slot]:
+            spec.powders[slot] = (equipment[slot], [powder_id(p) for p in got])
+    return spec
+
+
+def carry_over(new, old, gd):
+    """A search result's build file `new`, made from build file `old`: the aspects
+    come along while the class is the same, and the powders on items that stayed
+    in their slot. Returns `new`."""
+    old_eq = list(old.get("equipment") or [None] * 9)
+    new_eq = list(new.get("equipment") or [None] * 9)
+    if old.get("aspects") and any(old["aspects"]) and old_eq[8] and new_eq[8] \
+            and gd.weapon_class(old_eq[8]) == gd.weapon_class(new_eq[8]):
+        new["aspects"] = [list(e) if e else None for e in old["aspects"]]
+    if old.get("powders"):
+        powders = [[] for _ in POWDERABLE]
+        for k, slot in enumerate(POWDERABLE):
+            if k < len(old["powders"]) and old_eq[slot] and old_eq[slot] == new_eq[slot]:
+                powders[k] = list(old["powders"][k])
+        if any(powders):
+            new["powders"] = powders
+    return new
 
 
 def refresh(doc, gd, inventory=None):

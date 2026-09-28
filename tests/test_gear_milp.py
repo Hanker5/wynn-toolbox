@@ -129,8 +129,26 @@ def test_a_guild_tome_can_make_a_skill_minimum_reachable(gd):
     verified(gd, spec, with_it)
 
 
-def test_choosing_tomes_needs_the_exact_search(gd):
-    from wynntools.search import run
-    spec = dataclasses.replace(TOME_SPEC, tome_pool="any", objective={"ehp": 1})
-    with pytest.raises(ValueError, match="exact search"):
-        run(spec, gd, explain_failure=False)
+def test_the_local_search_chooses_owned_tomes_too(gd):
+    """Damage-model goals used to refuse "tome_pool" (only the exact search could
+    choose tomes), so owned tomes went in afterwards and changed the totals. The
+    local search now picks them as it goes, and they count in every check."""
+    from wynntools.search import kind_for, run
+    from wynntools.derived import metrics
+    have = ["Blooming Tome of Defensive Mastery III", "Clouded Tome of Defensive Mastery III"]
+    spec = dataclasses.replace(TOME_SPEC, objective={"ehp": 1}, force={"weapon": "Stormdrain"},
+                               tome_pool="owned", tome_supply={n: 1 for n in have})
+    assert kind_for(spec) == "local"
+    out = run(spec, gd, explain_failure=False, time_limit=300)
+    r = out.result
+    assert r.tomes and set(tome_names(gd, r)) <= set(have) and tome_names(gd, r)
+    assert "tomes chosen from the ones you own" in out.note
+    verified(gd, spec, r)
+    b = Build(equipment=r.equipment, level=spec.level, tomes=r.tomes, skillpoints=r.skillpoints)
+    assert metrics(b, gd)["ehp"] == pytest.approx(r.metrics["ehp"])      # the tomes were in the check
+    floors = dataclasses.replace(spec, objective={"eSteal": 1}, floors={"ehp": 20000})
+    assert kind_for(floors) == "local"                # the shortlist search can't choose tomes
+    with pytest.raises(ValueError, match="shortlist search can't choose tomes"):
+        run(floors, gd, kind="shortlists", explain_failure=False)
+
+

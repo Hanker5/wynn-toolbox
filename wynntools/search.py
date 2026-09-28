@@ -15,7 +15,7 @@ import dataclasses
 
 from .gear_solver import (DAMAGE_GOAL_PREFIX, DERIVED_FLOORS, DERIVED_GOALS, MIN_ELEDEF,
                           SKILL_FLOORS, SUM_FLOORS, Spec, solve_gear)
-from .rules import ROLLED_IDS
+from .rules import ROLLED_IDS, legal_set_pieces
 
 TOME_POOLS = ("fixed", "owned", "any")
 FLOOR_KEYS = (*SUM_FLOORS, *SKILL_FLOORS, MIN_ELEDEF, *DERIVED_FLOORS, "mana", "weapon_dps", "damage")
@@ -68,6 +68,19 @@ def spec_from(raw, gd, inventory=None):
             raise ValueError(f"unknown set {n!r} in 'exclude_sets'")
     if set(require_sets) & set(raw.get("exclude_sets") or []):
         raise ValueError("a set can't be both required and excluded")
+    max_set_pieces = dict(raw.get("max_set_pieces") or {})
+    for n, v in max_set_pieces.items():
+        if n not in gd.sets:
+            raise ValueError(f"unknown set {n!r} in 'max_set_pieces'")
+        if not isinstance(v, int) or isinstance(v, bool) or v < 0:
+            raise ValueError(f"'max_set_pieces' needs a piece count of 0 or more for {n!r}, not {v!r}")
+        if require_sets.get(n, 0) > v:
+            raise ValueError(f"the {n} set can't need {require_sets[n]} pieces and allow at most {v}")
+    for n, v in require_sets.items():
+        most = legal_set_pieces(gd.sets[n])
+        if most is not None and v > most:
+            raise ValueError(f"the game allows at most {most} piece{'s' * (most != 1)} of the {n} set "
+                             f"(WynnBuilder calls more an illegal combination), not {v}")
     prefer = raw.get("prefer") or {}
     if isinstance(prefer, list):
         prefer = {n: 0 for n in prefer}        # 0: a tiebreak only
@@ -93,6 +106,7 @@ def spec_from(raw, gd, inventory=None):
                 require_major=list(raw.get("require_major") or []),
                 exclude_major=list(raw.get("exclude_major") or []), caps=caps,
                 require_sets=require_sets, exclude_sets=list(raw.get("exclude_sets") or []),
+                max_set_pieces=max_set_pieces,
                 force={k: v for k, v in (raw.get("force") or {}).items() if v},
                 exclude=exclude, exclude_tiers=set(raw.get("exclude_tiers") or []),
                 tomes=[None if t is None else gd.tome(t)["id"] for t in raw.get("tomes") or []],
@@ -135,6 +149,8 @@ class Outcome:
 def kind_for(spec, shortlists=False):
     if spec.derived_objective() or (MIN_ELEDEF in spec.objective and spec.derived_floors()):
         return "local"
+    if spec.derived_floors() and spec.tome_pool != "fixed":
+        return "local"             # the shortlist search can't choose tomes; the local one can
     if spec.derived_floors() or shortlists:
         return "shortlists"
     return "exact"
@@ -145,10 +161,9 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
     """Search. `progress` gets {"fraction" (None if unknown), "nodes", "best",
     "elapsed", "text"} as the search goes."""
     kind = kind or kind_for(spec)
-    if spec.tome_pool != "fixed" and kind != "exact":
-        raise ValueError("choosing tomes ('tome_pool': owned/any) needs the exact search, which can't "
-                         "check damage-model goals or minimums (effective HP, DPS, spell damage, "
-                         "regen with %); use 'tome_pool': 'fixed' with the tomes listed, or drop those")
+    if spec.tome_pool != "fixed" and kind == "shortlists":
+        raise ValueError("the shortlist search can't choose tomes ('tome_pool': owned/any); the exact "
+                         "and local searches can (leave out --shortlists)")
     note = KIND_NOTES[kind]
     confirm_note = None
     found = None
@@ -165,9 +180,6 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
             gap = (r.bound - r.score) / max(abs(r.score), 1e-9) * 100 if r.bound is not None else None
             note = ("exact search, stopped at the time limit: a valid build, but not proven the "
                     "best" + (f"; no build can beat it by more than {gap:.1f}%" if gap is not None else ""))
-        if r is not None and spec.tome_pool != "fixed":
-            note += ("; tomes chosen from the ones you own" if spec.tome_pool == "owned"
-                     else "; tomes chosen from any tome (ones to collect)")
     elif kind == "shortlists":
         def shortlist_progress(p):
             if progress:
@@ -186,11 +198,7 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
 
         def local_progress(p):
             if progress:
-                best = p["best"]
-                progress({"fraction": p["fraction"], "nodes": p["evaluated"], "best": best,
-                          "elapsed": p["elapsed"],
-                          "text": f"{p['evaluated']} builds checked" +
-                                  (f" · best {best:,.0f}" if best is not None else "")})
+                progress(local_event(p))
         ls = LocalSearch(spec, gd, progress=local_progress, time_limit=time_limit)
         r = ls.run()
         if r is None and ls.best is not None:
@@ -198,6 +206,9 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
             for k in spec.derived_floors():
                 if k.startswith("damage:"):
                     found[k] = ls.best.metrics["spells"].get(k[len("damage:"):])
+    if r is not None and spec.tome_pool != "fixed":
+        note += ("; tomes chosen from the ones you own" if spec.tome_pool == "owned"
+                 else "; tomes chosen from any tome (ones to collect)")
     explanation = None
     if r is None and explain_failure:
         from .explain import explain
@@ -210,10 +221,17 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
     return Outcome(r, kind, note, explanation, confirm_note)
 
 
+def local_event(p):
+    """A local search's progress event (gear_local: "evaluated") in the shape every
+    progress display takes: {"fraction", "nodes", "best", "elapsed", "text"}."""
+    best, n = p.get("best"), p.get("evaluated", p.get("nodes", 0))
+    return {"fraction": p.get("fraction"), "nodes": n, "best": best, "elapsed": p.get("elapsed", 0),
+            "text": p.get("text") or f"{n} builds checked" + (f" · best {best:,.0f}" if best is not None else "")}
+
+
 def _best_derived(spec, gd):
     """For a failed shortlist search: the damage-model numbers of the best build
     without those floors, as a hint of how far off they are."""
-    from .codec import Build
     from .derived import metrics, value
     from .gear_milp import solve_gear_exact
     try:
@@ -224,9 +242,7 @@ def _best_derived(spec, gd):
         return None
     if r is None:
         return None
-    b = Build(equipment=r.equipment, level=spec.level,
-              tomes=list(spec.tomes) + [None] * (14 - len(spec.tomes)),
-              atree=set(spec.atree or ()), skillpoints=r.skillpoints)
+    b = spec.build(r.equipment, r.tomes, r.skillpoints)
     m = metrics(b, gd, spec.roll, spec.inventory)
     return {k: value(m, k[len("damage:"):] if k.startswith("damage:") else k)
             for k in spec.derived_floors()}

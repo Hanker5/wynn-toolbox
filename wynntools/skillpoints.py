@@ -285,7 +285,7 @@ def set_bonus_stats(set_counts, sets):
         for key, value in bonus.items():
             if key == "majorIds":
                 majors.update(value)
-            elif key in SKILLS:
+            elif key in SKILLS or key == "illegal":      # "illegal": a flag, not a stat
                 continue
             else:
                 stats[key] = stats.get(key, 0) + value

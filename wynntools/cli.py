@@ -4,7 +4,7 @@ import json
 import sys
 from pathlib import Path
 
-from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link
+from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link, tome_kind
 from .data import LATEST, VERSIONS, GameData, fetch
 from . import buildfile
 from . import inventory as inv_mod
@@ -13,7 +13,7 @@ from .progress import ProgressBar
 from .presets import PRESETS, preset_weights, summoner_hits_per_sec
 from .rules import ability_points
 from .tree_solver import solve_tree
-from .verify import check_link
+from .verify import check_link, wrong_tome_text
 
 
 def _print_report(ok, rep, gd):
@@ -445,16 +445,20 @@ def cmd_gear(a):
         print(f"Creating a new build" + (f" at {a.save}" if a.save else ""))
     spec = _spec_from(raw, gd, inventory)
     _search_tree(spec, a.tree, gd, old_doc)
+    if old_doc:
+        buildfile.keep_in_search(spec, old_doc, gd)
     left_out = sorted(set(inventory.unavailable) - set(spec.force.values()))
     if left_out:
         print(f"(leaving out {len(left_out)} item{'s' if len(left_out) != 1 else ''} marked unavailable "
               f"in {a.inventory}: {', '.join(left_out[:6])}{', ...' if len(left_out) > 6 else ''})")
     if a.tomes or (a.owned and "tome_pool" not in raw and not any(raw.get("tomes") or [])
-                   and kind_for(spec, a.shortlists) == "exact"):     # owned tomes only where a search can choose them
+                   and not a.shortlists):     # owned tomes wherever the search can choose them
         pool = a.tomes or "owned"
         raw["tome_pool"] = pool
         spec = _spec_from(raw, gd, inventory)
         _search_tree(spec, a.tree, gd, old_doc)
+        if old_doc:
+            buildfile.keep_in_search(spec, old_doc, gd)
     if a.owned:
         spec.only, spec.inventory, spec.crafted = inventory.names(), inventory, False
         print(f"Searching only the {len(inventory.names())} items in {a.inventory} (real rolls where given).")
@@ -932,10 +936,31 @@ def cmd_edit(a):
         name = name.strip() or None
         if name:
             try:
-                name = gd.name(gd.tome(name))
+                tome = gd.tome(name)
             except (KeyError, ValueError):
                 raise SystemExit(f"no tome named {name!r}")
+            if tome["type"] != tome_kind(slot):
+                fits = [s for s in TOME_SLOTS if tome_kind(s) == tome["type"]]
+                raise SystemExit(wrong_tome_text(tome, slot, gd) + f"; put it in {' or '.join(fits)}")
+            name = gd.name(tome)
         doc["tomes"][TOME_SLOTS.index(slot)] = name
+    if a.aspect or a.remove_aspect:
+        from . import aspects as asp_mod
+        inventory = inv_mod.load(a.inventory)
+        try:
+            for name in a.remove_aspect or []:
+                print(f"aspect removed: {asp_mod.remove(doc, gd, name)}")
+            for entry in a.aspect or []:
+                name, _, tier = entry.rpartition("=") if "=" in entry else (entry, "", "")
+                tier = int(tier) if tier.strip() else a.tier
+                name, tier, owned = asp_mod.put(doc, gd, name.strip(), tier, inventory)
+                note = ("owned" if owned >= tier else
+                        f"you own tier {owned}: tier {tier} is a goal" if owned else "not owned: a goal to collect")
+                print(f"aspect: {name} tier {tier} ({note})")
+        except (KeyError, ValueError) as e:
+            raise SystemExit(str(e).strip('"'))
+    elif a.tier is not None:
+        raise SystemExit("--tier goes with --aspect NAME")
     if a.level is not None:
         doc["level"] = a.level
     if a.name is not None:
@@ -991,10 +1016,12 @@ def cmd_tradeoffs(a):
     raw = {**raw, "objective": raw.get("objective") or {a.damage: 1}}
     spec = _spec_from(raw, gd, inventory)
     spec.objective = {a.damage: 1}
-    parent_doc = buildfile.read(a.parent) if a.parent else None
-    _search_tree(spec, a.tree, gd, parent_doc)
     if a.parent and not Path(a.parent).exists():
         raise SystemExit(f"no build {a.parent}")
+    parent_doc = buildfile.read(a.parent) if a.parent else None
+    _search_tree(spec, a.tree, gd, parent_doc)
+    if parent_doc:
+        buildfile.keep_in_search(spec, parent_doc, gd)
     print("(local searches for max damage, max survival and points between: a few minutes)")
     out = tradeoffs(spec, gd, a.damage, a.tank, show=a.show,
                     progress=None if a.quiet else ProgressBar("trade-offs"))
@@ -1016,7 +1043,7 @@ def cmd_tradeoffs(a):
     rc = 0
     for o in out["options"]:
         r = o["result"]
-        b = _build_from(raw, r.equipment, a.tree, gd)
+        b = _build_from(raw, r.equipment, a.tree, gd, r.tomes)
         if not a.tree and spec.atree:
             b.atree = set(spec.atree) | b.atree
         b.skillpoints = r.skillpoints
@@ -1030,6 +1057,7 @@ def cmd_tradeoffs(a):
             doc = {"name": f"{parent_doc.get('name') or Path(a.parent).stem}: {o['label']}", "notes": "",
                    **buildfile.from_build(b, gd), "spec": {k: v for k, v in raw.items() if not k.startswith("_")},
                    "tree_preset": a.tree, "parent": Path(a.parent).name}
+            buildfile.carry_over(doc, parent_doc, gd)
             buildfile.write(path, buildfile.refresh(doc, gd, inventory))
             print(f"  saved {path} (a candidate of {a.parent})")
     if a.parent and not a.no_show:
@@ -1086,22 +1114,48 @@ def cmd_variants(a):
     return 0
 
 
+POWDER_SCOPES = ("weapon", "armor", "helmet", "chestplate", "leggings", "boots")
+
+
+def _powder_scope(text):
+    """--write's scope: the parts to write ("weapon", "armor" or armor slots), or
+    None for everything suggested."""
+    if text in (None, "all"):
+        return None
+    parts = {p.strip() for p in text.split(",") if p.strip()}
+    bad = parts - set(POWDER_SCOPES)
+    if bad:
+        raise SystemExit(f"unknown --write scope {', '.join(sorted(bad))}; use all, or any of "
+                         f"{', '.join(POWDER_SCOPES)} (comma-separated)")
+    return parts
+
+
 def cmd_powders(a):
     """Suggest weapon and armor powders for a build (wynntools.powders)."""
-    from .powders import plan_armor, plan_weapon
+    from .powders import ARMOR_SLOTS, plan_armor, plan_weapon
     gd = GameData()
     inventory = inv_mod.load(a.inventory)
     doc = buildfile.read(a.build) if a.build.endswith(".json") else None
     from .codec import decode, link_hash
     b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
     tier = a.tier
+    explicit = a.write not in (None, "suggested")      # a scope named (all counts)
+    scope = _powder_scope(a.write) if explicit else None
+    if scope is not None:
+        if "weapon" in scope and not a.weapon:
+            raise SystemExit("--write weapon needs a weapon goal (--weapon ...)")
+        if scope - {"weapon"} and not a.armor:
+            raise SystemExit("--write armor (or an armor slot) needs an armor goal (--armor ...)")
+    armor_only = None if scope is None or "armor" in scope else [s for s in ARMOR_SLOTS if s in scope]
     try:
         w = plan_weapon(b, gd, a.weapon, tier, inventory=inventory, measure=a.measure) \
-            if a.weapon and b.weapon else None
-        ar = plan_armor(b, gd, a.armor, tier, inventory=inventory) if a.armor else None
+            if a.weapon and b.weapon and (scope is None or "weapon" in scope) else None
+        ar = plan_armor(b, gd, a.armor, tier, inventory=inventory, only=armor_only) \
+            if a.armor and (armor_only is None or armor_only) else None
     except ValueError as e:
         raise SystemExit(str(e))
-    powders = [list(x) for x in (doc.get("powders") if doc and doc.get("powders") else [[], [], [], [], []])]
+    old = [list(x) for x in (doc.get("powders") if doc and doc.get("powders") else [[], [], [], [], []])]
+    powders = [list(x) for x in old]
     if w:
         print(f"Weapon ({w['goal']}, tier {w['tier']}): {' '.join(w['powders'])}")
         print(f"  {w['measure']}: {w['before']:,.0f} now -> {w['value']:,.0f}")
@@ -1110,27 +1164,142 @@ def cmd_powders(a):
         print("  " + (f"with {w['special']['weapon'][0]} on at power {w['special']['weapon'][1]}" if w["special"]
                       else "powder specials off (WynnBuilder's default)"))
         powders[4] = w["powders"]
-    elif a.weapon:
+    elif a.weapon and (scope is None or "weapon" in scope):
         print("Weapon: no powder slots.")
     if ar:
-        print(f"Armor ({ar['goal']}, tier {ar['tier']}): " + " · ".join(
-            f"{s} {' '.join(v)}" for s, v in ar["powders"].items() if v))
+        kept = [s for s in ARMOR_SLOTS if s not in ar["powders"]]
+        print(f"Armor ({ar['goal']}, tier {ar['tier']}): " + (" · ".join(
+            f"{s} {' '.join(v)}" for s, v in ar["powders"].items() if v) or "no powder slots") +
+            (f"  (keeping {', '.join(kept)} as they are)" if kept else ""))
         print(f"  health {ar['before']['hp']:,.0f} -> {ar['hp']:,.0f} · lowest elemental defence "
               f"{ar['before']['lowest']:,.0f} -> {ar['lowest']:,.0f}")
-        for k, s in enumerate(("helmet", "chestplate", "leggings", "boots")):
-            powders[k] = ar["powders"][s]
+        for k, s in enumerate(ARMOR_SLOTS):
+            if s in ar["powders"]:
+                powders[k] = ar["powders"][s]
     print("(typical rolls, with the build's tree)")
-    if a.write:
-        if not doc:
-            raise SystemExit("--write needs a build file")
-        _refuse_if_unsaved(a.build, a.force)
-        out = buildfile.refresh({**doc, "powders": powders}, gd, inventory)
-        buildfile.write(a.build, out)
-        ok, rep = check_link(out["link"], gd)
-        _print_report(ok, rep, gd)
-        print(out["link"])
-        print(f"updated {a.build}")
-        _show_in_app(a.build)
+    names = [*ARMOR_SLOTS, "weapon"]
+    changed = [k for k in range(5) if powders[k] != old[k]]
+    show = lambda p: " ".join(p) or "(none)"
+    if not a.write:
+        if doc and changed:
+            print("Would change: " + "; ".join(f"{names[k]} {show(old[k])} -> {show(powders[k])}"
+                                               for k in changed))
+            print("Write with --write (all of it), or --write weapon / --write armor / "
+                  "--write helmet,boots to write only those.")
+        return 0
+    if not doc:
+        raise SystemExit("--write needs a build file")
+    replaced = [k for k in changed if old[k]]
+    if not explicit and replaced:
+        raise SystemExit("--write would replace powders already on "
+                         + ", ".join(f"{names[k]} ({show(old[k])})" for k in replaced)
+                         + ". Say which to write: --write all, --write weapon, --write armor, "
+                           "or armor slots (--write helmet,boots).")
+    _refuse_if_unsaved(a.build, a.force)
+    if not changed:
+        print(f"nothing to change in {a.build}")
+        return 0
+    for k in changed:
+        print(f"  {names[k]}: {show(old[k])} -> {show(powders[k])}")
+    for k in range(5):
+        if k not in changed and old[k]:
+            print(f"  {names[k]}: kept {show(old[k])}")
+    out = buildfile.refresh({**doc, "powders": powders}, gd, inventory)
+    buildfile.write(a.build, out)
+    ok, rep = check_link(out["link"], gd)
+    _print_report(ok, rep, gd)
+    print(out["link"])
+    print(f"updated {a.build}")
+    _show_in_app(a.build)
+    return 0
+
+
+def cmd_aspects(a):
+    """A class's aspects: what each does and which tree nodes it works through;
+    with --recommend, the ones that raise a goal most for the build's empty slots."""
+    from . import aspects as asp_mod
+    from .derived import DERIVED
+    gd = GameData()
+    inventory = inv_mod.load(a.inventory)
+    doc = buildfile.read(a.build) if a.build.endswith(".json") else None
+    from .codec import decode, link_hash
+    b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
+    if b.weapon is None:
+        raise SystemExit("aspects belong to a class: the build needs a weapon")
+    cls = gd.weapon_class(b.weapon)
+    owned = inventory.aspects.get(cls) or {}
+    ids = {x["displayName"]: x["id"] for x in gd.aspects(cls)}
+    names = {v: k for k, v in ids.items()}
+    in_build = {names[x[0]]: x[1] for x in b.aspects or [] if x}
+    info = asp_mod.describe(gd, cls, b.atree)
+    if a.owned:
+        info = [x for x in info if x["name"] in owned]
+        if not info:
+            print(f"{a.inventory} has no {cls} aspects. Add them with "
+                  f"`wt own add \"Aspect of ...\" --aspect --class {cls} --tier N`.")
+            return 1 if a.recommend else 0
+
+    if not a.recommend:
+        print(f"{cls} aspects{' you own' if a.owned else ''} ({len(info)}). Build: "
+              + (", ".join(f"{n} (tier {t})" for n, t in in_build.items()) or "no aspects") + ".")
+        for x in info:
+            mine, have = in_build.get(x["name"]), owned.get(x["name"])
+            tags = [x["rarity"]] + ([f"in build: tier {mine}"] if mine else []) + \
+                ([f"owned: tier {have}"] if have else [])
+            print(f"\n  {x['name']}  ({' · '.join(tags)})")
+            shown = x["tiers"] if a.tiers else [x["tiers"][(mine or have or len(x["tiers"])) - 1]]
+            t0 = {"modelled": any(t["modelled"] for t in shown),
+                  "nodes": list(dict.fromkeys(n for t in shown for n in t["nodes"])),
+                  "needs": list(dict.fromkeys(n for t in shown for n in t["needs"])),
+                  "active": None if any(t["active"] is None for t in shown if t["modelled"])
+                  else all(t["active"] for t in shown if t["modelled"])}
+            if not t0["modelled"]:
+                print("    works through: not modelled in WynnBuilder's data (its numbers ignore this aspect)")
+            else:
+                where = "" if t0["active"] is None else \
+                    ("  [in your tree]" if t0["active"] else "  [NOT in your tree: no effect as the tree is]")
+                print(f"    works through: {', '.join(t0['nodes']) or 'an ability of its own'}"
+                      + (f" (also needs {', '.join(t0['needs'])})" if t0["needs"] else "") + where)
+            for t in shown:
+                print(f"    tier {t['tier']}/{len(x['tiers'])}: {t['text']}")
+        print("\n(WynnBuilder's aspect data. Add one with `wt edit <build> --aspect \"NAME\" --tier N`; "
+              "--recommend ranks them by a goal.)")
+        return 0
+
+    goal = a.goal
+    if goal is None and doc and doc.get("spec"):
+        goal = next((k for k in doc["spec"].get("objective") or {}
+                     if k in DERIVED or k.startswith("damage:")), None)
+    if goal is None:
+        raise SystemExit("--recommend needs --goal: melee_dps, puppet_dps, summon_dps, ehp, hpr, "
+                         "or damage:<spell> (the build's spec has no damage-model goal to reuse)")
+    key = goal[len("damage:"):] if goal.startswith("damage:") else goal
+    choices = [(ids[x["name"]], owned[x["name"]] if a.owned else len(x["tiers"])) for x in info]
+    r = asp_mod.recommend(b, gd, key, choices, inventory=inventory)
+    label = DERIVED.get(goal, (key,))[0]
+    print(f"Goal: {label} (typical rolls, the build's tree, no powder specials) · now {r['before']:,.0f}")
+    print(f"Aspects from: {'your inventory, at the tier you own' if a.owned else 'every ' + cls + ' aspect at its top tier (goals to collect)'}")
+    free = sum(1 for x in ((b.aspects or []) + [None] * 5)[:5] if not x)
+    if not free:
+        print("All 5 aspect slots are full; remove one (`wt edit --remove-aspect NAME`) to make room.")
+        return 0
+    print(f"\nEach alone, in an empty slot ({free} free):")
+    for aid, tier, gain in [x for x in r["singles"] if abs(x[2]) >= 0.5][:a.top]:
+        print(f"  {gain:>+12,.0f}  {names[aid]} (tier {tier})")
+    none = [names[aid] for aid, _, gain in r["singles"] if abs(gain) < 0.5]
+    if none:
+        print(f"  no change to {label}: {len(none)} aspect(s) (utility, or their node isn't in the tree)")
+    if r["picked"]:
+        print(f"\nFilling the free slots one at a time: {r['before']:,.0f} -> {r['after']:,.0f}")
+        for aid, tier, gain in r["picked"]:
+            print(f"  {gain:>+12,.0f}  {names[aid]} (tier {tier})")
+        target = a.build if doc else "<build file>"
+        print("\nTo add them: wt edit " + target + " " +
+              " ".join(f'--aspect "{names[aid]}={tier}"' for aid, tier, _ in r["picked"]))
+    else:
+        print(f"\nNo aspect raises {label} for this build.")
+    print("(A local ranking in WynnBuilder's model, one slot at a time: not proven best. Aspects "
+          "change damage, not the build's totals.)")
     return 0
 
 
@@ -1485,7 +1654,7 @@ def main(argv=None):
     s.add_argument("--owned", action="store_true", help="only use items in the inventory, with their real rolls "
                    "(and, unless the spec lists tomes, only tomes in the inventory)")
     s.add_argument("--tomes", choices=["owned", "any"],
-                   help="let the exact search choose the tomes the spec leaves empty: from your inventory "
+                   help="let the search (exact or local) choose the tomes the spec leaves empty: from your inventory "
                         "or any tome (a spec's \"tome_pool\" does the same)")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.add_argument("--time-limit", type=int, default=600, metavar="SECONDS",
@@ -1519,10 +1688,25 @@ def main(argv=None):
     s.add_argument("--armor", help="hp, eledef (balanced elemental defence) or special:<e|t|w|f|a>")
     s.add_argument("--measure", default="melee_dps", help="with a weapon special: the damage to score by")
     s.add_argument("--tier", type=int, choices=range(1, 8), help="powder tier (default: the highest the level allows)")
-    s.add_argument("--write", action="store_true", help="put the suggestion into the build file")
-    s.add_argument("--force", action="store_true")
+    s.add_argument("--write", nargs="?", const="suggested", metavar="SCOPE",
+                   help="put the suggestion into the build file. SCOPE: all, or any of weapon, armor, "
+                        "helmet, chestplate, leggings, boots (comma-separated); only those are planned "
+                        "and written, other armor keeps its powders. Without SCOPE it refuses to "
+                        "replace powders a piece already has")
+    s.add_argument("--force", action="store_true", help="write even if the player has unsaved edits")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_powders)
+    s = sub.add_parser("aspects", help="a class's aspects, the tree nodes each works through, and "
+                                       "which raise a goal most")
+    s.add_argument("build", help="build file (or link)")
+    s.add_argument("--owned", action="store_true", help="only aspects in the inventory, at the tier owned")
+    s.add_argument("--recommend", action="store_true", help="rank aspects for the build's empty slots by --goal")
+    s.add_argument("--goal", help="melee_dps, puppet_dps, summon_dps, ehp, hpr or damage:<spell> "
+                                  "(default: the build spec's damage-model goal)")
+    s.add_argument("--tiers", action="store_true", help="show every tier's effect, not just one")
+    s.add_argument("--top", type=int, default=10, help="how many to rank")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_aspects)
     s = sub.add_parser("upgrades", help="rank items you don't own by how much each would help")
     s.add_argument("spec")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
@@ -1617,6 +1801,12 @@ def main(argv=None):
     s.add_argument("--lock", metavar="SLOTS", help="lock slots: searches from this build keep them (comma-separated)")
     s.add_argument("--unlock", metavar="SLOTS", help="unlock slots")
     s.add_argument("--auto-sp", action="store_true", help="skill points back to automatic")
+    s.add_argument("--aspect", action="append", metavar="NAME[=TIER]",
+                   help="put an aspect in the build (replacing the same aspect, else in an empty slot); "
+                        "tier from =TIER or --tier, else the tier you own, else the top tier (repeatable)")
+    s.add_argument("--tier", type=int, help="the tier for --aspect entries without =TIER")
+    s.add_argument("--remove-aspect", action="append", metavar="NAME", help="take an aspect out (repeatable)")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.add_argument("--save-as", metavar="PATH", help="write a new build file instead of changing this one")
     s.add_argument("--force", action="store_true",
                    help="write even if the player has unsaved edits, or --save-as exists")

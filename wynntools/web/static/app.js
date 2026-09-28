@@ -958,7 +958,7 @@ function renderPowderPlanner() {
           Object.entries(a.powders).filter(([, v]) => v.length).map(([s, v]) => `${slotLabel(s)} ${v.join(" ")}`).join(" · ") || "no slots",
           h("div", {}, `Health ${n(a.before.hp)} → `, h("strong", {}, n(a.hp)), ` · lowest elemental defence ${n(lowB)} → `,
             h("strong", { class: lowA < 0 ? "neg" : "pos" }, n(lowA))),
-          h("button", { class: "mini", onclick: () => { edit((x) => { x.powders = x.powders || [[], [], [], [], []]; ["helmet", "chestplate", "leggings", "boots"].forEach((s, k) => { x.powders[k] = a.powders[s]; }); }); renderEquipment(); toast("Armor powders applied. Save to keep them."); } }, "Apply")));
+          h("button", { class: "mini", onclick: () => { edit((x) => { x.powders = x.powders || [[], [], [], [], []]; ["helmet", "chestplate", "leggings", "boots"].forEach((s, k) => { if (s in a.powders) x.powders[k] = a.powders[s]; }); }); renderEquipment(); toast("Armor powders applied. Save to keep them."); } }, "Apply")));
       }
       setKids(out, kids.length ? kids : h("p", { class: "hint" }, "Pick a goal."));
     } catch (e) { out.replaceChildren(h("p", { class: "neg" }, e.message)); }
@@ -1711,7 +1711,9 @@ function renderSets(st) {
   const out = [];
   for (const set of sets) {
     out.push(h("div", { class: "srow set-h" }, h("span", { class: "tier-Set" }, set.name),
-      h("span", { class: "muted" }, `${set.pieces}/${set.of} pieces`)));
+      h("span", { class: set.illegal ? "neg" : "muted" }, `${set.pieces}/${set.of} pieces`)));
+    if (set.illegal) out.push(h("div", { class: "neg set-illegal" },
+      `⚠ Illegal combination: the game lets you wear at most ${set.most} piece${set.most === 1 ? "" : "s"} of this set.`));
     const entries = Object.entries(set.bonus);
     if (!entries.length) out.push(h("div", { class: "hint" }, "No bonus at this many pieces."));
     for (const [k, v] of entries) {
@@ -1882,7 +1884,7 @@ async function openSolverFor(c, fix = null) {
     exclude_tiers: spec.exclude_tiers || [], require_major: spec.require_major || [],
     exclude_major: spec.exclude_major || [], caps: spec.caps || {},
     require_sets: spec.require_sets || {}, exclude_sets: spec.exclude_sets || [],
-    at_most_one: spec.at_most_one || [], prefer: spec.prefer || {}, why: fix?.why,
+    max_set_pieces: spec.max_set_pieces || {}, at_most_one: spec.at_most_one || [], prefer: spec.prefer || {}, why: fix?.why,
     defaultGoal: !Object.keys(spec.objective || {}).length });
   show("solver");
 }
@@ -1925,7 +1927,7 @@ function renderSolver(pre = {}) {
   f.crafted = h("input", { type: "checkbox" });
   f.owned = h("input", { type: "checkbox" });
   f.exact = h("input", { type: "checkbox", checked: true });
-  f.tomesFrom = h("select", { title: "Choosing tomes uses the exact search: not with effective HP, DPS or spell-damage goals or minimums" },
+  f.tomesFrom = h("select", { title: "The exact and local searches can choose tomes (the shortlist search can't)" },
     h("option", { value: "" }, "no tomes"),
     h("optgroup", { label: "Let the search choose" },
       h("option", { value: "@owned" }, "only tomes I own"), h("option", { value: "@any" }, "any tome (ones to collect)")),
@@ -1947,25 +1949,36 @@ function renderSolver(pre = {}) {
     m.majors.map(([k, name]) => h("option", { value: k }, name)));
   noMajorIn.onchange = () => { if (noMajorIn.value) { noMajors.add(noMajorIn.value); majors.delete(noMajorIn.value); drawMajors(); } noMajorIn.value = ""; drawNoMajors(); };
   drawNoMajors();
-  // Sets: wear at least N pieces of one, or leave a set out.
+  // Sets: wear at least N pieces of one, at most N, or leave a set out. Sets the game
+  // limits (WynnBuilder's "illegal" combinations) are always capped by the search.
   const reqSets = { ...(pre.require_sets || {}) };
+  const maxSets = { ...(pre.max_set_pieces || {}) };
   const noSets = new Set(pre.exclude_sets || []);
   const setBox = h("div", { class: "rules" }), noSetChips = h("div", { class: "chips" });
-  const setSize = (n) => m.sets.find((x) => x.name === n)?.size || 1;
+  const setInfo = (n) => m.sets.find((x) => x.name === n) || { size: 1, most: null };
+  const setSize = (n) => setInfo(n).size || 1;
+  const setRow = (n, c, kind) => h("div", { class: "rule set-rule", "data-kind": kind },
+    h("span", { class: "rule-name" }, n),
+    h("span", { class: "muted" }, `${kind === "max" ? "at most" : "at least"}, of ${setSize(n)} pieces`),
+    h("input", { type: "number", min: kind === "max" ? 0 : 1, max: setSize(n), value: c,
+      "aria-label": `${n} pieces ${kind === "max" ? "at most" : "at least"}`,
+      oninput: (ev) => { if (kind === "max") maxSets[n] = Math.max(0, Math.floor(+ev.target.value || 0));
+                         else reqSets[n] = Math.max(1, Math.floor(+ev.target.value || 1)); } }),
+    h("button", { class: "mini", "aria-label": `Remove ${n}`, onclick: () => {
+      delete (kind === "max" ? maxSets : reqSets)[n]; drawSets(); } }, "✕"));
   const drawSets = () => {
-    setBox.replaceChildren(...Object.entries(reqSets).map(([n, c]) => h("div", { class: "rule set-rule" },
-      h("span", { class: "rule-name" }, n), h("span", { class: "muted" }, `at least, of ${setSize(n)} pieces`),
-      h("input", { type: "number", min: 1, max: setSize(n), value: c, "aria-label": `${n} pieces`,
-        oninput: (ev) => { reqSets[n] = Math.max(1, +ev.target.value || 1); } }),
-      h("button", { class: "mini", "aria-label": `Remove ${n}`, onclick: () => { delete reqSets[n]; drawSets(); } }, "✕"))));
-    setBox.hidden = !Object.keys(reqSets).length;
+    setBox.replaceChildren(...Object.entries(reqSets).map(([n, c]) => setRow(n, c, "min")),
+      ...Object.entries(maxSets).map(([n, c]) => setRow(n, c, "max")));
+    setBox.hidden = !Object.keys(reqSets).length && !Object.keys(maxSets).length;
     noSetChips.replaceChildren(...[...noSets].map((n) =>
       h("span", { class: "chip on", title: "remove", onclick: () => { noSets.delete(n); drawSets(); } }, `no ${n} ✕`)));
   };
-  const setOptions = (allowed) => () => m.sets.filter((x) => allowed(x) && !(x.name in reqSets) && !noSets.has(x.name))
-    .map((x) => ({ key: x.name, label: `${x.name} (${x.size} pieces)`, group: "Sets" }));
+  const setOptions = (allowed) => () => m.sets.filter((x) => allowed(x) && !(x.name in reqSets) && !(x.name in maxSets) && !noSets.has(x.name))
+    .map((x) => ({ key: x.name, label: `${x.name} (${x.size} pieces${x.most != null ? `, at most ${x.most} worn` : ""})`, group: "Sets" }));
   const reqSetPicker = searchPicker({ label: "Require a set", placeholder: "Search a set to wear…",
-    options: setOptions((x) => x.size <= 9), onPick: (n) => { reqSets[n] = Math.min(setSize(n), 4); drawSets(); } });
+    options: setOptions((x) => x.size <= 9), onPick: (n) => { reqSets[n] = Math.min(setSize(n), setInfo(n).most ?? 4, 4); drawSets(); } });
+  const maxSetPicker = searchPicker({ label: "Limit a set", placeholder: "Search a set to limit…",
+    options: setOptions(() => true), onPick: (n) => { maxSets[n] = Math.min(1, setInfo(n).most ?? 1); drawSets(); } });
   const noSetPicker = searchPicker({ label: "Avoid a set", placeholder: "Search a set to avoid…",
     options: setOptions(() => true), onPick: (n) => { noSets.add(n); drawSets(); } });
   drawSets();
@@ -2104,7 +2117,7 @@ function renderSolver(pre = {}) {
     if (f.weapon.value) force.weapon = f.weapon.value;
     return { class: f.cls.value, level: +f.level.value, objective, floors,
       require_major: [...majors], exclude_major: [...noMajors], caps,
-      require_sets: { ...reqSets }, exclude_sets: [...noSets], force, exclude: [...exclude], at_most_one: groups,
+      require_sets: { ...reqSets }, exclude_sets: [...noSets], max_set_pieces: { ...maxSets }, force, exclude: [...exclude], at_most_one: groups,
       prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
       exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, ...(pool ? { tome_pool: pool } : {}), topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
@@ -2178,7 +2191,7 @@ function renderSolver(pre = {}) {
     const file = fileFor(name);
     try {
       const { job, search } = await api("POST", "/api/solve", { spec, file, name, ...treeArgs(),
-        owned_only: f.owned.checked, exact: f.exact.checked, parent: parentFile() });
+        owned_only: f.owned.checked, exact: f.exact.checked, parent: parentFile(), keep_from: pre.from || null });
       resultBox.replaceChildren();
       status.textContent = search === "local" ? "Local search: this takes a minute or more…" : "Searching…";
       follow(job, async (j) => { toast(parentFile() ? "Candidate saved" : "Build found"); await loadList(); openBuild(j.file); });
@@ -2188,7 +2201,7 @@ function renderSolver(pre = {}) {
     const spec = await readForm();
     try {
       const { job } = await api("POST", "/api/tradeoffs", { spec, damage: f.tdamage.value, tank: f.ttank.value,
-        ...treeArgs(), owned_only: f.owned.checked });
+        ...treeArgs(), owned_only: f.owned.checked, keep_from: pre.from || null });
       resultBox.replaceChildren(h("div", { class: "hint" }, "Searching from all-out damage to all-out survival (a few minutes)…"));
       follow(job, async (j) => renderTradeoffs(j.result, spec));
     } catch (e) { status.textContent = e.message; }
@@ -2204,7 +2217,8 @@ function renderSolver(pre = {}) {
       let file = `${stem}.json`, n = 2;
       while (S.builds.some((b) => b.file === file)) file = `${stem}-${n++}.json`;
       const out = await api("POST", "/api/candidates", { file, name, spec: { ...spec, objective: { [r.damage]: 1 } },
-        equipment: o.equipment, skillpoints: o.skillpoints, ...treeArgs(), parent });
+        equipment: o.equipment, skillpoints: o.skillpoints, tomes: o.tomes || null, ...treeArgs(), parent,
+        keep_from: pre.from || null });
       await loadList();
       return out.file;
     };
@@ -2291,12 +2305,13 @@ function renderSolver(pre = {}) {
           "Skill-point minimums are met with spare points if the gear falls short; the build keeps them set by hand. Max mana assumes spare points go into Intelligence. " +
           "Any item stat works, at 100% rolls unless you own the item. " +
           "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search."))),
-    h("details", { class: "card fold", open: !!(majors.size || noMajors.size || Object.keys(reqSets).length || noSets.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
+    h("details", { class: "card fold", open: !!(majors.size || noMajors.size || Object.keys(reqSets).length || Object.keys(maxSets).length || noSets.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
       h("summary", {}, "Items: weapon, major IDs, sets, tomes, leave out"),
       h("div", { class: "form" }, field("Weapon (optional)", weaponAc), field("Tomes", f.tomesFrom),
         field("Required major IDs", majorIn), field("Avoid these major IDs", noMajorIn)),
       majorChips, noMajorChips,
-      h("div", { class: "form", style: "margin-top:10px" }, field("Require a set", reqSetPicker), field("Avoid a set", noSetPicker)),
+      h("div", { class: "form", style: "margin-top:10px" }, field("Require a set", reqSetPicker),
+        field("At most N pieces of a set", maxSetPicker), field("Avoid a set", noSetPicker)),
       setBox, noSetChips,
       h("div", { class: "form", style: "margin-top:10px" },
         field("Leave out (unavailable, too expensive…)", itemChips("Leave out", exclude)),

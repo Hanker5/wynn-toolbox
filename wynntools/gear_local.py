@@ -15,6 +15,11 @@ straight line captures, so the search fixes the weapon and runs once per
 candidate: the best few by the goal on their own, then the best few with the
 gear the first pass found. Other goals leave the weapon to the program.
 
+Tomes: with "tome_pool" owned/any, the gear program also picks tomes for the
+empty tome slots at every step (as the exact search does), and each pick is
+checked with those tomes in. A re-searched build's aspects and its powders on
+items that stay count from the start (Spec.aspects, Spec.powders).
+
 Spare skill points: with a derived goal, points the gear doesn't need go where
 they help the goal most (a few at a time, each step checked exactly), and the
 build keeps them as skill points set by hand. Set `"spare_sp": "none"` in the
@@ -23,7 +28,6 @@ spec to leave them unassigned instead.
 import dataclasses
 import time
 
-from .codec import Build
 from .damage import STATIC_IDS, build_stats, damage_report
 from .derived import DAMAGE_KEYS, from_report
 from .gear_milp import GearModel, Infeasible, _Rows
@@ -43,6 +47,7 @@ class Eval:
     metrics: dict
     sp_assigned: list
     shortfall: float             # summed relative shortfall on damage-model floors (0 = met)
+    tomes: list | None = None    # 14 tome ids (with the ones the search chose)
 
 
 def _uses_damage(keys):
@@ -56,15 +61,14 @@ class LocalSearch:
         self.weapons, self.rounds, self.time_limit = weapons, rounds, time_limit
         self.spare = spare_sp or spec.spare_sp or ("goal" if spec.derived_objective() else "none")
         self.budget = skill_points(spec.level)
-        if spec.tome_pool != "fixed":
-            raise ValueError("choosing tomes ('tome_pool': owned/any) only works with the exact search")
+        self.choose_tomes = spec.tome_pool != "fixed"
         self.tome_ids = list(spec.tomes) + [None] * (14 - len(spec.tomes))
         self.derived = spec.derived_floors()
         keys = list(spec.objective) + list(self.derived)
         self.damage = _uses_damage(keys)
         if self.damage and not spec.atree:
             raise ValueError("damage goals need an ability tree: give a tree preset")
-        self.evaluated = {}                   # tuple(names) -> Eval or None
+        self.evaluated = {}                   # key(names, tomes) -> Eval or None
         self.legal = set()                    # builds the program proposed: every other check passed
         self.t0 = time.time()
 
@@ -95,12 +99,16 @@ class LocalSearch:
                 out += (floor - v) / max(abs(floor), 1.0)
         return out
 
-    def _build(self, names, manual):
-        return Build(equipment=list(names), level=self.spec.level, tomes=self.tome_ids,
-                     atree=set(self.spec.atree or ()), skillpoints=manual)
+    def key(self, names, tomes=None):
+        """A candidate's key in `evaluated` and `legal`: its 9 names, and its tomes
+        when the search chooses them."""
+        return tuple(names) + (tuple(tomes or self.tome_ids) if self.choose_tomes else ())
 
-    def _score(self, names, manual):
-        b = self._build(names, manual)
+    def _build(self, names, manual, tomes=None):
+        return self.spec.build(names, tomes or self.tome_ids, manual)
+
+    def _score(self, names, manual, tomes=None):
+        b = self._build(names, manual, tomes)
         stats = build_stats(b, self.gd, self.spec.roll, self.spec.inventory)
         rep = damage_report(b, self.gd, self.spec.roll, self.spec.inventory, base=stats)
         m = from_report(rep)
@@ -112,14 +120,15 @@ class LocalSearch:
         return max_mana(stats.get("maxMana", 0), min(int_final + max(spare_left, 0), 10**9)) \
             >= self.spec.floors["mana"]
 
-    def evaluate(self, names):
-        """Eval for a build (None if it fails a check). Cached by items."""
-        key = tuple(names)
+    def evaluate(self, names, tomes=None):
+        """Eval for a build (None if it fails a check). Cached by items (and tomes)."""
+        tomes = list(tomes or self.tome_ids)
+        key = self.key(names, tomes)
         if key in self.evaluated:
             return self.evaluated[key]
         self.evaluated[key] = None
         spec, gd = self.spec, self.gd
-        sp = build_skillpoints(list(names), self.tome_ids, gd)
+        sp = build_skillpoints(list(names), tomes, gd)
         if sp.total_assigned > self.budget or not sp.under_100:
             return None
         got = assign_for_floors(sp, spec.skill_floors(), self.budget)
@@ -133,7 +142,7 @@ class LocalSearch:
 
         def attempt(ex):
             left = self.budget - sp.total_assigned - sum(ex)
-            v, short, m, stats = self._score(names, manual_for(ex))
+            v, short, m, stats = self._score(names, manual_for(ex), tomes)
             # Intelligence set by hand counts as is; points left over may still go there.
             int_final = sp.final[2] + ex[2]
             spare_to_int = min(left, 100 - sp.assigned[2] - ex[2])
@@ -165,15 +174,15 @@ class LocalSearch:
                     break
         (neg_short, value), m = cur
         ev = Eval(list(names), value, manual_for(extra), m,
-                  [sp.assigned[j] + extra[j] for j in range(5)], -neg_short)
+                  [sp.assigned[j] + extra[j] for j in range(5)], -neg_short, tomes)
         self.evaluated[key] = ev
         return ev
 
     # ------------------------------------------------------------ linearization
-    def gradient(self, names, manual):
+    def gradient(self, names, manual, tomes=None):
         """d(goal)/d(stat) at a build, for every stat an item can carry, and the
         same for each derived floor. Skill keys mean final skill points."""
-        b = self._build(names, manual)
+        b = self._build(names, manual, tomes)
         base = build_stats(b, self.gd, self.spec.roll, self.spec.inventory)
         v0, m0 = self._goal_and_floors(b, base)
         keys = self.keys
@@ -242,7 +251,8 @@ class LocalSearch:
         if best is None or best.shortfall > 0:
             return None
         return Result(best.value, best.names, best.sp_assigned, time.time() - self.t0,
-                      skillpoints=best.manual, metrics=best.metrics)
+                      skillpoints=best.manual, metrics=best.metrics,
+                      tomes=best.tomes if self.choose_tomes else None)
 
     def _keys(self, model):
         keys = set(SKILLS)
@@ -298,10 +308,10 @@ class LocalSearch:
             return None
         self.model = model
 
-        def accept(names, _ok):
-            if self.evaluate(names) is None:
+        def accept(names, _ok, tomes=None):
+            if self.evaluate(names, tomes) is None:
                 return False
-            self.legal.add(tuple(names))
+            self.legal.add(self.key(names, tomes))
             return True
 
         def left():
@@ -312,10 +322,10 @@ class LocalSearch:
             got = model.solve(max_rounds=200, time_limit=left(), accept=accept)
             if got is None:
                 return None
-            cur = best = self.evaluate(got.names)
+            cur = best = self.evaluate(got.names, got.tomes)
         for rnd in range(self.rounds):
             self._tick((index + rnd / self.rounds) / max(total, 1), best and best.value)
-            g, _, m0 = self.gradient(cur.names, cur.manual)
+            g, _, m0 = self.gradient(cur.names, cur.manual, cur.tomes)
             c = self._objective(model, g["goal"])
             rows = self._floor_rows(model, g, m0, cur)
             proposals = []
@@ -326,19 +336,19 @@ class LocalSearch:
                 except TimeoutError:
                     got = None
                 if got:
-                    proposals.append(got.names)
-                    model.cut(got.cuts, got.names)          # and the runner-up, for variety
+                    proposals.append((got.names, got.tomes))
+                    model.cut(got.cuts, got.names, got.tomes)   # and the runner-up, for variety
                     try:
                         nxt = model.solve(c, extra_rows=got.cuts, max_rounds=20, time_limit=left(),
                                           accept=accept, margins=())
                     except TimeoutError:
                         nxt = None
                     if nxt:
-                        proposals.append(nxt.names)
+                        proposals.append((nxt.names, nxt.tomes))
                     break
             improved = False
-            for names in proposals:
-                ev = self.evaluate(names)
+            for names, tomes in proposals:
+                ev = self.evaluate(names, tomes)
                 if ev and (best is None or (-ev.shortfall, ev.value) > (-best.shortfall, best.value + 1e-9)):
                     best, improved = ev, True
             if not improved:
@@ -368,14 +378,17 @@ class LocalSearch:
         if not self.derived:
             return rows
         cur_vec = {}
-        for n in cur.names:
-            if n:
-                for k, v in self.item_vec(self.gd.item(n)).items():
-                    cur_vec[k] = cur_vec.get(k, 0) + v
+        chosen = [self.gd.tome(t) for k, t in enumerate(cur.tomes or ())      # the search's tome picks
+                  if t is not None and self.tome_ids[k] is None]
+        for it in [self.gd.item(n) for n in cur.names if n] + chosen:
+            for k, v in self.item_vec(it).items():
+                cur_vec[k] = cur_vec.get(k, 0) + v
         for f, floor in self.derived.items():
             grad = g[f]
             terms = [(v, sum(grad.get(k, 0.0) * x for k, x in self.item_vec(it).items()))
                      for v, it in enumerate(model.var_item) if it is not EMPTY]
+            terms += [(v, sum(grad.get(k, 0.0) * x for k, x in self.item_vec(t).items()))
+                      for v, (_, t) in model.tome_vars.items()]
             here = sum(grad.get(k, 0.0) * x for k, x in cur_vec.items())
             rows.add(terms, lo=floor - m0[f] + here)
         return rows

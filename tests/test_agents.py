@@ -70,3 +70,14 @@ def test_hook_says_the_open_build_is_not_a_request(tmp_path, monkeypatch):
 
 def test_agents_md_states_the_new_means_new_rule():
     assert "New means new" in (ROOT / "AGENTS.md").read_text()
+
+
+def test_no_instructions_put_search_specs_under_builds():
+    """Regression: the skill said `builds/specs/<name>.json` while AGENTS.md says
+    never to write a spec into builds/ (the sidebar reads every JSON there)."""
+    import re
+    for doc in (".claude/skills/build/SKILL.md", ".agents/skills/build/SKILL.md", "AGENTS.md",
+                "knowledge/goals.md", "README.md"):
+        text = (ROOT / doc).read_text()
+        assert not re.search(r"builds/specs?\b", text), doc
+        assert not re.search(r"wt (gear|tradeoffs|upgrades|spec-check) builds/[\w<>.-]+\.json", text), doc

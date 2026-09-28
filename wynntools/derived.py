@@ -119,6 +119,14 @@ def warnings(status, doc=None):
                                    f"only {status.get('sp_available')} are available.",
                         "fix": {"action": "search", "floors": {},
                                 "why": "gear whose requirements fit in the skill points"}})
+    for st in status.get("sets") or []:
+        if st.get("illegal"):
+            most = st["most"]
+            out.append({"code": "illegal_set", "level": "bad",
+                        "message": f"Illegal item combination: {st['pieces']} pieces of the {st['name']} "
+                                   f"set. The game won't let you wear more than {most} at once.",
+                        "fix": {"action": "search", "floors": {},
+                                "why": f"at most {most} piece{'s' * (most != 1)} of the {st['name']} set"}})
     hand = [k for k, v in (status.get("sp_manual") or {}).items() if v]
     if hand and len(hand) < 5 and not any(w["code"] == "sp_manual" for w in out):
         auto = [SKILL_NAMES[k] for k in SKILL_NAMES if k not in hand]

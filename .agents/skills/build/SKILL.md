@@ -64,22 +64,37 @@ Then collect only what is still missing:
   (`exclude`, or `wt own unavailable NAME --reason ...` so every search leaves
   them out), "no mythics" (`exclude_tiers`), "only one of these"
   (`at_most_one`), items they'd like if it costs nothing (`prefer`).
+- **Sets**: at least N pieces (`require_sets`), at most N (`max_set_pieces`,
+  e.g. `{"Master Hive": 1}`: clearer than an `at_most_one` list of every
+  piece), or none (`exclude_sets`). Sets the game limits (WynnBuilder's
+  "illegal item combination", e.g. the Hive sets: one piece) are always
+  capped; a build over the limit fails `wt verify`.
 - **Tomes**: which they own, or whether to plan for aspirational ones. Record
   owned ones with `wt own add --tome NAME`; then `"tome_pool": "owned"` (or
-  `wt gear --tomes owned`) lets the exact search pick the tomes for the slots
+  `wt gear --tomes owned`) lets the search pick the tomes for the slots
   `tomes` leaves empty from what they own; `"any"` picks from any tome (goals to
   collect: say so, and that the same tome may fill two paired slots, untested in
-  game). Only the exact search does this: not with effective HP, DPS, spell damage
-  or regen-with-% goals or minimums. `wt gear --owned` defaults to owned tomes.
+  game). The exact and local searches do this (damage-model goals and minimums
+  included); only `--shortlists` can't. `wt gear --owned` defaults to owned tomes.
+  A tome goes only in a slot of its own type (`wt edit --tome` refuses others).
 - **Aspects**: `wt own add --aspect --class Mage NAME --tier N` records the ones
-  they have. Searches don't choose aspects; the editor can limit its picker to them.
+  they have. Searches don't choose aspects. `wt aspects builds/<name>.json`
+  lists the class's aspects with the tree nodes each works through (and whether
+  the build's tree has them); `--recommend --goal <puppet_dps | ehp | ...>`
+  ranks them for the empty slots (`--owned`: only theirs, at the tier they
+  own). Add one with `wt edit builds/<name>.json --aspect "NAME" --tier N`
+  (`--remove-aspect NAME` takes it out). Aspects the data gives no effect are
+  marked "not modelled": WynnBuilder's numbers ignore them.
 
 ## 2. Write the spec
 
-Create `builds/specs/<name>.json`. Start from `examples/`. Fields:
+Write it to your scratchpad or temp directory, **never under `builds/`**: the
+app's sidebar reads every JSON there as a build (AGENTS.md). Start from
+`examples/`. Fields:
 
     class, level, objective {stat: weight}, floors {...}, require_major [...],
     force {slot: item}, exclude [...], exclude_tiers [...], at_most_one [[...]],
+    require_sets {set: n}, max_set_pieces {set: n}, exclude_sets [...],
     prefer [...], tomes [14 tome names or null, in slot order], topn
 
 Floors: `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef` ... `aDef`,
@@ -128,7 +143,7 @@ the changes are a judgment call.
 
 ## 4. Run, save and verify
 
-    wt gear builds/specs/<name>.json --tree <preset> \
+    wt gear <scratch>/<name>.spec.json --tree <preset> \
         --save builds/<name>.json --name "<readable name>"
 
 Always pass `--save`: it puts the build in the app's list and opens it there.
@@ -168,9 +183,11 @@ the commands below refuse until they do.
 
   It writes the result back into the file and prints what changed. Name,
   notes and powders on unchanged items stay; so do aspects and the tree while
-  the class is the same (pass `--tree PRESET` to re-solve it, which replaces
-  the player's own tree choices, so ask first). Manual skill points go back
-  to automatic when items change. `(no changes: ...)` means the build is
+  the class is the same (pass `--tree PRESET` to re-solve the tree, which
+  replaces the player's own tree choices, so ask first). The search counts
+  those aspects and powders, and the build's tomes, from the start, so its
+  damage numbers are the build's own. Manual skill points go back to
+  automatic when items change. `(no changes: ...)` means the build is
   already the best for that spec: say so rather than inventing a change.
 
 - **Fields neither command covers**: edit the file's editable fields by hand,
@@ -217,8 +234,12 @@ skill points. Point out cliffs where one step costs much more than the last.
 
 Powders: `wt powders builds/<name>.json --weapon <damage number or
 special:<name>> --armor <hp | eledef | special:<e|t|w|f|a>>` suggests them
-(weapon and armor separately); `--write` puts them in the build. Say whether
-powder specials were on. A special takes two or more tier IV+ powders of one
+(weapon and armor separately). Write only what the player asked to change:
+`--write weapon`, `--write armor`, or armor slots (`--write helmet,boots`:
+only those are planned; the other pieces keep their powders and count). A bare
+`--write` refuses to replace powders a piece already has; `--write all`
+replaces them. It prints each slot's before -> after. Say whether powder
+specials were on. A special takes two or more tier IV+ powders of one
 element on an item, and their tiers set its power (`knowledge/mechanics.md`).
 `wt damage --special auto` switches on the one the weapon's powders give;
 WynnBuilder's own numbers leave specials off.

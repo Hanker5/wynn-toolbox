@@ -21,6 +21,17 @@ MAX_LEVEL = 121
 ROLL_MIN, ROLL_MAX = 0.3, 1.3
 
 
+def legal_set_pieces(st):
+    """The most pieces of a set anyone can wear together, or None for no limit.
+    WynnBuilder marks a bonus "illegal" where the game forbids that many pieces
+    (js/builder/builder_graph.js: "WARNING: illegal item combination"): the Hive
+    sets and a few others allow one."""
+    for count, bonus in enumerate(st.get("bonuses") or [], 1):
+        if bonus.get("illegal"):
+            return count - 1
+    return None
+
+
 def skill_points(level):
     """js/build_utils.js `levelToSkillPoints`."""
     if level < 1:

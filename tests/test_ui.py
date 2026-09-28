@@ -993,6 +993,41 @@ def test_solver_requires_and_avoids_sets(page):
     assert not page.errors
 
 
+def test_solver_limits_a_set(page):
+    """"At most N pieces of a set" puts max_set_pieces in the spec the search gets."""
+    page.click("text=New build from goals")
+    open_fold(page, "Items")
+    lim = page.get_by_role("combobox", name="Limit a set")
+    lim.fill("master hive")
+    assert "at most 1 worn" in page.inner_text(".pk-list")       # the game's own limit, shown
+    lim.press("Enter")
+    row = page.locator(".set-rule[data-kind='max']")
+    assert row.count() == 1 and "at most" in row.inner_text()
+    page.get_by_role("spinbutton", name="Master Hive pieces at most").fill("0")
+    with page.expect_request("**/api/solve") as req:
+        page.click("#solver-run")
+    assert req.value.post_data_json["spec"]["max_set_pieces"] == {"Master Hive": 0}
+    assert not page.errors
+
+
+def test_illegal_set_combination_is_explained(page, app, gd):
+    """Two Master Hive pieces: the build isn't verified, and the Sets panel says why."""
+    from wynntools.codec import Build
+    b = Build(equipment=["Obsidian-Framed Helmet", None, None, "Hephaestus-Forged Sabatons",
+                         None, None, None, None, "Stormdrain"], level=105)
+    buildfile.write(Path(app.builds_dir) / "hive.json",
+                    buildfile.refresh({"name": "two hive pieces", **buildfile.from_build(b, gd)}, gd))
+    page.reload()
+    page.wait_for_selector("#build-list li")
+    open_build(page, "two hive pieces")
+    assert page.locator("#ed-badge .badge.bad").count() == 1
+    sets = page.inner_text("#ed-sets")
+    assert "Illegal combination" in sets and "at most 1 piece" in sets and "illegal" not in sets.split("Illegal")[0].lower()
+    assert "illegal item combination" in page.inner_text("#editor").lower()
+    assert page.locator(".fix-btn[data-code='illegal_set']").count() == 1
+    assert not page.errors
+
+
 def test_set_picker_list_opens_right_under_its_box(page):
     page.click("text=New build from goals")
     open_fold(page, "Items")
@@ -1022,7 +1057,7 @@ def test_progress_clock_ticks_every_second(page):
     page.click("#new-build")
     page.get_by_role("combobox", name="Class").select_option("Shaman")
     page.get_by_role("combobox", name="Tree preset").select_option("shaman-summoner")
-    page.get_by_role("combobox", name="Maximize").select_option("ehp")     # a local search: runs for minutes
+    page.get_by_role("combobox", name="Maximize").select_option("puppet_dps")   # a local search over several weapons: minutes
     page.click("#solver-run")
     seen = []
     for _ in range(14):                                                    # ~4.2 s

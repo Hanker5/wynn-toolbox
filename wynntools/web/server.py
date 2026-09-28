@@ -33,7 +33,7 @@ from ..data import VERSIONS, GameData
 from ..derived import DAMAGE_KEYS, DERIVED
 from ..gear_solver import CLASS_WEAPON, SUM_FLOORS, upgrades
 from ..presets import PRESETS, preset_weights
-from ..rules import ability_points
+from ..rules import ability_points, legal_set_pieces
 from ..statinfo import catalog
 from ..tree_solver import solve_tree
 from ..verify import stat
@@ -245,7 +245,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 "presets": [{"name": k, "class": v["class"], "about": v["about"]}
                             for k, v in PRESETS.items()],
                 "majors": sorted((k, v.get("displayName", k)) for k, v in gd.majids.items()),
-                "sets": sorted(({"name": n, "size": len(v["items"])} for n, v in gd.sets.items()),
+                "sets": sorted(({"name": n, "size": len(v["items"]), "most": legal_set_pieces(v)}
+                                for n, v in gd.sets.items()),
                                key=lambda s: s["name"]),
                 "stat_groups": [{"group": g, "stats": [{"key": k, "label": l} for k, l in ks]}
                                 for g, ks in catalog(SUM_FLOORS)],
@@ -647,6 +648,18 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             spec.only, spec.inventory, spec.crafted = owned.names(), owned, False
         return spec, owned
 
+    def keep_from(spec, name):
+        """A search from build `name` (the page's Improve/Fix): its aspects and
+        powders count from the start. Returns that build's doc, or None."""
+        if not name:
+            return None
+        p = path_for(name)
+        if not p.exists():
+            raise HTTPException(404, f"no build {name}")
+        doc = buildfile.read(p)
+        buildfile.keep_in_search(spec, doc, gd)
+        return doc
+
     def search_tree(spec, preset, tree_names=None):
         """The tree the damage model searches with: the preset's, or a build's own
         (node names). Damage goals and minimums need one."""
@@ -720,6 +733,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         spec, owned = spec_for(raw, body.get("owned_only"))
         preset = body.get("tree_preset") or None
         search_tree(spec, preset, body.get("tree"))
+        base = keep_from(spec, body.get("keep_from"))
         kind = kind_for(spec, shortlists=body.get("exact") is False)
         job = new_job(file=p.name, search=kind)
         on_progress = progress_for(job)
@@ -737,6 +751,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                     return
                 doc = build_doc(raw, spec, r.equipment, r.skillpoints, body.get("name") or p.stem,
                                 body.get("notes", ""), preset, body.get("tree"), parent, r.tomes)
+                if base:
+                    buildfile.carry_over(doc, base, gd)
                 buildfile.write(p, buildfile.refresh(doc, gd, owned))
                 job["state"] = "done"
             except Cancelled:
@@ -758,6 +774,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         damage, tank = body.get("damage") or "melee_dps", body.get("tank") or "ehp"
         spec.objective = {damage: 1}
         search_tree(spec, body.get("tree_preset") or None, body.get("tree"))
+        keep_from(spec, body.get("keep_from"))
         job = new_job()
         on_progress = progress_for(job)
 
@@ -767,7 +784,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 job["result"] = {
                     "damage": out["damage"], "tank": out["tank"], "checked": out["checked"],
                     "options": [{k: v for k, v in o.items() if k != "result"} |
-                                {"equipment": o["result"].equipment} for o in out["options"]]}
+                                {"equipment": o["result"].equipment, "tomes": o["result"].tomes}
+                                for o in out["options"]]}
                 job["state"] = "done"
             except Cancelled:
                 job["state"] = "cancelled"
@@ -780,7 +798,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     @app.post("/api/candidates")
     async def save_candidate(request: Request):
         """Save one search result (e.g. a trade-off row) as a build: {"file", "name",
-        "spec", "equipment", "skillpoints", "tree_preset", "tree", "parent"}."""
+        "spec", "equipment", "skillpoints", "tree_preset", "tree", "parent", "tomes"
+        (ids the search chose), "keep_from" (a build whose aspects and powders carry over)}."""
         body = await request.json()
         p = path_for(body["file"])
         if p.exists():
@@ -791,7 +810,10 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         spec, owned = spec_for(body["spec"])
         doc = build_doc(body["spec"], spec, body["equipment"], body.get("skillpoints"),
                         body.get("name") or p.stem, body.get("notes", ""),
-                        body.get("tree_preset") or None, body.get("tree"), parent)
+                        body.get("tree_preset") or None, body.get("tree"), parent, body.get("tomes"))
+        base = body.get("keep_from")
+        if base and path_for(base).exists():
+            buildfile.carry_over(doc, buildfile.read(path_for(base)), gd)
         buildfile.write(p, checked(doc))
         return {"file": p.name}
 
@@ -869,8 +891,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
     @app.post("/api/powders")
     async def powders_api(request: Request):
-        """{"doc", "weapon_goal", "armor_goal", "tier", "measure"}: the
-        powder planner's suggestion (wynntools.powders)."""
+        """{"doc", "weapon_goal", "armor_goal", "tier", "measure", "armor_slots"}: the
+        powder planner's suggestion (wynntools.powders); armor slots left out of
+        "armor_slots" keep their powders."""
         from ..powders import plan_armor, plan_weapon
         body = await request.json()
         try:
@@ -879,7 +902,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             weapon = plan_weapon(b, gd, body["weapon_goal"], tier, inventory=inv(),
                                  measure=body.get("measure") or "melee_dps") \
                 if body.get("weapon_goal") and b.weapon else None
-            armor = plan_armor(b, gd, body["armor_goal"], tier, inventory=inv()) \
+            armor = plan_armor(b, gd, body["armor_goal"], tier, inventory=inv(),
+                               only=body.get("armor_slots") or None) \
                 if body.get("armor_goal") else None
         except (KeyError, ValueError, NotImplementedError, TypeError) as e:
             raise HTTPException(422, str(e).strip('"'))

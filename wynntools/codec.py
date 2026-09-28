@@ -15,6 +15,15 @@ POWDERABLE = [0, 1, 2, 3, 8]            # helmet, chestplate, leggings, boots, w
 TOME_SLOTS = ["weaponTome1", "weaponTome2", "armorTome1", "armorTome2", "armorTome3",
               "armorTome4", "guildTome1", "lootrunTome1", "gatherXpTome1", "gatherXpTome2",
               "dungeonXpTome1", "dungeonXpTome2", "mobXpTome1", "mobXpTome2"]
+
+
+def tome_kind(slot):
+    """The tome type a slot takes ("armorTome3" -> "armorTome"). WynnBuilder's
+    tome inputs accept only that type (builder_graph.js ItemInputNode: a tome of
+    another type counts as an empty slot)."""
+    return slot.rstrip("0123456789")
+
+
 POWDER_TIERS = 7                        # js/powders.js; powder id = element * 7 + tier - 1
 POWDER_ELEMENTS = "etwfa"
 VECTOR_FLAG = 0xC

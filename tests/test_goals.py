@@ -159,6 +159,47 @@ def test_puppet_goal_and_tradeoffs(gd):
         assert o["hp"] >= 12000
 
 
+def test_tradeoffs_progress_reaches_the_progress_bar(gd, monkeypatch):
+    """Regression: tradeoffs forwarded gear_local's {"evaluated": ...} events as they
+    were, and ProgressBar raised KeyError: 'nodes'."""
+    import io
+    from wynntools import tradeoffs as tmod
+    from wynntools.progress import ProgressBar
+
+    class FakeSearch:
+        def __init__(self, spec, gd, progress=None, time_limit=None):
+            self.progress, self.legal, self.evaluated = progress, set(), {}
+
+        def run(self):
+            for f in (None, 0.5, 1.0):     # the shapes LocalSearch._tick sends
+                self.progress({"fraction": f, "evaluated": 12, "best": None if f is None else 3.5,
+                               "elapsed": 1.0})
+            return None
+    monkeypatch.setattr(tmod, "LocalSearch", FakeSearch)
+    out = io.StringIO()
+    tmod.tradeoffs(STORM, gd, "puppet_dps", progress=ProgressBar(stream=out))
+    assert "12 checked" in out.getvalue()
+
+
+def test_illegal_set_combination_fails_verification(gd):
+    """Two Master Hive pieces: WynnBuilder warns "illegal item combination", so
+    the build must not print VERIFIED OK, and the app shows why."""
+    from wynntools.derived import warnings
+    b = Build(equipment=["Obsidian-Framed Helmet", None, None, "Hephaestus-Forged Sabatons",
+                         None, None, None, None, "Lament"], level=105)
+    ok, rep = check_link(to_link(b, gd), gd)
+    assert not ok
+    assert any("illegal item combination" in p and "Master Hive" in p and "at most 1" in p
+               for p in rep["problems"])
+    st = next(x for x in rep["summary"]["sets"] if x["name"] == "Master Hive")
+    assert st["illegal"] and st["most"] == 1 and "illegal" not in st["bonus"]
+    assert "illegal" not in rep["summary"]["totals"]
+    status = buildfile.refresh({"name": "t", **buildfile.from_build(b, gd)}, gd)["status"]
+    assert any(w["code"] == "illegal_set" and w["fix"]["action"] == "search" for w in status["warnings"])
+    one = Build(equipment=["Obsidian-Framed Helmet", *[None] * 7, "Lament"], level=105)
+    assert not any("illegal" in p for p in check_link(to_link(one, gd), gd)[1]["problems"])
+
+
 # ------------------------------------------------------------ explanations
 def test_explains_a_skill_point_conflict(gd):
     spec = Spec(cls="Shaman", level=105, objective={"hp": 1}, force={"weapon": "Sunstar"},
@@ -299,6 +340,78 @@ def test_weapon_powders_raise_damage(gd, links):
     assert len(r["powders"]) == gd.item("Stormdrain")["slots"] and r["value"] >= r["before"]
     q = plan_weapon(b, gd, "special:Wind Prison", measure="puppet_dps")
     assert all(p.startswith("a") for p in q["powders"]) and q["special"] == {"weapon": ["Wind Prison", 7]}
+
+
+def test_armor_plan_keeps_the_pieces_left_out(gd, links):
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    b.powders[0] = [0, 0]                           # the helmet's powders stay as they are
+    r = plan_armor(b, gd, "eledef", only=["chestplate", "boots"])
+    assert set(r["powders"]) == {"chestplate", "boots"}
+    for k, s in ((1, "chestplate"), (3, "boots")):
+        b.powders[k] = [{"e": 0, "t": 7, "w": 14, "f": 21, "a": 28}[p[0]] + int(p[1]) - 1 for p in r["powders"][s]]
+    after = damage_report(b, gd, "base")["defense"]["eledefs"]
+    assert min(after.values()) == pytest.approx(r["lowest"])     # counted the kept helmet powders
+
+
+def test_powder_write_is_scoped_and_never_silently_replaces(gd, links, tmp_path, capsys, monkeypatch):
+    """Regression: `wt powders --weapon ... --armor ... --write` to restore armor
+    also overwrote the weapon powders the player chose on purpose."""
+    from wynntools import cli
+    monkeypatch.setattr(cli, "_show_in_app", lambda *a, **k: None)
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    doc = buildfile.from_build(b, gd)
+    doc["powders"] = [[], [], [], [], ["t6", "t6"]]
+    f = tmp_path / "p.json"
+    buildfile.write(f, buildfile.refresh({"name": "P", **doc}, gd))
+
+    def run(*argv):
+        try:
+            code = cli.main(["powders", str(f), *argv])
+        except SystemExit as e:
+            code = e.code if isinstance(e.code, int) else (print(e.code) or 1)
+        return code or 0, capsys.readouterr().out
+    code, out = run("--weapon", "puppet_dps", "--armor", "eledef", "--write")
+    assert code == 1 and "would replace powders already on weapon (t6 t6)" in out
+    assert buildfile.read(f)["powders"][4] == ["t6", "t6"]
+    code, out = run("--weapon", "puppet_dps", "--armor", "eledef", "--write", "armor")
+    doc = buildfile.read(f)
+    assert code == 0 and doc["powders"][4] == ["t6", "t6"] and any(doc["powders"][:4])
+    assert "weapon: kept t6 t6" in out
+    helmet = doc["powders"][0]
+    code, out = run("--armor", "hp", "--write", "boots")
+    doc = buildfile.read(f)
+    assert code == 0 and doc["powders"][0] == helmet and doc["powders"][4] == ["t6", "t6"]
+    assert run("--write", "weapon")[1].startswith("--write weapon needs a weapon goal")
+    assert "unknown --write scope" in run("--armor", "hp", "--write", "gloves")[1]
+
+
+def test_searches_from_a_build_count_its_aspects_and_powders(gd, links):
+    """A re-search (wt gear --edit, the app's Improve) scores candidates with the
+    build's aspects, and with its powders while their item stays, from the start
+    instead of adding them after the search."""
+    from wynntools.gear_local import LocalSearch
+    from wynntools.presets import preset_weights
+    from wynntools.rules import ability_points
+    from wynntools.tree_solver import solve_tree
+    b = decode(links["shaman_105_stormdrain"]["hash"], gd)
+    doc = buildfile.from_build(b, gd)
+    doc["aspects"] = [["Aspect of the Beckoned Legion", 3], None, None, None, None]
+    doc["powders"] = [["e6", "e6"], [], [], [], ["t6", "t6"]]
+    tree = set(solve_tree(gd.tree("Shaman"), preset_weights("shaman-summoner", gd), ability_points(105)))
+    spec = dataclasses.replace(STORM, objective={"puppet_dps": 1}, atree=tree)
+    plain = LocalSearch(spec, gd).evaluate(b.equipment).metrics["puppet_dps"]
+    buildfile.keep_in_search(spec, doc, gd)
+    kept = spec.build(b.equipment)
+    assert kept.aspects[0][1] == 3 and kept.powders[4] == [7 + 5, 7 + 5] and kept.powders[0] == [5, 5]
+    other = list(b.equipment)
+    other[0] = "Obsidian-Framed Helmet"
+    assert spec.build(other).powders[0] == []              # a new helmet comes without them
+    ev = LocalSearch(spec, gd).evaluate(b.equipment)
+    kept.skillpoints = ev.manual
+    assert ev.metrics["puppet_dps"] == pytest.approx(metrics(kept, gd)["puppet_dps"])
+    assert ev.metrics["puppet_dps"] > plain                 # the aspect's extra puppets count
+    new = buildfile.carry_over({**buildfile.from_build(b, gd), "equipment": other}, doc, gd)
+    assert new["aspects"] == doc["aspects"] and new["powders"] == [[], [], [], [], ["t6", "t6"]]
 
 
 # ------------------------------------------------------------ candidates

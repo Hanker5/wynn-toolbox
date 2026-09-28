@@ -35,7 +35,7 @@ from .codec import SLOTS, TOME_SLOTS
 from .gear_solver import (CLASS_WEAPON, ELEDEF_KEYS, EMPTY, MIN_ELEDEF, SUM_FLOORS, Result,
                           _crafted_candidates, _usable, assign_for_floors, derived_goal,
                           linear_value)
-from .rules import SKILLS, base_hp, max_mana, skill_points
+from .rules import SKILLS, base_hp, legal_set_pieces, max_mana, skill_points
 from .skillpoints import set_bonus_stats
 from .verify import REQ, build_skillpoints
 from .verify import stat as _stat
@@ -211,9 +211,12 @@ class GearModel:
             rows.add([(v, 1) for v in by_kind[kind]], need, need)
         for v, v2 in second_copy.items():
             rows.add([(v2, 1), (v, -1)], hi=0)
+        set_limits = spec.set_limits(gd)
         for s, ys in set_vars.items():
             for c, y in enumerate(ys):      # a bonus tier that grants an avoided major can't be reached
                 if c and set(spec.exclude_major) & set_bonus_stats({s: c}, gd.sets)[1]:
+                    rows.add([(y, 1)], hi=0)
+                if c > set_limits.get(s, c):     # more pieces than the game or the spec allows
                     rows.add([(y, 1)], hi=0)
             rows.add([(y, 1) for y in ys], 1, 1)
             rows.add([(v, 1) for v in set_members[s]] + [(y, -c) for c, y in enumerate(ys)], 0, 0)
@@ -316,6 +319,19 @@ class GearModel:
             if len(ys) <= need:
                 raise Infeasible(f"the {name} set can't reach {need} pieces here")
             rows.add([(y, 1) for c, y in enumerate(ys) if c >= need], lo=1)
+        forced_sets = {}
+        for name in (spec.force or {}).values():
+            if gd.set_of.get(name):
+                forced_sets.setdefault(gd.set_of[name], []).append(name)
+        for s, names in forced_sets.items():
+            most = set_limits.get(s)
+            if most is not None and len(names) > most:
+                why = ("the game allows" if most == legal_set_pieces(gd.sets[s]) else "the spec allows")
+                raise Infeasible((f"{' and '.join(names)} are {len(names)} pieces" if len(names) > 1
+                                  else f"{names[0]} is a piece") + f" of the {s} set; "
+                                 f"{why} at most {most}" +
+                                 (" (WynnBuilder calls more an illegal combination)"
+                                  if why == "the game allows" else ""))
         for slot, name in (spec.force or {}).items():
             kind = "ring" if slot in ("ring1", "ring2") else slot
             vs = [v for v in by_kind[kind] if var_item[v] is not EMPTY and gd.name(var_item[v]) == name]
@@ -445,7 +461,7 @@ class GearModel:
     def solve(self, c=None, extra_rows=None, max_rounds=2000, time_limit=600, progress=None,
               accept=None, t0=None, margins=(8, 20, 40)):
         """The best build under objective `c` (objective_vector()) that passes
-        check() and `accept(names, checked)` if given, as a Solved; None when
+        check() and `accept(names, checked, tome_ids)` if given, as a Solved; None when
         nothing does. Raises TimeoutError when time runs out with no build.
 
         The skill-point relaxation can be short of WynnBuilder's exact rule by a
@@ -480,7 +496,7 @@ class GearModel:
             names = self.names(chosen)
             tome_ids = self.tome_ids_of(res.x)
             ok = self.check(names, tome_ids)
-            if ok is not None and accept is not None and not accept(names, ok):
+            if ok is not None and accept is not None and not accept(names, ok, tome_ids):
                 ok = None
             if progress:
                 progress({"round": rnd, "cuts": len(cuts.lo), "best": bound,
@@ -527,7 +543,7 @@ class GearModel:
             names = self.names([v for v in range(self.n_items) if res.x[v] > 0.5])
             tome_ids = self.tome_ids_of(res.x)
             ok = self.check(names, tome_ids)
-            if ok is not None and (accept is None or accept(names, ok)):
+            if ok is not None and (accept is None or accept(names, ok, tome_ids)):
                 return Solved(names, ok, cuts, False, -res.fun, -res.fun, tome_ids)
             self.cut(rows, names, tome_ids)
         return None
