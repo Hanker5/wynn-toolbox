@@ -222,6 +222,29 @@ def test_gear_edit_refuses_what_it_cannot_do(builds, capsys):
                                                "--keep", "weapon")[1]
 
 
+def test_gear_edit_keeps_the_copy_a_build_uses(builds, capsys):
+    """Owning two Rings of Rubies (+10% and +4% Stealing), a re-search of ring2 leaves
+    ring1's +4% copy in place, and the report says where it is kept."""
+    from wynntools import inventory as inv_mod
+    ten, four = {"eSteal": 10}, {"eSteal": 4}
+    inv = inv_mod.Inventory(places={"account": {"pages": {"1": {"updated": "", "slots": [
+        {"slot": 0, "name": "Ring of Rubies", "kind": "item", "rolls": ten},
+        {"slot": 1, "name": "Ring of Rubies", "kind": "item", "rolls": four}]}}}})
+    inv_mod.save(inv, builds / "inv.json")
+    f = builds / "storm.json"
+    doc = buildfile.read(f)
+    doc["equipment"][4] = "Ring of Rubies"
+    doc["copies"] = [None] * 4 + [inv_mod.fingerprint(four)] + [None] * 4
+    buildfile.write(f, buildfile.refresh(doc, cli.GameData()))
+    code, out = run(capsys, "gear", _spec(builds), "--edit", str(f), "--change", "ring2", "--quiet",
+                    "--inventory", str(builds / "inv.json"))
+    new = buildfile.read(f)
+    assert code == 0, out
+    assert new["equipment"][4] == "Ring of Rubies" and new["copies"][4] == inv_mod.fingerprint(four)
+    code, out = run(capsys, "report", str(f), "--inventory", str(builds / "inv.json"))
+    assert "ring1       Ring of Rubies: Account ender chest · page 1 · row 1, column 2" in out
+
+
 def test_gear_edit_refuses_over_unsaved_edits(app, builds, capsys):
     api(app, "PUT", "/api/view", {"view": "editor", "file": "storm.json", "dirty": True,
                                   "doc": buildfile.read(builds / "storm.json")})

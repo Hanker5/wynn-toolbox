@@ -369,8 +369,13 @@ function ago(iso) {
   if (s < 36 * 3600) return `${Math.round(s / 3600)} h ago`;
   return `${Math.round(s / 86400)} days ago`;
 }
-/** The item with one copy's real rolls, for its hover card. */
-const withRolls = (it, rolls) => (it && rolls && Object.keys(rolls).length ? { ...it, _actual: rolls } : it);
+/** The item with one copy's real rolls, for its summary line and hover card. */
+function withRolls(it, rolls) {
+  if (!it || !rolls || !Object.keys(rolls).length) return it;
+  const stats = { ...it.stats };
+  for (const [k, v] of Object.entries(rolls)) if (k in stats) stats[k] = v;
+  return { ...it, _actual: rolls, stats };
+}
 const rollsText = (rolls) => Object.entries(rolls || {}).map(([k, v]) => { const [l, u] = idLabel(k); return `${l} ${sign(v)}${u}`; }).join(" · ");
 
 /** A tile for what isn't gear: tomes, aspects, and everything else a page holds. */
@@ -965,7 +970,7 @@ function initListDrag() {
 }
 
 // ------------------------------------------------------------------ build editor
-const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects", "skillpoints", "locked"];
+const EDITABLE = ["name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects", "skillpoints", "locked", "copies"];
 const editable = (doc) => Object.fromEntries(EDITABLE.filter((k) => k in doc).map((k) => [k, doc[k]]));
 const store = {
   get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
@@ -1227,15 +1232,48 @@ function slotView(slot) {
   const icon = h("div", { class: "eq-icon-wrap" }, itemIcon(typeNow(), 44, S.items[cur()]?.tier));
   const input = h("input", { class: "eq-name tier-" + (S.items[cur()]?.tier || "none"), value: displayName(cur()),
     placeholder: `No ${slotLabel(slot).toLowerCase()}`, "aria-label": slot, spellcheck: "false" });
-  // What the line and hover card show: the item with this slot's powders applied.
-  let view = S.items[cur()];
+  // Which of the player's copies this slot uses (a build file's "copies": rolls fingerprints).
+  const mine = () => (cur() ? (S.inv.copies || []).filter((c) => c.name === cur()) : []);
+  const copyFp = () => (S.cur.doc.copies || [])[i] || null;
+  const chosenCopy = () => { const m = mine(); return copyFp() ? m.find((c) => c.fp === copyFp()) : m[0]; };
+  // What the line and hover card show: the item with this slot's powders applied, and its copy's rolls.
+  const withCopy = (it) => withRolls(it, chosenCopy()?.rolls);
+  let view = withCopy(S.items[cur()]);
   const meta = h("div", { class: "eq-line" }, itemLine(view));
+  const copyBox = h("div", { class: "copy-box", hidden: true });
+  const drawCopies = () => {
+    const m = mine(), fp = copyFp(), chosen = chosenCopy();
+    copyBox.hidden = !m.length;
+    if (!m.length) { setKids(copyBox); return; }
+    const kids = [];
+    if (fp && !chosen) kids.push(h("div", { class: "neg" }, "⚠ The copy this build used is no longer in your inventory; the first copy's rolls count now. Pick one:"));
+    if (m.length > 1 || (fp && !chosen)) {
+      const groups = {};
+      for (const c of m) (groups[c.fp] ||= []).push(c);
+      const sel = h("select", { "aria-label": `${slot} copy` },
+        h("option", { value: "" }, `Any copy (${m.length} owned; the first one's rolls count)`),
+        Object.entries(groups).map(([f, cs]) => h("option", { value: f },
+          `${rollsText(cs[0].rolls) || "no rolls recorded"} · ${cs.map((c) => c.where).join("; ")}`)));
+      sel.value = chosen && fp ? fp : "";
+      sel.onchange = () => {
+        edit((x) => {
+          const c = Array.from({ length: 9 }, (_, k) => (x.copies || [])[k] || null);
+          c[i] = sel.value || null;
+          x.copies = c.some(Boolean) ? c : null;
+        });
+        refresh();
+      };
+      kids.push(sel);
+    }
+    if (chosen) kids.push(h("div", { class: "muted copy-where" }, `📦 ${chosen.where}`));
+    setKids(copyBox, ...kids);
+  };
   const powders = () => (POWDER_SLOTS.includes(slot) ? (S.cur.doc.powders || [])[POWDER_SLOTS.indexOf(slot)] || [] : []);
   const loadView = async () => {
     const want = `${cur()}|${powders().join("")}`;
     const got = await powderedInfo(cur(), powders());
     if (want !== `${cur()}|${powders().join("")}`) return;     // changed again meanwhile
-    view = got; meta.replaceChildren(...itemLine(view));
+    view = withCopy(got); meta.replaceChildren(...itemLine(view));
   };
   const craftBox = h("div", { class: "craft-box", hidden: true });
   const powderBox = POWDER_SLOTS.includes(slot) ? powderInput(slot, () => S.items[cur()], loadView) : null;
@@ -1243,13 +1281,15 @@ function slotView(slot) {
     input.value = displayName(cur());
     input.className = "eq-name tier-" + (S.items[cur()]?.tier || "none");
     icon.replaceChildren(itemIcon(typeNow(), 44, S.items[cur()]?.tier));
-    view = S.items[cur()];
+    view = withCopy(S.items[cur()]);
     meta.replaceChildren(...itemLine(view));
+    drawCopies();
     ownBtn.redraw?.();
     powderBox?.redraw();
     loadView();
   };
   loadView();
+  drawCopies();
   const craftBtn = h("button", { class: "mini", title: "Suggest a crafted item for this slot",
     onclick: () => openCraft(slot, i, craftBox, refresh) }, "Craft…");
   const ownBtn = ownButton(() => cur());
@@ -1268,11 +1308,15 @@ function slotView(slot) {
     (o) => {
       S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] };
       const oldCls = weaponClass(S.cur.doc.equipment[8]);
-      edit((x) => { x.equipment[i] = o.name; if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { x.tree = []; x.aspects = null; } });
+      edit((x) => {
+        x.equipment[i] = o.name;
+        if (x.copies) x.copies[i] = null;            // another item: no copy chosen yet
+        if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { x.tree = []; x.aspects = null; }
+      });
       if (slot === "weapon" && TYPE_CLASS[o.type] !== oldCls) { renderEquipment(); renderTree(); renderAspects(); } else refresh();
     });
   input.addEventListener("change", () => {
-    if (!input.value.trim()) { edit((x) => { x.equipment[i] = null; }); refresh(); }
+    if (!input.value.trim()) { edit((x) => { x.equipment[i] = null; if (x.copies) x.copies[i] = null; }); refresh(); }
   });
   input.addEventListener("blur", () => setTimeout(() => { if (input.value.trim()) input.value = displayName(cur()); }, 160));
   attachTooltip(icon, () => view);
@@ -1281,7 +1325,7 @@ function slotView(slot) {
     h("div", { class: "eq-body" },
       h("div", { class: "eq-top" }, h("span", { class: "eq-label" }, slotLabel(slot)),
         h("span", { class: "row tight" }, lockBtn, ownBtn, craftBtn)),
-      ac, meta, powderBox, craftBox));
+      ac, meta, copyBox, powderBox, craftBox));
 }
 
 // Powders, typed as WynnBuilder does: element letter + tier ("t6 t6 e6" or "t6t6e6").
@@ -2575,7 +2619,7 @@ function watch() {
     if (changed.includes("inventory.json") || removed.includes("inventory.json")) {
       await loadInventory();
       if (!$("#inventory").hidden) renderInventory();
-      if (S.cur && !$("#editor").hidden && $("#ed-tomes")) { renderTomes(); renderAspects(); }   // the stars
+      if (S.cur && !$("#editor").hidden && $("#ed-tomes")) { renderTomes(); renderAspects(); renderEquipment(); }   // stars, copies
     }
     await loadList();
     const c = S.cur; if (!c) return;

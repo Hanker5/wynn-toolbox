@@ -168,9 +168,8 @@ def summarize(build, gd, roll="base", inventory=None):
     WynnBuilder's build page displays. Skill points follow WynnBuilder exactly
     (build_skillpoints).
     """
-    from .inventory import with_rolls
-    items = [with_rolls(gd.item(n), inventory.rolls(n) if inventory else None)
-             for n in build.equipment if n is not None]
+    from .inventory import rolls_for, with_rolls
+    items = [with_rolls(gd.item(n), rolls_for(inventory, n)) for n in build.equipment if n is not None]
     tomes = [gd.tome(t) for t in build.tomes if t is not None]
     msp = resolve_skillpoints(build, gd)
     sp = msp.auto
@@ -246,10 +245,14 @@ def wrong_tome_text(tome, slot, gd):
             f"WynnBuilder leaves it empty)")
 
 
-def check_link(link, gd=None, inventory=None):
-    """Run every check on a link. Returns (ok, report)."""
+def check_link(link, gd=None, inventory=None, copies=None):
+    """Run every check on a link. Returns (ok, report). `copies` (a build file's) says
+    which copy of each owned item the build uses."""
     h = link_hash(link)
     build = decode(h, gd)
+    if copies:
+        from .inventory import with_copies
+        build.equipment = with_copies(build.equipment, copies)
     from .data import GameData
     gd = gd if gd is not None and gd.version == build.version else GameData(build.version)
     report = {"build": build, "summary": summarize(build, gd, inventory=inventory), "problems": []}

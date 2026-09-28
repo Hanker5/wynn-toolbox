@@ -58,6 +58,57 @@ _ARMOR = {36: "boots", 37: "leggings", 38: "chestplate", 39: "helmet"}
 _ACCESSORY = {9: "ring slot 1", 10: "ring slot 2", 11: "bracelet slot", 12: "necklace slot"}
 
 
+class Owned(str):
+    """An item name that also says which copy of it a build uses (`fp`, its rolls'
+    fingerprint). It compares and hashes as the plain name, so everything keyed by name
+    keeps working; roll lookups (`rolls_for`) and the searches, which tell copies apart,
+    read `fp`. Links and JSON see the plain name; build files keep the copies apart."""
+    fp = None
+
+    def __new__(cls, name, fp=None):
+        out = super().__new__(cls, name)
+        out.fp = fp
+        return out
+
+    def __getnewargs__(self):
+        return str(self), self.fp
+
+    def __repr__(self):
+        return f"Owned({str(self)!r}, {self.fp!r})"
+
+
+def owned_name(name, fp):
+    """`name` marked with copy `fp` (the plain name when there is none)."""
+    return name if name is None or not fp else Owned(name, fp)
+
+
+def fp_of(name):
+    """The copy a name is marked with, or None."""
+    return getattr(name, "fp", None)
+
+
+def name_of(gd, item):
+    """An item's name, marked with the copy it is (searches carry copies as items)."""
+    return owned_name(gd.name(item), item.get("_copy"))
+
+
+def with_copies(equipment, copies):
+    """Build equipment names marked with a build file's "copies" (9 fingerprints or null)."""
+    copies = list(copies or [])
+    return [owned_name(n, copies[k] if k < len(copies) else None) for k, n in enumerate(equipment)]
+
+
+def copies_of(equipment):
+    """The "copies" list for a build file, or None when no slot names a copy."""
+    out = [fp_of(n) for n in equipment]
+    return out if any(out) else None
+
+
+def rolls_for(inventory, name):
+    """The real rolls a build's item uses: its copy's, or the first copy's."""
+    return inventory.rolls(name, fp_of(name)) if inventory is not None and name else None
+
+
 def fingerprint(rolls):
     """A short id for a set of rolls: copies with identical rolls share it."""
     text = json.dumps(rolls or {}, sort_keys=True, separators=(",", ":"))
@@ -320,6 +371,30 @@ def inventory_slot_label(slot):
     if 0 <= slot <= 8:
         return f"hotbar {slot + 1}"
     return f"row {(slot - 9) // 9 + 1}, column {(slot - 9) % 9 + 1}"
+
+
+def copy_lines(inventory, equipment):
+    """Where each owned item a build wears is kept: "ring1  Galleon: Account ender chest ·
+    page 3 · row 1, column 5". Two rings with the same rolls get two different copies."""
+    from .codec import SLOTS
+    out, taken = [], set()
+    if inventory is None:
+        return out
+    for slot, name in zip(SLOTS, equipment):
+        if not name or name.startswith("CR-") or not inventory.owns(name):
+            continue
+        fp = fp_of(name)
+        found = [c for c in inventory.copies(name) if fp is None or c.fp == fp]
+        if not found:
+            out.append(f"{slot:<11} {name}: the copy this build used is no longer in your inventory "
+                       f"(the first copy's rolls count instead)")
+            continue
+        c = next((c for c in found if (c.place, c.page, c.slot, c.index) not in taken), found[0])
+        taken.add((c.place, c.page, c.slot, c.index))
+        many = len(inventory.copies(name))
+        out.append(f"{slot:<11} {name}: {inventory.where(c.place, c.page, c.slot)}"
+                   + (f" (one of {many} copies you own)" if many > 1 else ""))
+    return out
 
 
 def load(path=DEFAULT):

@@ -17,6 +17,8 @@ from .verify import REQ, build_skillpoints
 from .verify import stat as _stat
 
 # Stand-in for an empty slot (allowed when searching only what you own).
+from .inventory import fp_of, name_of  # noqa: E402
+
 EMPTY = {"name": "", "displayName": "", "tier": "", "type": ""}
 
 CLASS_WEAPON = {"Mage": "wand", "Archer": "bow", "Assassin": "dagger",
@@ -214,11 +216,29 @@ def _usable(gd, spec):
                 set(it.get("majorIds") or ()) & set(spec.exclude_major)
                 or gd.set_of.get(name) in spec.exclude_sets):
             continue
-        if spec.inventory is not None:
-            it = with_rolls(it, spec.inventory.rolls(name))
+        found = _copies(it, name, slot, spec.inventory)
         for s in (("ring1", "ring2") if slot == "ring" else (slot,)):
-            pools[s].append(it)
+            pools[s].extend(found)
     return pools
+
+
+def _key(gd, it):
+    """What tells pool entries apart: the name, or each owned copy on its own."""
+    return id(it) if it.get("_copy") is not None else gd.name(it)
+
+
+def _copies(it, name, slot, inventory):
+    """The item once per copy the player owns with different rolls (marked with
+    `_copy`), twice for a ring owned twice with the same rolls; else the item itself."""
+    from .inventory import with_rolls
+    copies = inventory.copies(name) if inventory is not None and not name.startswith("CR-") else []
+    if not copies:
+        return [it]
+    seen = {}
+    for c in copies:
+        seen.setdefault(c.fp, [c.rolls, 0])[1] += 1
+    return [with_rolls(it, rolls, fp) for fp, (rolls, n) in seen.items()
+            for _ in range(min(n, 2 if slot == "ring" else 1))]
 
 
 def _set_groups(pools, gd, set_name, need):
@@ -458,7 +478,9 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
     def candidates(slot, force):
         pool = pools[slot]
         if slot in force:
-            return [i for i in pool if gd.name(i) == force[slot]]
+            got = [i for i in pool if gd.name(i) == force[slot]]
+            same = [i for i in got if i.get("_copy") == fp_of(force[slot])]
+            return same or got            # a kept copy: that one, when the search tells copies apart
         if slot == "weapon" and "weapon_dps" in fl:
             pool = [i for i in pool if (i.get("averageDps") or 0) >= fl["weapon_dps"]]
         if not pool:
@@ -492,12 +514,12 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
         out, seen = [], set()
         for k in keys:
             for it in sorted(pool, key=k, reverse=True)[:spec.topn]:
-                if gd.name(it) not in seen:
-                    seen.add(gd.name(it))
+                if _key(gd, it) not in seen:
+                    seen.add(_key(gd, it))
                     out.append(it)
         for it in pool:                  # preferred items are always in the running
-            if spec.prefer and gd.name(it) in spec.prefer and gd.name(it) not in seen:
-                seen.add(gd.name(it))
+            if spec.prefer and gd.name(it) in spec.prefer and _key(gd, it) not in seen:
+                seen.add(_key(gd, it))
                 out.append(it)
         if spec.only is not None:
             out.append(EMPTY)          # an inventory may have nothing for this slot
@@ -554,7 +576,7 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
         ring_sym = "ring1" not in force and "ring2" not in force
         # Precompute each candidate once; the search loop only touches these tuples.
         # (name, item, objective, floor-key values, requirements, is_crafted, set index)
-        pre = [[(gd.name(c), c, obj(c), tuple(stat(c, key) for key in fkeys),
+        pre = [[(name_of(gd, c), c, obj(c), tuple(stat(c, key) for key in fkeys),
                  tuple(c.get(r) or 0 for r in REQ), c is EMPTY or gd.name(c).startswith("CR-"),
                  set_idx.get(gd.set_of.get(gd.name(c)), -1) if c is not EMPTY else -1)
                 for c in cl[k]] for k in range(n)]
@@ -587,7 +609,7 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
             if sum(max(0, mreq[j] - mbk[j]) for j in range(5)) > budget:
                 return
             if k == n:
-                names_now = [None if c is EMPTY else gd.name(c) for c in chosen]
+                names_now = [None if c is EMPTY else name_of(gd, c) for c in chosen]
                 sp = exact_sp(names_now)          # WynnBuilder's skill-point rules
                 if sp.total_assigned > budget or not sp.under_100:
                     return
@@ -627,8 +649,8 @@ def solve_gear(spec, gd, progress=None, _pools=None, _seed=None):
                     track["pos"][2 * k:2 * k + 2] = [ci, len(pre[k])]
                     if k == 0:
                         track["pos"][2:] = [0, 1]
-                if names.get(nm) and not crafted:
-                    continue
+                if names.get(nm) and not crafted and (c.get("_copy") is None or any(x is c for x in chosen)):
+                    continue               # the same item twice: only a craft, or another copy you own
                 if ring_sym and is_ring2[k] and (ci < ring1_idx or (ci == ring1_idx and not crafted)):
                     continue               # ring pairs are unordered (a craft may repeat)
                 gs = group_of.get(nm, ())

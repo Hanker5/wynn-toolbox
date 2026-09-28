@@ -524,3 +524,5 @@ details.more > summary { cursor: pointer; font-size: 12px; color: var(--muted); 
   .chest-grid { grid-auto-rows: auto; }
   .cell { width: auto; height: auto; aspect-ratio: 1; }
 }
+.copy-box { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; font-size: 12px; }
+.copy-box select { max-width: 100%; font-size: 12px; }

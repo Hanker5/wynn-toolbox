@@ -152,3 +152,31 @@ def test_the_local_search_chooses_owned_tomes_too(gd):
         run(floors, gd, kind="shortlists", explain_failure=False)
 
 
+
+
+def test_each_owned_copy_is_its_own_candidate(gd):
+    """Two identical +10% Rings of Rubies in the ender chest and a +4% one added by hand:
+    both ring slots take a +10% copy, the build file names those copies, and its totals
+    and report use them (and say where each one is)."""
+    from wynntools import buildfile
+    from wynntools.inventory import copy_lines, fingerprint
+    ten = {"eSteal": 10}
+    page = {"updated": "", "slots": [{"slot": 3, "name": "Ring of Rubies", "kind": "item", "rolls": ten},
+                                     {"slot": 7, "name": "Ring of Rubies", "kind": "item", "rolls": ten}]}
+    inv = Inventory(items=[{"name": "Ring of Rubies", "rolls": {"eSteal": 4}}, {"name": "Iklaj"}],
+                    places={"account": {"pages": {"2": page}}})
+    spec = Spec(cls="Mage", level=105, objective={"eSteal": 1}, only=inv.names(), inventory=inv)
+    for r in (solve_gear_exact(spec, gd), solve_gear(spec, gd)):
+        assert r.score == pytest.approx(20)
+        rings = r.equipment[4:6]
+        assert rings == ["Ring of Rubies"] * 2 and [n.fp for n in rings] == [fingerprint(ten)] * 2
+    doc = {"name": "t", **buildfile.from_build(spec.build(r.equipment), gd)}
+    assert doc["copies"][4:6] == [fingerprint(ten)] * 2 and all(isinstance(n, str) for n in doc["equipment"] if n)
+    fresh = buildfile.refresh(doc, gd, inv)
+    assert fresh["status"]["totals"]["eSteal"] == 20
+    worse = buildfile.refresh({**doc, "copies": [None] * 4 + [fingerprint({"eSteal": 4})] * 2 + [None] * 3}, gd, inv)
+    assert worse["status"]["totals"]["eSteal"] == 8
+    lines = copy_lines(inv, buildfile.to_build(doc, gd).equipment)
+    assert [line.split(": ", 1)[1] for line in lines if line.startswith("ring")] == [
+        "Account ender chest · page 2 · row 1, column 4 (one of 3 copies you own)",
+        "Account ender chest · page 2 · row 1, column 8 (one of 3 copies you own)"]

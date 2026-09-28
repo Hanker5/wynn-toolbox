@@ -46,7 +46,7 @@ STATIC = Path(__file__).parent / "static"
 COOKIE = "wt_token"
 TRASH_DIR = variants.TRASH_DIR          # deleted builds go here (builds/.trash), not away
 EDITABLE = ("name", "notes", "level", "equipment", "tomes", "tree", "powders", "aspects",
-            "skillpoints", "locked")
+            "skillpoints", "locked", "copies")
 SUMMARY_STATS = ("hp", "mr", "spd", "eSteal", "lb", "poison", "maxMana", "sdPct", "mdPct")
 
 
@@ -703,9 +703,12 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         """A build file for a search result (`tome_ids`: the tomes the search chose)."""
         tomes = [None if t is None else gd.name(gd.tome(t)) for t in tome_ids] if tome_ids else \
             [t or None for t in raw.get("tomes") or []]
-        doc = {"name": name, "notes": notes, "level": spec.level, "equipment": list(equipment),
+        doc = {"name": name, "notes": notes, "level": spec.level,
+               "equipment": [None if n is None else str(n) for n in equipment],
                "tomes": tomes + [None] * (len(TOME_SLOTS) - len(tomes)),
                "skillpoints": skillpoints, "spec": raw, "tree_preset": preset}
+        if inv_mod.copies_of(equipment):          # which of the player's copies it uses
+            doc["copies"] = inv_mod.copies_of(equipment)
         if parent:
             doc["parent"] = parent
         if preset:

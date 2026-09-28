@@ -164,11 +164,23 @@ def _link_arg(arg, gd):
     return arg
 
 
+def _print_copies(inventory, equipment):
+    lines = inv_mod.copy_lines(inventory, equipment)
+    if lines:
+        print("Where your copies are (their real rolls count):")
+        for line in lines:
+            print(f"  {line}")
+
+
 def cmd_decode(a):
     from .damage import summary
     gd = GameData()
     ok, rep = check_link(_link_arg(a.link, gd), gd)
     _print_report(ok, rep, gd)
+    if a.link.endswith(".json") and Path(a.link).exists():
+        doc = buildfile.read(a.link)
+        _print_copies(inv_mod.load(inv_mod.DEFAULT),
+                      inv_mod.with_copies(doc.get("equipment") or [], doc.get("copies")))
     dmg = summary(rep["build"], gd)
     if dmg:
         _print_damage(dmg.get("typical", dmg))
@@ -293,7 +305,8 @@ def _edit_spec(a, doc, gd):
     else:
         raise SystemExit(f"{a.edit} wasn't made by `wt gear`, so it has no spec to reuse: "
                          f"write one (class, level, objective, floors, ...) and pass it")
-    equipment = list(doc.get("equipment") or [None] * len(SLOTS))
+    from .inventory import with_copies
+    equipment = with_copies(doc.get("equipment") or [None] * len(SLOTS), doc.get("copies"))   # kept: that copy
     if equipment[8]:
         raw.setdefault("class", gd.weapon_class(equipment[8]))
     raw.setdefault("level", doc["level"])
@@ -342,6 +355,16 @@ def _merge_into(doc, new, gd, tree_preset=None, skillpoints=None):
     out = {**doc, "level": new["level"], "equipment": new_eq, "tomes": new["tomes"]}
     lines = [f"  {slot:<12}{old_eq[k] or '(empty)'} -> {new_eq[k] or '(empty)'}"
              for k, slot in enumerate(SLOTS) if old_eq[k] != new_eq[k]]
+    old_cp = list(doc.get("copies") or [None] * len(SLOTS))
+    new_cp = list(new.get("copies") or [None] * len(SLOTS))
+    copies = [new_cp[k] or (old_cp[k] if old_eq[k] == new_eq[k] else None) for k in range(len(SLOTS))]
+    lines += [f"  {slot:<12}{new_eq[k]}: another copy you own"
+              for k, slot in enumerate(SLOTS) if old_eq[k] == new_eq[k] and old_cp[k] and new_cp[k]
+              and old_cp[k] != new_cp[k]]
+    if any(copies):
+        out["copies"] = copies
+    else:
+        out.pop("copies", None)
     if (doc.get("tomes") or []) != new["tomes"]:
         lines.append("  tomes       now the spec's")
     same_class = bool(old_eq[8]) and gd.weapon_class(old_eq[8]) == gd.weapon_class(new_eq[8])
@@ -518,6 +541,7 @@ def cmd_gear(a):
     dmg = summary(b, gd, spec.inventory)
     if dmg:
         _print_damage(dmg.get("typical", dmg))
+    _print_copies(spec.inventory, r.equipment)
     print(link)
     saved_spec = {k: v for k, v in raw.items() if not k.startswith("_")}
     if a.edit:
@@ -736,11 +760,12 @@ def cmd_current(a):
         print(f"PROBLEMS:\n  - can't read this build: {e}")
         return 1
     link = to_link(b, gd)
-    ok, rep = check_link(link, gd, inventory=inventory)
+    ok, rep = check_link(link, gd, inventory=inventory, copies=doc.get("copies"))
     _print_report(ok, rep, gd)
     dmg = summary(rep["build"], gd, inventory)
     if dmg:
         _print_damage(dmg.get("typical", dmg))
+    _print_copies(inventory, b.equipment)
     status = buildfile.refresh({k: v for k, v in doc.items()}, gd, inventory)["status"]
     for w in status["warnings"]:
         fix = w["fix"]
@@ -781,7 +806,7 @@ def cmd_spec_check(a):
 def cmd_report(a):
     """The fixed closing report for a build: link, verification, search kind, assumptions."""
     from .agent_aids import report
-    ok, lines = report(buildfile.read(a.build), GameData(), a.build)
+    ok, lines = report(buildfile.read(a.build), GameData(), a.build, inv_mod.load(a.inventory))
     print("\n".join(lines))
     return 0 if ok else 1
 
@@ -1820,6 +1845,7 @@ def main(argv=None):
     s.set_defaults(fn=cmd_spec_check)
     s = sub.add_parser("report", help="the closing report for a build file: verified link, search kind, assumptions")
     s.add_argument("build")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_report)
     s = sub.add_parser("show", help="open a build file in the web app")
     s.add_argument("build")

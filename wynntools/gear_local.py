@@ -32,6 +32,7 @@ from .damage import STATIC_IDS, build_stats, damage_report
 from .derived import DAMAGE_KEYS, from_report
 from .gear_milp import GearModel, Infeasible, _Rows
 from .gear_solver import DAMAGE_GOAL_PREFIX, EMPTY, MIN_ELEDEF, Result, assign_for_floors
+from .inventory import name_of
 from .rules import ROLLED_IDS, SKILLS, max_mana, skill_points
 from .verify import build_skillpoints
 
@@ -273,7 +274,7 @@ class LocalSearch:
         A quick look: skill-point floors are met, spare points stay unassigned."""
         scored = []
         for v in model.by_kind["weapon"]:
-            names = list(armor) + [self.gd.name(model.var_item[v])]
+            names = list(armor) + [name_of(self.gd, model.var_item[v])]
             sp = build_skillpoints(names, self.tome_ids, self.gd)
             if sp.total_assigned > self.budget or not sp.under_100:
                 continue

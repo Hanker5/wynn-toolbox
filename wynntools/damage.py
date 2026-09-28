@@ -291,7 +291,7 @@ def armor_powder_stats(item, powders):
 def build_stats(build, gd, roll="max", inventory=None):
     """Build.initBuildStats plus the editable-ID step: the stat map every later
     step reads. `roll` "max" is what WynnBuilder shows; inventory rolls win."""
-    from .inventory import with_rolls
+    from .inventory import rolls_for, with_rolls
     sp = build_skillpoints(build.equipment, build.tomes, gd)
     stats = {k: 0 for k in STATIC_IDS + MUST_IDS}
     stats["hp"] = base_hp(build.level)
@@ -301,15 +301,13 @@ def build_stats(build, gd, roll="max", inventory=None):
     objs = []
     for idx, name in enumerate(build.equipment[:8]):
         if name is not None:
-            objs.append((with_rolls(gd.item(name), inventory.rolls(name) if inventory else None),
-                         powders.get(idx, [])))
+            objs.append((with_rolls(gd.item(name), rolls_for(inventory, name)), powders.get(idx, [])))
     for t in build.tomes:
         if t is not None:
             objs.append((gd.tome(t), []))
     weapon_name = build.equipment[8]
     if weapon_name is not None:
-        objs.append((with_rolls(gd.item(weapon_name),
-                                inventory.rolls(weapon_name) if inventory else None), []))
+        objs.append((with_rolls(gd.item(weapon_name), rolls_for(inventory, weapon_name)), []))
     for obj, pw in objs:
         for key in ROLLED_IDS:
             v = stat(obj, key, roll)

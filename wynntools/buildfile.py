@@ -15,6 +15,8 @@ are names, not ids, so people can edit them by hand:
       "skillpoints": null,              # optional; null = automatic, else 5 FINAL
                                         # totals (null entries automatic), as in links
       "locked": ["weapon", ...],        # optional: slots searches from this build keep
+      "copies": [9 fingerprints or null],   # optional: which copy of each owned item
+                                        # (inventory.fingerprint of its rolls)
       "parent": "x.json",               # optional: this is a candidate for x.json
       "spec": {...}, "tree_preset": "...",   # optional: how it was generated
       "link": "...", "status": {...}    # written by the tools, do not edit
@@ -41,7 +43,8 @@ def powder_id(name):
 
 
 def to_build(doc, gd):
-    b = Build(equipment=list(doc["equipment"]), level=doc["level"], version=LATEST)
+    from .inventory import with_copies
+    b = Build(equipment=with_copies(doc["equipment"], doc.get("copies")), level=doc["level"], version=LATEST)
     tomes = doc.get("tomes") or []
     b.tomes = [None if t is None else gd.tome(t)["id"] for t in tomes] \
         + [None] * (len(TOME_SLOTS) - len(tomes))
@@ -80,7 +83,8 @@ def to_build(doc, gd):
 
 
 def from_build(b, gd):
-    doc = {"level": b.level, "equipment": list(b.equipment),
+    from .inventory import copies_of
+    doc = {"level": b.level, "equipment": [None if n is None else str(n) for n in b.equipment],
            "tomes": [None if t is None else gd.name(gd.tome(t)) for t in b.tomes]}
     if b.weapon is not None:
         names = {n["id"]: n["display_name"] for n in gd.tree(gd.weapon_class(b.weapon))}
@@ -91,6 +95,8 @@ def from_build(b, gd):
         names = {a["id"]: a["displayName"] for a in gd.aspects(gd.weapon_class(b.weapon))}
         doc["aspects"] = [None if a is None else [names[a[0]], a[1]] for a in b.aspects]
     doc["skillpoints"] = b.skillpoints
+    if copies_of(b.equipment):
+        doc["copies"] = copies_of(b.equipment)
     return doc
 
 
@@ -110,13 +116,20 @@ def keep_in_search(spec, doc, gd):
         got = (doc.get("powders") or [])[k] if k < len(doc.get("powders") or []) else []
         if got and equipment[slot]:
             spec.powders[slot] = (equipment[slot], [powder_id(p) for p in got])
+    from .codec import SLOTS
+    from .inventory import with_copies
+    marked = with_copies(equipment, doc.get("copies"))
+    for slot, name in list((spec.force or {}).items()):     # a kept item: the copy the build has
+        k = SLOTS.index(slot)
+        if marked[k] == name:
+            spec.force[slot] = marked[k]
     return spec
 
 
 def carry_over(new, old, gd):
     """A search result's build file `new`, made from build file `old`: the aspects
-    come along while the class is the same, and the powders on items that stayed
-    in their slot. Returns `new`."""
+    come along while the class is the same, and the powders and copies of items that
+    stayed in their slot. Returns `new`."""
     old_eq = list(old.get("equipment") or [None] * 9)
     new_eq = list(new.get("equipment") or [None] * 9)
     if old.get("aspects") and any(old["aspects"]) and old_eq[8] and new_eq[8] \
@@ -129,6 +142,10 @@ def carry_over(new, old, gd):
                 powders[k] = list(old["powders"][k])
         if any(powders):
             new["powders"] = powders
+    old_cp, new_cp = list(old.get("copies") or [None] * 9), list(new.get("copies") or [None] * 9)
+    copies = [new_cp[k] or (old_cp[k] if old_eq[k] and old_eq[k] == new_eq[k] else None) for k in range(9)]
+    if any(copies):
+        new["copies"] = copies
     return new
 
 
@@ -137,7 +154,7 @@ def refresh(doc, gd, inventory=None):
     With an inventory, owned items use their real rolls in the totals."""
     from .damage import summary as damage_summary
     link = to_link(to_build(doc, gd), gd)
-    ok, rep = check_link(link, gd, inventory=inventory)
+    ok, rep = check_link(link, gd, inventory=inventory, copies=doc.get("copies"))
     s = rep["summary"]
     damage = damage_summary(rep["build"], gd, inventory)
     problems = list(rep["problems"])

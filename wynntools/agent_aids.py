@@ -135,9 +135,10 @@ def _search_kind(doc):
     return f"{kind}: {text}"
 
 
-def report(doc, gd, path):
+def report(doc, gd, path, inventory=None):
     """Lines: the fixed closing report for a build file (link, verification, search, assumptions)."""
     from . import buildfile
+    from .inventory import copy_lines, with_copies
     from .verify import check_link
     fresh = buildfile.refresh(doc, gd)
     ok, rep = check_link(fresh["link"], gd)
@@ -177,6 +178,10 @@ def report(doc, gd, path):
     if crafted:
         lines.append(f"  - Crafted items ({len(crafted)}): ranges, the middle counts as typical; the "
                      f"ingredients have to be collected")
+    kept = copy_lines(inventory, with_copies(doc.get("equipment") or [], doc.get("copies")))
+    if kept:
+        lines.append("  - Owned items count with the real rolls of the copy the build uses; where each is:")
+        lines += [f"      {line}" for line in kept]
     for w in st.get("warnings") or []:
         lines.append(f"  ! {w['message']}" + (" (fixable: search again with more minimums)" if w.get("fix") else ""))
     lines.append("Tell the player which file this is, and anything here that is tested or unknown "

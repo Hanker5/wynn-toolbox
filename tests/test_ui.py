@@ -1235,3 +1235,30 @@ def test_storage_pages_search_and_show(page, app):
     if os.environ.get("WT_SHOTS"):
         page.locator("#inventory").screenshot(path=f"{os.environ['WT_SHOTS']}/81-inventory-items.png")
     assert not page.errors
+
+
+def test_editor_picks_which_copy_a_slot_uses(page, app):
+    """Two Galleons in the ender chest (+19% and +5% Stealing): the boots slot offers both,
+    says where the chosen one is, and the Summary follows its rolls."""
+    import os
+    pad = "\U000cffff"
+    body = {"version": 2, "kind": "account", "character": {"id": "a1b2c3d4"}, "inventory": [],
+            "storage": [{"slot": 0, "name": "Galleon", "lore": [f"Stealing{pad}+19%"]},
+                        {"slot": 1, "name": "Galleon", "lore": [f"Stealing{pad}+5%"]}]}
+    page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
+                  "'application/json'}, body: JSON.stringify(b)})", body)
+    page.wait_for_function("S.inv.copies.length === 2")         # the page hears the file change
+    open_build(page, "shaman_105_stormdrain")
+    settle(page)
+    pick = page.get_by_label("boots copy")
+    playwright.expect(pick).to_be_visible()
+    before = page.inner_text("#ed-tiles")
+    pick.select_option(label="Stealing +5% · Account ender chest · page 1 · row 1, column 2")
+    playwright.expect(page.locator(".slot:has(input[aria-label='boots']) .copy-where")).to_contain_text(
+        "Account ender chest · page 1 · row 1, column 2")
+    settle(page)
+    page.wait_for_function(f"document.querySelector('#ed-tiles').innerText !== {before!r}")
+    assert page.evaluate("S.cur.doc.copies[3]") is not None and page.evaluate("S.cur.dirty")
+    if os.environ.get("WT_SHOTS"):
+        page.locator(".slot:has(input[aria-label='boots'])").screenshot(path=f"{os.environ['WT_SHOTS']}/82-copy-picker.png")
+    assert not page.errors

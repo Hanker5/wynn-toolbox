@@ -35,6 +35,7 @@ from .codec import SLOTS, TOME_SLOTS
 from .gear_solver import (CLASS_WEAPON, ELEDEF_KEYS, EMPTY, MIN_ELEDEF, SUM_FLOORS, Result,
                           _crafted_candidates, _usable, assign_for_floors, derived_goal,
                           linear_value)
+from .inventory import fp_of, name_of
 from .rules import SKILLS, base_hp, legal_set_pieces, max_mana, skill_points
 from .skillpoints import set_bonus_stats
 from .verify import REQ, build_skillpoints
@@ -124,9 +125,10 @@ class GearModel:
             seen = set()
             for it in pool:
                 nm = gd.name(it)
-                if nm in seen:
-                    continue
-                seen.add(nm)
+                if it.get("_copy") is None:          # every owned copy is its own variable
+                    if nm in seen:
+                        continue
+                    seen.add(nm)
                 v = len(var_item)
                 var_item.append(it)
                 var_kind.append(kind)
@@ -335,6 +337,8 @@ class GearModel:
         for slot, name in (spec.force or {}).items():
             kind = "ring" if slot in ("ring1", "ring2") else slot
             vs = [v for v in by_kind[kind] if var_item[v] is not EMPTY and gd.name(var_item[v]) == name]
+            same = [v for v in vs if var_item[v].get("_copy") == fp_of(name)]
+            vs = same or vs              # a kept copy: that one, when the search tells copies apart
             if not vs:
                 raise Infeasible(f"{name} can't go in {slot} (above the level, excluded, not "
                                  f"owned, or for another class)")
@@ -405,7 +409,7 @@ class GearModel:
         rings = []
         for v in chosen:
             it, kind = self.var_item[v], self.var_kind[v]
-            name = None if it is EMPTY else self.gd.name(it)
+            name = None if it is EMPTY else name_of(self.gd, it)
             if kind == "ring":
                 rings.append(name)
             else:
@@ -438,8 +442,8 @@ class GearModel:
         set_stats, _ = set_bonus_stats(sp.set_counts, gd.sets)
         items = [gd.item(n) for n in names if n is not None]
         if spec.inventory is not None:
-            from .inventory import with_rolls
-            items = [with_rolls(it, spec.inventory.rolls(gd.name(it))) for it in items]
+            from .inventory import rolls_for, with_rolls
+            items = [with_rolls(gd.item(n), rolls_for(spec.inventory, n)) for n in names if n is not None]
         fl = spec.floors
         if "mana" in fl:
             spare = self.budget - sp.total_assigned - sum(extra)
@@ -563,7 +567,8 @@ class GearModel:
             for name in want:
                 for v in pool:
                     it = self.var_item[v]
-                    if (it is EMPTY and name is None) or (it is not EMPTY and self.gd.name(it) == name):
+                    if (it is EMPTY and name is None) or (it is not EMPTY and self.gd.name(it) == name
+                                                          and it.get("_copy") == fp_of(name)):
                         out.append(v)
                         pool.remove(v)
                         break
