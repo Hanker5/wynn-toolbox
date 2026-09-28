@@ -18,6 +18,10 @@ The mod locates the app through `builds/.server.json`, which holds the port and 
 
 Set `"capture": true` in `config/wynngpt-chest-export.json` to show the button on every container screen. The app keeps each raw export in `builds/.imports/` (the newest 30), which is how screen titles, page arrows and item tooltips are checked before the mod relies on them. Exports of containers the mod doesn't recognise never mark anything as owned (only the player's own inventory in them is read).
 
+## Reading every page at once
+
+With `"walk_pages": true`, the button in an ender chest turns the pages for you: back to page 1 with the previous arrow, then forward until the last page, reading each one, and sends them all as one export (shift-click still exports only the open page). It only clicks items named exactly like the page arrows ("Page 3 >>>>>"), waits for each page to arrive, and leaves at least `page_delay_ticks` (default 6; 20 ticks is a second) between clicks. Your clicks in the chest are ignored while it runs; closing the chest stops it and sends the pages read so far. It's off by default until the page arrows are confirmed against samples from the game.
+
 ## Development
 
 `./gradlew runClient` starts a dev client, which reads its config from `run/config/`. The server side of the export is `POST /api/inventory/import` in `wynntools/web/server.py`, and the slot parsing is in `wynntools/gameimport.py`.

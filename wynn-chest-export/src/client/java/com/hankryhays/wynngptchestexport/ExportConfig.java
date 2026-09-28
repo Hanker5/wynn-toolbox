@@ -38,6 +38,26 @@ public final class ExportConfig {
 		}
 	}
 
+	/** "walk_pages": true makes the button in an ender chest read every page (off until the page arrows are confirmed). */
+	public static boolean walkPages() {
+		JsonObject json = read();
+		try {
+			return json != null && json.has("walk_pages") && json.get("walk_pages").getAsBoolean();
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
+	/** "page_delay_ticks": the least time between two page clicks (20 ticks = 1 s). */
+	public static int pageDelayTicks() {
+		JsonObject json = read();
+		try {
+			return json != null && json.has("page_delay_ticks") ? json.get("page_delay_ticks").getAsInt() : 6;
+		} catch (RuntimeException e) {
+			return 6;
+		}
+	}
+
 	private static JsonObject read() {
 		Path file = file();
 		try {

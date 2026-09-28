@@ -25,6 +25,7 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		ExportConfig.buildsPath();
+		PageWalker.register();
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
 			StorageScreens.Kind kind = StorageScreens.kind(screen);
 			// Only the player's own storages: never loot chests, trades or shops (unless capturing samples).
@@ -41,18 +42,30 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 				int tint = pressed[0] && hovered ? PRESSED_TINT : hovered ? HOVER_TINT : NO_TINT;
 				graphics.blitSprite(RenderPipelines.GUI_TEXTURED, ICON, x, y, SIZE, SIZE, tint);
 				if (hovered) {
-					graphics.setTooltipForNextFrame(client.font, Component.literal("Export to WynnGPT"), mouseX, mouseY);
+					graphics.setTooltipForNextFrame(client.font, Component.literal(walks(kind)
+						? "Export every page to WynnGPT (shift-click: this page only)" : "Export to WynnGPT"), mouseX, mouseY);
 				}
 			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
+				if (PageWalker.running()) {
+					return false;                  // hands off while it turns the pages
+				}
 				if (event.button() == 0 && inside(event.x(), event.y(), buttonX(pos), pos.wynngpt$topPos())) {
 					pressed[0] = true;
-					InventoryExporter.export(container, kind);
+					if (walks(kind) && !event.hasShiftDown()) {
+						PageWalker.start(container, kind);
+					} else {
+						InventoryExporter.export(container, kind);
+					}
 					return false;
 				}
 				return true;
 			});
 		});
+	}
+
+	private static boolean walks(StorageScreens.Kind kind) {
+		return (kind == StorageScreens.Kind.ACCOUNT || kind == StorageScreens.Kind.CHARACTER) && ExportConfig.walkPages();
 	}
 
 	// Read every frame: the recipe book shifts leftPos without re-initialising the screen.
