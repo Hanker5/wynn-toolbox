@@ -69,6 +69,10 @@ Then collect only what is still missing:
   piece), or none (`exclude_sets`). Sets the game limits (WynnBuilder's
   "illegal item combination", e.g. the Hive sets: one piece) are always
   capped; a build over the limit fails `wt verify`.
+- **What they own**: `wt own find NAME` answers "do I have X?" and "where is it?"
+  (ender chest page and slot, a character's inventory, or added by hand) for
+  every copy. With `--owned`, each copy counts on its own with its real rolls,
+  and the output says where each piece the build uses is kept: pass that on.
 - **Tomes**: which they own, or whether to plan for aspirational ones. Record
   owned ones with `wt own add --tome NAME`; then `"tome_pool": "owned"` (or
   `wt gear --tomes owned`) lets the search pick the tomes for the slots

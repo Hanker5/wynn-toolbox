@@ -35,7 +35,10 @@ questions; you run the commands.
 
 3. **State the assumptions with every build**, briefly:
    - Item stats are **100% rolls** (the database stores base values; real items
-     roll 30–130%). If the player gives real rolls, use them.
+     roll 30–130%). If the player gives real rolls, use them. Owned items (in
+     `--owned` searches and builds naming a copy) count with the real rolls of
+     the copy the build uses; say which copy and where it is kept (the output
+     prints it).
    - Skill points are left on **automatic**, except where a skill-point
      minimum or a derived goal (effective HP, DPS, ...) needed points set by
      hand: the output says which, and the build keeps them. If a mana floor
@@ -145,7 +148,9 @@ the sandbox, including the ones that talk to the web app.
 | `wt tree <preset> [--level N]` | Solve an ability tree from a preset. Every class has a generic preset per archetype (`archer-boltslinger`, `warrior-paladin`, `mage-riftwalker`, ...); none is tuned for a particular goal. |
 | `wt craft --type ring --level 105 --maximize eSteal` | Suggest the best crafted item (ingredients and layout) for a slot. |
 | `wt ingredient "Stolen Pearls"` | Which mobs drop an ingredient and where (x, y, z). `wt craft` lists this for every suggested ingredient. |
-| `wt own add\|remove\|list [NAME] [--tome] [--aspect --class C [--tier N]] [--roll ID=VALUE]` | Edit the player's inventory (`builds/inventory.json`): owned items, tomes (repeat a name to own two), aspects with the highest tier reached, and real roll values. |
+| `wt own add\|remove\|list [NAME] [--tome] [--aspect --class C [--tier N]] [--roll ID=VALUE] [--another] [--copy FP]` | Edit the player's inventory (`builds/inventory.json`): owned items (`add` keeps one copy; `--another` adds one more), tomes (repeat a name to own two), aspects with the highest tier reached, and real roll values of copies added by hand. `remove` takes away every copy, `--copy FP` just one. |
+| `wt own find NAME` | Does the player own it, and where is each copy: Account or Character ender chest page and slot, a character's inventory, or added by hand, with its rolls and copy `FP`. Use it for "do I have X?" / "where is my X?". |
+| `wt own character [ID --name TEXT]` | List the characters the game exports came from, or name one. |
 | `wt own unavailable [NAME ...] [--reason TEXT] [--remove]` | Items the player can't or won't get (too expensive, ...): every search leaves them out unless forced. |
 | `wt gear spec.json --tree PRESET` with `"floors": {"damage": {"Ophanim": 15000}}` | Damage minimums: a spell's headline number (melee: average DPS), checked exactly on every candidate with the preset's tree. |
 | spec `floors` | any item stat as a minimum (`sdPct`, `poison`, `spRaw1`, `xpb`, ... every ID in `wynntools/statinfo.py`), and `hp`, `mr`, `spd`, `mana`, `weapon_dps`, `hprRaw`, `eDef`/`tDef`/`wDef`/`fDef`/`aDef` (raw, as the Summary shows), `min_eledef` (every elemental defence), `str`/`dex`/`int`/`def`/`agi` (final skill points: met with spare points set by hand if the gear falls short), and damage-model ones: `ehp`, `ehp_no_agi`, `hpr`, `melee_dps`, `puppet_dps`, `summon_dps`, `damage`. |
@@ -166,10 +171,12 @@ Player builds live in `builds/*.json` (ignored by git). The player edits them in
 the web app, you edit them with `wt` or by hand; both see the same file. Format:
 `wynntools/buildfile.py`. Edit only the editable fields (`name`, `notes`,
 `level`, `equipment`, `tomes`, `tree`, `powders`, `aspects`, `skillpoints`,
-`locked`); `link` and `status` are generated, so run
+`locked`, `copies`); `link` and `status` are generated, so run
 `wt link <file> --write` after any edit. `skillpoints` holds WynnBuilder's
 manual entries: each skill's FINAL total, or null for automatic (not the
-points assigned). `status` also carries `survivability` (final Defence and
+points assigned). `copies` (9 fingerprints or null) names which of the
+player's copies of each owned item the build uses; `wt own find` shows each
+copy's `FP`. `status` also carries `survivability` (final Defence and
 Agility, effective HP, regen, every elemental defence) and `warnings`, each
 with the fix the web app offers.
 
@@ -179,12 +186,18 @@ with the fix the web app offers.
 buttons. Show them with `wt variants`; when the player picks one, `wt variants
 x.json --choose <file>` and, if they agree, `--trash-rest`.
 
-`builds/inventory.json` is the player's inventory, not a build. Change it with
-`wt own` (or the web app's Own buttons and Inventory page; the
-`wynn-chest-export` Fabric mod also fills it in-game through
-`POST /api/inventory/import`). When a player asks "what should I get next?",
-run `wt upgrades`; when they want a build they can wear today, run
-`wt gear --owned`.
+`builds/inventory.json` is the player's inventory, not a build. It keeps every
+copy of an item: copies added by hand, and "places" mirroring the Account
+ender chest (shared by every character), each character's Character ender
+chest and each character's inventory, page by page and slot by slot, as the
+`wynn-chest-export` Fabric mod last exported them (`POST /api/inventory/import`;
+each export replaces the pages it shows). Two copies of an item are two
+entries, with their own rolls. Change it with `wt own` (or the web app's Own
+buttons and Inventory page). When a player asks "do I have X?" or "where is
+X?", run `wt own find`; "what should I get next?", `wt upgrades`; a build they
+can wear today, `wt gear --owned` (each copy counts separately: two copies of
+a ring can fill both ring slots). `builds/.imports/` keeps the newest raw
+exports from the mod (not builds).
 
 `builds/settings.json` (app settings, including the window size, an ignored
 update and the Builds list's order and groups) and `builds/.server.json` (the running server's address) are not builds

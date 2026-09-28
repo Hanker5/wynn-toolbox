@@ -168,11 +168,15 @@ without it.
 
 It adds a **WynnGPT** button beside your own inventory and your Account and
 Character ender chests (not loot chests, trades or shops). Click it while
-WynnGPT is open and every item in that screen is sent to the app. The app adds the items, tomes and aspects it
-recognises to your inventory, with the real rolls of identified items read
-from their tooltips. It only adds: nothing you already set is overwritten or
-removed. A chat message says how many items, tomes and aspects it added and
-how many it didn't recognise.
+WynnGPT is open and the page you're looking at, plus your inventory, is sent
+to the app. The Inventory page then shows each ender chest page slot by slot,
+just as the game lays it out, with the real rolls of identified items read
+from their tooltips. Every copy counts: two copies of an item, with the same
+rolls or different ones, are two entries. Each export replaces that page, so
+items you moved or sold go away. The Account ender chest is shared by your
+characters; each character's Character ender chest and inventory are kept
+apart. The search box on the Inventory page finds any item and the exact
+page and slot it's in. A chat message says what was read.
 
 **Setup** (Minecraft **1.21.11**, Fabric Loader and
 [Fabric API](https://modrinth.com/mod/fabric-api)):
