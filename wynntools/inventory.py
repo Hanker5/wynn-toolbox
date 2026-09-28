@@ -295,7 +295,11 @@ class Inventory:
                          for c in self.copies()]
         out["place_list"] = [{"key": k, "kind": place_kind(k), "character": place_character(k),
                               "label": self.place_label(k), "max_pages": PAGES.get(place_kind(k), 1),
-                              "pages": (self.places[k].get("pages") or {})}
+                              "pages": {n: {**p, "slots": [{**s, "where": self.where(k, int(n), s.get("slot")),
+                                                           **({"fp": fingerprint(s.get("rolls"))}
+                                                              if s.get("kind") == "item" else {})}
+                                                          for s in p.get("slots") or []]}
+                                        for n, p in (self.places[k].get("pages") or {}).items()}}
                              for k in sorted(self.places, key=_place_order)]
         return out
 

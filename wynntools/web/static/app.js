@@ -205,10 +205,13 @@ function itemCard(it) {
   if (ids.length) lines.push(h("div", { class: "ic-gap" }));
   for (const [k, [lo, mid, hi]] of ids) {
     const [label, unit, el] = idLabel(k);
+    const real = it._actual?.[k], v = real ?? mid;
     const range = lo !== hi ? h("span", { class: "muted range" }, ` ${fmt(lo)} to ${fmt(hi)}`) : null;
     lines.push(h("div", { class: "ic-row" }, h("span", {}, elemTag(el), label),
-      h("span", {}, h("span", { class: mid >= 0 ? "pos" : "neg" }, `${sign(mid)}${unit}`), range)));
+      h("span", {}, h("span", { class: `${v >= 0 ? "pos" : "neg"}${real != null ? " real" : ""}`,
+        title: real != null ? "This copy's real roll" : null }, `${sign(v)}${unit}`), range)));
   }
+  if (it._actual && Object.keys(it._actual).length) lines.push(h("div", { class: "ic-sub muted" }, "Underlined: this copy's real rolls"));
   for (const m of it.majors) lines.push(h("div", { class: "ic-major" }, `+${majorName(m)}`));
   if (it.powders?.length) lines.push(h("div", { class: "ic-sub muted" }, `[${it.powders.length}/${it.slots}] powders `,
     it.powders.map((p) => h("span", { class: `powder ${POWDER_EL[p[0]]}` }, `${ELEMENTS[ELEM_BY_PREFIX[p[0]]].sym}${p[1]}`)),
@@ -349,20 +352,83 @@ function ownButton(getName) {
   return b;
 }
 
-const INV_TABS = ["Items", "Tomes", "Aspects", "Unavailable"];
+const INV_TABS = ["Storage", "Items", "Tomes", "Aspects", "Unavailable"];
 const ASPECT_CLASSES = ["Archer", "Warrior", "Mage", "Assassin", "Shaman"];
 const TOME_TYPE_LABEL = { weaponTome: "Weapon", armorTome: "Armor", guildTome: "Guild", lootrunTome: "Lootrun",
   gatherXpTome: "Gathering XP", dungeonXpTome: "Dungeon XP", mobXpTome: "Mob XP" };
 const tomeTypeLabel = (t) => TOME_TYPE_LABEL[t] || t;
-const invTab = () => { const t = store.get("wt-inv-tab"); return INV_TABS.includes(t) ? t : "Items"; };
-const invPrefs = { ownedOnly: {}, aspectClass: null, q: {} };
+const invTab = () => { const t = store.get("wt-inv-tab"); return INV_TABS.includes(t) ? t : "Storage"; };
+const invPrefs = { ownedOnly: {}, aspectClass: null, q: {}, find: "", place: null, page: 1, flash: null };
+const range = (a, b) => Array.from({ length: b - a }, (_, i) => a + i);
+
+function ago(iso) {
+  if (!iso) return "";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 90) return "just now";
+  if (s < 90 * 60) return `${Math.round(s / 60)} min ago`;
+  if (s < 36 * 3600) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+/** The item with one copy's real rolls, for its hover card. */
+const withRolls = (it, rolls) => (it && rolls && Object.keys(rolls).length ? { ...it, _actual: rolls } : it);
+const rollsText = (rolls) => Object.entries(rolls || {}).map(([k, v]) => { const [l, u] = idLabel(k); return `${l} ${sign(v)}${u}`; }).join(" · ");
+
+/** A tile for what isn't gear: tomes, aspects, and everything else a page holds. */
+function slotGlyph(s) {
+  const text = s.kind === "tome" ? "Tome" : s.kind === "aspect" ? `Asp ${s.tier || ""}`.trim()
+    : s.name.split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  return h("div", { class: "glyph", "aria-hidden": "true" }, text);
+}
+
+/** Everything owned whose name contains `q`: every copy, tomes, aspects and other things in pages. */
+function findOwned(q) {
+  const out = [];
+  for (const c of S.inv.copies) if (c.name.toLowerCase().includes(q)) out.push({ ...c, kind: "item" });
+  for (const t of S.inv.tomes) if (t.toLowerCase().includes(q)) out.push({ name: t, kind: "tome", place: "hand", where: "added by hand" });
+  for (const p of S.inv.place_list) for (const [n, pg] of Object.entries(p.pages))
+    for (const s of pg.slots) if (s.kind !== "item" && s.name.toLowerCase().includes(q)) out.push({ ...s, place: p.key, page: +n });
+  return out;
+}
+
+/** Open a place's page and make the slot flash. */
+function showSlot(place, page, slot) {
+  Object.assign(invPrefs, { place, page: page || 1, flash: slot });
+  store.set("wt-inv-tab", "Storage");
+  renderInventory();
+}
+
+async function drawFound(box) {
+  const q = invPrefs.find.trim().toLowerCase();
+  box.hidden = !q;
+  if (!q) { setKids(box); return; }
+  const hits = findOwned(q);
+  await Promise.all([...new Set(hits.filter((x) => x.kind === "item").map((x) => x.name))].map((n) => itemInfo("any", n)));
+  if (q !== invPrefs.find.trim().toLowerCase()) return;           // typed on meanwhile
+  const row = (hit) => {
+    const it = hit.kind === "item" ? S.items[hit.name] : null;
+    const r = h("div", { class: "found-row" },
+      h("div", { class: `cell ${hit.kind}` }, it ? itemIcon(it.type, 28, it.tier) : slotGlyph(hit)),
+      h("div", { class: "inv-main" },
+        h("span", { class: `inv-name${it ? ` tier-${it.tier}` : ""}` }, hit.name, hit.count > 1 ? ` ×${hit.count}` : ""),
+        h("div", { class: "muted" }, hit.where),
+        hit.rolls && Object.keys(hit.rolls).length ? h("div", { class: "eq-line" }, rollsText(hit.rolls)) : null),
+      hit.place !== "hand" ? h("button", { class: "mini", "aria-label": `Show ${hit.name}: ${hit.where}`,
+        onclick: () => showSlot(hit.place, hit.page, hit.slot) }, "Show") : null);
+    if (it) attachTooltip(r.firstChild, () => withRolls(S.items[hit.name], hit.rolls));
+    return r;
+  };
+  setKids(box, h("div", { class: "panel-h" }, hits.length ? `${hits.length} found` : "Not found"),
+    hits.length ? h("div", { class: "found-list" }, hits.slice(0, 200).map(row))
+      : h("p", { class: "muted" }, `You don't have anything called “${invPrefs.find.trim()}” in your inventory, ender chests or items added by hand.`));
+}
 
 async function renderInventory() {
   await loadInventory();
   const inv = S.inv, box = $("#inventory"), tab = invTab();
   const itemNames = [...Object.keys(inv.owned), ...inv.crafts];
   const aspectCount = Object.values(inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
-  const counts = { Items: itemNames.length, Tomes: inv.tomes.length, Aspects: aspectCount,
+  const counts = { Storage: inv.place_list.length, Items: inv.copies.length + inv.crafts.length,
+    Tomes: Object.values(inv.tome_counts || {}).reduce((a, b) => a + b, 0), Aspects: aspectCount,
     Unavailable: Object.keys(inv.unavailable || {}).length };
   const again = () => renderInventory();
   const tabs = h("div", { class: "tabs", role: "tablist" }, INV_TABS.map((t) =>
@@ -370,14 +436,20 @@ async function renderInventory() {
       onclick: () => { store.set("wt-inv-tab", t); again(); } },
       t, h("span", { class: "badge" }, String(counts[t])))));
   const hints = {
-    Items: "Mark the items you own. The solver can then build only from these (\"Only items I own\") and rank what to get next. Enter real roll values if you know them; blank means a typical 100% roll.",
-    Tomes: "Mark the tomes you own (two of the same tome for a paired slot: use the stepper). The solver can be told to pick only from these, or from any tome.",
+    Storage: "Your ender chests and inventory, page by page, as the chest-export mod last saw them. Open your ender chest in game and click the WynnGPT button to bring a page up to date.",
+    Items: "Every copy you own and where it is. Copies in your ender chests have the rolls the game showed; for copies added by hand, enter real rolls if you know them (blank means a typical 100% roll). The solver can build only from these (\"Only items I own\") and rank what to get next.",
+    Tomes: "Mark the tomes you own (two of the same tome for a paired slot: use the stepper). Tomes in your ender chests count too. The solver can be told to pick only from these, or from any tome.",
     Aspects: "Mark each aspect you have and the highest tier you have reached. The editor won't offer a higher tier than that.",
     Unavailable: "Items you can't or won't get (too expensive, not on the market). Every search leaves them out unless you force one into a slot.",
   };
+  const find = h("input", { type: "search", id: "inv-search", placeholder: "Find an item…", "aria-label": "Find an item",
+    value: invPrefs.find });
+  const found = h("section", { class: "inv-found panel", "aria-live": "polite" });
+  find.oninput = debounce(() => { invPrefs.find = find.value; drawFound(found); }, 120);
   const body = h("div", { class: "inv-body" });
-  setKids(box, h("div", { class: "head" }, h("h2", { style: "margin:0;flex:1" }, "Inventory")), tabs,
+  setKids(box, h("div", { class: "head inv-head" }, h("h2", { style: "margin:0" }, "Inventory"), find), found, tabs,
     h("p", { class: "hint" }, hints[tab]), body);
+  drawFound(found);
   const filterBar = (key, placeholder, extra = []) => {
     const q = h("input", { type: "search", placeholder, "aria-label": placeholder, value: invPrefs.q[key] || "" });
     const only = h("label", { class: "check" }, h("input", { type: "checkbox", checked: !!invPrefs.ownedOnly[key] }), " Owned only");
@@ -386,10 +458,80 @@ async function renderInventory() {
     return { q, bar: h("div", { class: "inv-filter" }, q, ...extra, only) };
   };
   let draw = () => {};
-  if (tab === "Items") await invItems(body, inv, itemNames, again);
+  if (tab === "Storage") await invStorage(body, inv, again);
+  else if (tab === "Items") await invItems(body, inv, itemNames, again);
   else if (tab === "Tomes") { const f = filterBar("tomes", "Filter tomes…"); draw = invTomes(body, inv, f, again); body.prepend(f.bar); draw(); }
   else if (tab === "Aspects") await invAspects(body, inv, filterBar, again);
   else invUnavailable(body, inv, again);
+}
+
+async function invStorage(body, inv, again) {
+  const places = inv.place_list;
+  if (!places.length) {
+    body.append(h("div", { class: "panel" }, h("p", {}, "Nothing exported from the game yet."),
+      h("p", { class: "muted" }, "With the chest-export mod installed (see the README), open your ender chest or inventory in game and click the WynnGPT button beside it. Every page it sends appears here, slot by slot, and the search above finds any item in them.")));
+    return;
+  }
+  if (!places.some((p) => p.key === invPrefs.place)) invPrefs.place = places[0].key;
+  const place = places.find((p) => p.key === invPrefs.place);
+  const exported = Object.keys(place.pages).map(Number).sort((a, b) => a - b);
+  if (!exported.includes(invPrefs.page)) invPrefs.page = exported[0] || 1;
+  const page = place.pages[String(invPrefs.page)];
+
+  const picker = h("div", { class: "place-picker", role: "group", "aria-label": "Storage" }, places.map((p) =>
+    h("button", { class: `mini pill${p.key === place.key ? " on" : ""}`, "aria-pressed": p.key === place.key ? "true" : "false",
+      onclick: () => { invPrefs.place = p.key; invPrefs.page = 1; again(); } }, p.label)));
+  let rename = null;
+  if (place.character) {
+    const name = h("input", { placeholder: "Character name", "aria-label": "Character name",
+      value: inv.characters?.[place.character]?.name || "" });
+    rename = h("div", { class: "inv-filter" }, h("span", { class: "muted" }, `Character ${place.character}:`), name,
+      h("button", { class: "mini", onclick: async () => {
+        await api("POST", "/api/inventory", { action: "rename_character", character: place.character, name: name.value });
+        toast("Character renamed"); again();
+      } }, "Rename"));
+  }
+  const strip = place.max_pages > 1 ? h("div", { class: "page-strip", role: "group", "aria-label": "Pages" },
+    range(1, place.max_pages + 1).map((n) => {
+      const has = exported.includes(n), on = n === invPrefs.page;
+      return h("button", { class: `mini page${on ? " on" : ""}${has ? "" : " missing"}`, disabled: !has,
+        "aria-pressed": on ? "true" : "false", "aria-label": `Page ${n}`,
+        title: has ? `Page ${n} · exported ${ago(place.pages[n].updated)}` : `Page ${n}: not exported yet`,
+        onclick: () => { invPrefs.page = n; again(); } }, String(n));
+    })) : null;
+
+  const slots = new Map((page?.slots || []).map((s) => [s.slot, s]));
+  await Promise.all([...new Set((page?.slots || []).filter((s) => s.kind === "item").map((s) => s.name))].map((n) => itemInfo("any", n)));
+  const cell = (k) => {
+    const s = slots.get(k);
+    if (!s) return h("div", { class: "cell blank", "data-slot": k });
+    const it = s.kind === "item" ? S.items[s.name] : null;
+    const label = `${s.name}${s.count > 1 ? ` ×${s.count}` : ""}${s.kind === "aspect" ? ` (tier ${s.tier})` : ""}`;
+    const c = h("div", { class: `cell ${s.kind}`, "data-slot": k, role: "img", "aria-label": `${label}: ${s.where}`,
+      title: it ? null : label }, it ? itemIcon(it.type, 36, it.tier) : slotGlyph(s),
+      s.count > 1 ? h("span", { class: "cell-count" }, String(s.count)) : null);
+    if (it) attachTooltip(c, () => withRolls(S.items[s.name], s.rolls));
+    return c;
+  };
+  const grid = place.kind === "inventory"
+    ? h("div", { class: "inv-layout" },
+      h("div", { class: "chest-grid equip-row", title: "Helmet, chestplate, leggings, boots, offhand" }, [39, 38, 37, 36, 40].map(cell)),
+      h("div", { class: "chest-grid" }, range(9, 36).map(cell)),
+      h("div", { class: "chest-grid hotbar" }, range(0, 9).map(cell)))
+    : h("div", { class: "chest-grid" }, range(0, 45).map(cell));
+  const n = (kind) => (page?.slots || []).filter((s) => s.kind === kind).length;
+  const count = (kind, word) => { const k = n(kind); return k ? `${k} ${word}${k === 1 ? "" : "s"}` : null; };
+  const summary = page ? [`Exported ${ago(page.updated)}`, count("item", "item") || "no items", count("tome", "tome"),
+    count("aspect", "aspect"), n("other") ? `${n("other")} other` : null].filter(Boolean).join(" · ")
+    : "Not exported yet";
+  body.append(...[picker, rename, strip].filter(Boolean), h("div", { class: "chest" }, h("div", { class: "panel-h" },
+    place.label + (place.max_pages > 1 ? ` · page ${invPrefs.page}` : "")), grid), h("p", { class: "hint" }, summary));
+  if (invPrefs.flash != null) {
+    const el = body.querySelector(`.cell[data-slot="${invPrefs.flash}"]`);
+    el?.classList.add("flash");
+    el?.scrollIntoView({ block: "center" });
+    invPrefs.flash = null;
+  }
 }
 
 async function invItems(body, inv, names, again) {
@@ -397,43 +539,67 @@ async function invItems(body, inv, names, again) {
   const addInput = h("input", { placeholder: "Search any item to add…", "aria-label": "Add owned item" });
   const addAc = autocomplete(addInput, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
     async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); again(); });
+  const byName = {};
+  for (const c of inv.copies) (byName[c.name] ||= []).push(c);
   const rows = names.sort().map((n) => {
-    const it = S.items[n];
-    const rolls = (inv.items.find((e) => e.name === n) || {}).rolls || {};
+    const it = S.items[n], copies = byName[n] || [];
+    const sameRolls = {};
+    for (const c of copies) sameRolls[c.fp] = (sameRolls[c.fp] || 0) + 1;
     const rolled = Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi);
-    const canRoll = rolled.length && !n.startsWith("CR-");
-    const inputs = rolled.map(([k, [lo, mid, hi]]) => {
-      const [label, unit] = idLabel(k);
-      const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
-        "aria-label": `${n} ${label}`, value: rolls[k] ?? "" });
-      inp.dataset.id = k;
-      return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
-    });
-    const nSet = Object.keys(rolls).length;
-    const save = h("button", { class: "mini", onclick: async () => {
-      const r = {};
-      for (const inp of card.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
-      await setOwned(n, true, { rolls: r }); toast("Rolls saved");
-    } }, "Save rolls");
+    const hand = copies.filter((c) => c.place === "hand");
+    const copyRow = (c) => {
+      let drawer = null;
+      if (c.place === "hand" && rolled.length) {
+        const who = hand.length > 1 ? `${n} copy ${hand.indexOf(c) + 1}` : n;
+        const inputs = rolled.map(([k, [lo, mid, hi]]) => {
+          const [label, unit] = idLabel(k);
+          const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
+            "aria-label": `${who} ${label}`, value: c.rolls[k] ?? "" });
+          inp.dataset.id = k;
+          return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
+        });
+        const save = h("button", { class: "mini", onclick: async () => {
+          const r = {};
+          for (const inp of drawer.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
+          await setOwned(n, true, { rolls: r, index: c.index }); toast("Rolls saved"); again();
+        } }, "Save rolls");
+        drawer = h("details", { class: "rolls-drawer", open: Object.keys(c.rolls).length > 0 },
+          h("summary", {}, "Real rolls"), h("div", { class: "rolls" }, inputs), h("div", { class: "row" }, save));
+      }
+      const txt = rollsText(c.rolls);
+      return h("div", { class: "copy-row" },
+        h("div", { class: "row" }, h("span", { class: "copy-where" }, c.where),
+          sameRolls[c.fp] > 1 ? h("span", { class: "badge", title: "Another copy has exactly the same rolls" }, "identical rolls") : null,
+          h("span", { class: "grow" }),
+          c.place !== "hand" ? h("button", { class: "mini", "aria-label": `Show ${n}: ${c.where}`,
+            onclick: () => showSlot(c.place, c.page, c.slot) }, "Show") : null,
+          copies.length > 1 ? h("button", { class: "mini danger",
+            title: c.place === "hand" ? "Remove this copy" : "Remove this copy (until you next export that page)",
+            onclick: async () => { await setOwned(n, false, { fp: c.fp }); again(); } }, "Remove copy") : null),
+        txt ? h("div", { class: "eq-line" }, txt)
+          : c.place === "hand" && rolled.length ? h("div", { class: "eq-line muted" }, "No real rolls entered: a typical 100% roll counts") : null,
+        drawer);
+    };
     const card = h("div", { class: "inv-item" },
       h("div", { class: "row" }, itemIcon(it?.type, 32, it?.tier),
         h("div", { class: "inv-main" },
-          h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n)),
+          h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n), copies.length > 1 ? h("span", { class: "count" }, ` ×${copies.length}`) : null),
           h("div", { class: "eq-line" }, itemLine(it))),
-        nSet ? h("span", { class: "badge gold", title: "Real rolls entered" }, `${nSet} roll${nSet === 1 ? "" : "s"}`) : null,
-        h("button", { class: "mini danger", onclick: async () => { await setOwned(n, false); again(); } }, "Remove")),
-      canRoll ? h("details", { class: "rolls-drawer", open: nSet > 0 },
-        h("summary", {}, "Real rolls"),
-        h("div", { class: "rolls" }, inputs), h("div", { class: "row" }, save)) : null);
-    attachTooltip(card.querySelector(".eq-icon"), () => S.items[n]);
+        n.startsWith("CR-") ? null : h("button", { class: "mini", "aria-label": `Add another copy of ${n}`,
+          title: "Add another copy by hand", onclick: async () => { await setOwned(n, true, { another: true }); again(); } }, "+ copy"),
+        h("button", { class: "mini danger", onclick: async () => { await setOwned(n, false); again(); } },
+          copies.length > 1 ? "Remove all" : "Remove")),
+      copies.map(copyRow));
+    attachTooltip(card.querySelector(".eq-icon"), () => withRolls(S.items[n], copies[0]?.rolls));
     return card;
   });
   body.append(addAc, rows.length ? h("div", { class: "inv-grid" }, rows)
-    : h("p", { class: "muted" }, "Nothing yet. Search above, or use the ☆ Own button on a build's items."));
+    : h("p", { class: "muted" }, "Nothing yet. Export from the game with the chest-export mod, search above, or use the ☆ Own button on a build's items."));
 }
 
 function invTomes(body, inv, f, again) {
-  const own = () => { const c = {}; for (const t of inv.tomes) c[t] = (c[t] || 0) + 1; return c; };
+  const own = () => ({ ...(inv.tome_counts || {}) });
+  const byHand = () => { const c = {}; for (const t of inv.tomes) c[t] = (c[t] || 0) + 1; return c; };
   const list = h("div", { class: "inv-tomes" });
   body.append(list);
   const step = async (name, delta) => {
@@ -441,7 +607,7 @@ function invTomes(body, inv, f, again) {
     inv = S.inv; draw();
   };
   const draw = () => {
-    const c = own(), q = (invPrefs.q.tomes || "").toLowerCase(), only = !!invPrefs.ownedOnly.tomes;
+    const c = own(), hand = byHand(), q = (invPrefs.q.tomes || "").toLowerCase(), only = !!invPrefs.ownedOnly.tomes;
     const groups = Object.keys(S.tomes).sort().map((type) => {
       const all = S.tomes[type].filter((t) => (!q || t.name.toLowerCase().includes(q)) && (!only || c[t.name]));
       all.sort((a, b) => (!!c[b.name] - !!c[a.name]) || 0);     // owned first, then the server's level order
@@ -458,7 +624,9 @@ function invTomes(body, inv, f, again) {
               return [i ? " · " : "", h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`)];
             })),
             h("div", { class: "row stepper" },
-              n ? h("button", { class: "mini", "aria-label": `Own one fewer ${t.name}`, onclick: () => step(t.name, -1) }, "−") : null,
+              hand[t.name] ? h("button", { class: "mini", "aria-label": `Own one fewer ${t.name}`, onclick: () => step(t.name, -1) }, "−") : null,
+              n > (hand[t.name] || 0) ? h("span", { class: "muted", title: "Tomes in your ender chests or inventory come from the game" },
+                `${n - (hand[t.name] || 0)} in storage`) : null,
               n ? h("span", { class: "count" }, `×${n}`) : null,
               h("button", { class: `mini own${n ? " on" : ""}`, "aria-label": `Own ${t.name}`,
                 onclick: () => step(t.name, +1) }, n ? "+" : "☆ Own")));
@@ -1220,7 +1388,7 @@ function renderTomes() {
   d.tomes = d.tomes || Array(14).fill(null);
   S.meta.tome_slots.forEach((slot, k) => {
     const type = slot.replace(/\d+$/, "");
-    const have = new Set(S.inv.tomes), only = store.get("wt-tomes-owned") === "1";
+    const have = new Set(Object.keys(S.inv.tome_counts || {})), only = store.get("wt-tomes-owned") === "1";
     const tomes = (S.tomes[type] || []).filter((t) => !only || have.has(t.name) || t.name === d.tomes[k]);
     const info = h("div", { class: "eq-line" });
     const describe = () => {

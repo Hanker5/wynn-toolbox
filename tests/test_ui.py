@@ -415,6 +415,8 @@ def test_own_button_rolls_and_upgrades(page, app):
     inv = json.loads((Path(app.builds_dir) / "inventory.json").read_text())
     assert inv["items"] == [{"name": "Galleon"}]
     page.click("#open-inventory")
+    page.wait_for_selector("#inventory:not([hidden]) .tab")
+    page.get_by_role("tab", name="Items").click()
     page.wait_for_selector("#inventory:not([hidden]) .inv-item")
     page.locator(".inv-item:has-text('Galleon') summary").click()          # rolls sit in a drawer
     page.get_by_role("spinbutton", name="Galleon Stealing").fill("5")      # base is 15
@@ -1192,4 +1194,44 @@ def test_powders_show_in_the_pieces_own_stats(page):
     box.fill("")
     box.press("Tab")
     page.wait_for_function(f"document.querySelector(\"{slot} .eq-line .hp\").textContent.includes('{bare:,}')")
+    assert not page.errors
+
+
+def test_storage_pages_search_and_show(page, app):
+    """Exported ender chest pages are drawn slot by slot; the search finds every copy and
+    Show opens its page with the slot highlighted; the Items tab lists each copy."""
+    import os
+
+    def export(n, storage):
+        arrows = [{"slot": 51, "name": f"Page {n - 1} <<<<<"}, {"slot": 52, "name": f"Page {n + 1} >>>>>"}]
+        return {"version": 2, "kind": "account", "character": {"id": "a1b2c3d4"}, "storage": storage + arrows,
+                "inventory": [{"slot": 0, "name": "Spring"}]}
+    pad = "\U000cffff"
+    for body in (export(2, [{"slot": 4, "name": "Galleon", "lore": [f"Stealing{pad}+14%"]},
+                            {"slot": 5, "name": "Liquid Emerald", "count": 64}]),
+                 export(5, [{"slot": 0, "name": "Galleon", "lore": [f"Stealing{pad}+9%"]}])):
+        page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
+                      "'application/json'}, body: JSON.stringify(b)})", body)
+    page.click("#open-inventory")
+    page.get_by_role("tab", name="Storage").click()
+    page.wait_for_selector(".chest-grid .cell.item")
+    assert page.locator(".chest .cell").count() == 45
+    playwright.expect(page.get_by_role("img", name=re.compile(r"^Galleon: Account ender chest · page 2 · row 1, column 5"))).to_be_visible()
+    playwright.expect(page.get_by_role("button", name="Page 7", exact=True)).to_be_disabled()      # not exported yet
+    page.get_by_label("Find an item").fill("galleon")
+    playwright.expect(page.locator(".found-row")).to_have_count(2)
+    if os.environ.get("WT_SHOTS"):
+        page.locator("#inventory").screenshot(path=f"{os.environ['WT_SHOTS']}/80-inventory-storage.png")
+    page.get_by_role("button", name=re.compile("^Show Galleon: Account ender chest · page 5")).click()
+    page.wait_for_selector('.chest .cell.flash[data-slot="0"]')
+    playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_attribute("aria-pressed", "true")
+    page.get_by_label("Find an item").fill("nothing like this")
+    playwright.expect(page.locator(".inv-found")).to_contain_text("You don't have anything called")
+    page.get_by_role("button", name=re.compile("inventory$")).click()            # the character's inventory
+    playwright.expect(page.get_by_role("img", name=re.compile("^Spring: .* · inventory · hotbar 1"))).to_be_visible()
+    page.get_by_label("Find an item").fill("")
+    page.get_by_role("tab", name="Items").click()
+    playwright.expect(page.locator(".inv-item:has-text('Galleon') .copy-row")).to_have_count(2)
+    if os.environ.get("WT_SHOTS"):
+        page.locator("#inventory").screenshot(path=f"{os.environ['WT_SHOTS']}/81-inventory-items.png")
     assert not page.errors
