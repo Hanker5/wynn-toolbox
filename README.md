@@ -166,9 +166,9 @@ Typing in everything you own is slow, so there's a small client-side
 [Fabric](https://fabricmc.net) mod that does it for you. WynnGPT works fine
 without it.
 
-It adds a **WynnGPT** button beside every container screen (chests, your bank,
-your own inventory). Click it while WynnGPT is open and every item in that
-screen is sent to the app. The app adds the items, tomes and aspects it
+It adds a **WynnGPT** button beside your own inventory and your Account and
+Character ender chests (not loot chests, trades or shops). Click it while
+WynnGPT is open and every item in that screen is sent to the app. The app adds the items, tomes and aspects it
 recognises to your inventory, with the real rolls of identified items read
 from their tooltips. It only adds: nothing you already set is overwritten or
 removed. A chat message says how many items, tomes and aspects it added and
@@ -178,14 +178,14 @@ how many it didn't recognise.
 [Fabric API](https://modrinth.com/mod/fabric-api)):
 
 1. Copy the ready-built jar into your Minecraft `mods` folder:
-   `wynn-chest-export/build/libs/wynngpt-chest-export-1.0.0.jar`, inside
+   `wynn-chest-export/build/libs/wynngpt-chest-export-1.1.0.jar`, inside
    the WynnGPT folder (`%LOCALAPPDATA%\WynnToolbox` on Windows,
    `~/WynnToolbox` on macOS and Linux, or your clone).
 2. Start Minecraft once. The mod creates `config/wynngpt-chest-export.json`
    in your Minecraft folder. Set `builds_path` in it to WynnGPT's `builds`
    folder, for example `C:\\Users\\you\\AppData\\Local\\WynnToolbox\\builds`
    (JSON needs doubled backslashes) or `/home/you/WynnToolbox/builds`.
-3. Open WynnGPT, then open a chest in game and click the button.
+3. Open WynnGPT, then open your ender chest in game and click the button.
 
 If chat says WynnGPT isn't running, open the app and click again (the mod
 finds it through `builds/.server.json`, so `builds_path` must be right). Launchers installed as a Flatpak (Prism

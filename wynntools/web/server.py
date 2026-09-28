@@ -982,17 +982,21 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
     @app.post("/api/inventory/import")
     async def import_inventory(request: Request):
-        """{"source": {...}, "slots": [{"name", "lore", "item_id", "count", ...}]}, sent by the
-        Fabric chest-export mod. Adds what it recognises; returns the inventory plus a summary."""
+        """An export from the Fabric chest-export mod. Format 2: {"version": 2, "kind",
+        "character", "storage": [slots], "inventory": [slots]}; format 1 (older mods):
+        {"source", "slots"}. Returns the inventory plus a summary and a chat `message`."""
         body = await request.json()
-        slots = body.get("slots") if isinstance(body, dict) else None
-        if not isinstance(slots, list) or not all(isinstance(s, dict) for s in slots):
-            raise HTTPException(422, "slots must be a list of objects")
-        # Kept so unrecognised names can be checked against what the game really sent.
-        (builds_dir / ".last-import.json").write_text(json.dumps(body, indent=1, ensure_ascii=False),
-                                                      encoding="utf-8")
+        if not isinstance(body, dict):
+            raise HTTPException(422, "the export must be a JSON object")
+        lists = ("storage", "inventory") if body.get("version") == 2 else ("slots",)
+        for key in lists:
+            got = body.get(key, [] if key == "storage" else None)
+            if not isinstance(got, list) or not all(isinstance(s, dict) for s in got):
+                raise HTTPException(422, f"{key} must be a list of objects")
+        # Kept so unrecognised names and new screens can be checked against what the game sent.
+        gameimport.keep_sample(builds_dir, body)
         i = inv()
-        result = gameimport.import_slots(i, gd, slots)
+        result = gameimport.import_export(i, gd, body)
         inv_mod.save(i, inv_path)
         return {**i.to_json(), **result}
 

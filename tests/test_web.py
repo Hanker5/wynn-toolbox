@@ -163,6 +163,19 @@ def test_inventory_import_from_game_dump(client, tmp_path):
     assert client.post("/api/inventory/import", json={"slots": "nope"}).status_code == 422
 
 
+def test_inventory_import_v2_keeps_samples_and_skips_unknown_containers(client, tmp_path):
+    """Format 2 sends the storage and the player's inventory apart. An unrecognised
+    container (a loot chest, exported in capture mode) never marks its items as owned,
+    but its raw export is kept in builds/.imports/ to write a reader from."""
+    loot = {"version": 2, "kind": "unknown", "character": {"id": "a1b2c3d4"},
+            "storage": [{"slot": 0, "name": "Galleon"}], "inventory": [{"slot": 9, "name": "Leo"}]}
+    body = client.post("/api/inventory/import", json=loot).json()
+    assert "Leo" in body["items"] and "Galleon" not in body["items"]
+    kept = list((tmp_path / ".imports").glob("*-unknown.json"))
+    assert len(kept) == 1 and '"Galleon"' in kept[0].read_text(encoding="utf-8")
+    assert client.post("/api/inventory/import", json={**loot, "inventory": "nope"}).status_code == 422
+
+
 def test_inventory_import_counts_tomes(client):
     tome = "Blooming Tome of Defensive Mastery III"
     two = client.post("/api/inventory/import", json={"slots": [{"name": tome}, {"name": tome}]}).json()

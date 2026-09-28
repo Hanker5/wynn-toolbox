@@ -4,6 +4,8 @@ Each slot is {"name", "lore": [...], "item_id", "count", ...}. Names are matched
 against the game data after stripping formatting; anything that matches nothing is
 reported back as unknown so the mod's players can see what was skipped.
 """
+import datetime
+import json
 import re
 import unicodedata
 
@@ -132,3 +134,32 @@ def import_slots(inv, gd, slots):
             tomes += 1
     return {"imported": {"items": items, "tomes": tomes, "aspects": aspects, "rolls": rolls},
             "unknown": unknown}
+
+
+SAMPLES = 30      # raw exports kept in builds/.imports/
+
+
+def keep_sample(builds_dir, body):
+    """Save a raw export as builds/.last-import.json and builds/.imports/<time>-<kind>.json
+    (the newest SAMPLES), to check new screens and unrecognised names against."""
+    from pathlib import Path
+    text = json.dumps(body, indent=1, ensure_ascii=False)
+    builds_dir = Path(builds_dir)
+    (builds_dir / ".last-import.json").write_text(text, encoding="utf-8")
+    folder = builds_dir / ".imports"
+    folder.mkdir(exist_ok=True)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    kind = re.sub(r"[^a-z_]", "", str(body.get("kind") or "v1"))[:20] or "v1"
+    (folder / f"{stamp}-{kind}.json").write_text(text, encoding="utf-8")
+    for old in sorted(folder.glob("*.json"))[:-SAMPLES]:
+        old.unlink()
+
+
+def import_export(inv, gd, body):
+    """Import one export from the mod (either format)."""
+    if body.get("version") != 2:
+        return import_slots(inv, gd, body.get("slots"))
+    slots = list(body.get("inventory") or [])
+    if body.get("kind") in ("account", "character"):
+        slots += body.get("storage") or []
+    return import_slots(inv, gd, slots)

@@ -21,22 +21,36 @@ public final class ExportConfig {
 
 	/** Path to the WynnGPT repo's builds/ folder, or an empty string when unset. Creates the file on first use. */
 	public static String buildsPath() {
+		JsonObject json = read();
+		if (json == null || !json.has("builds_path") || json.get("builds_path").isJsonNull()) {
+			return "";
+		}
+		return json.get("builds_path").getAsString().trim();
+	}
+
+	/** "capture": true shows the button on every container, to record samples of screens the mod doesn't know yet. */
+	public static boolean capture() {
+		JsonObject json = read();
+		try {
+			return json != null && json.has("capture") && json.get("capture").getAsBoolean();
+		} catch (RuntimeException e) {
+			return false;
+		}
+	}
+
+	private static JsonObject read() {
 		Path file = file();
 		try {
 			if (!Files.exists(file)) {
 				JsonObject fresh = new JsonObject();
 				fresh.addProperty("builds_path", "");
 				Files.writeString(file, GSON.toJson(fresh));
-				return "";
+				return fresh;
 			}
-			JsonObject json = GSON.fromJson(Files.readString(file), JsonObject.class);
-			if (json == null || !json.has("builds_path") || json.get("builds_path").isJsonNull()) {
-				return "";
-			}
-			return json.get("builds_path").getAsString().trim();
+			return GSON.fromJson(Files.readString(file), JsonObject.class);
 		} catch (IOException | RuntimeException e) {
 			WynnGPTChestExportClient.LOGGER.warn("Could not read {}", file, e);
-			return "";
+			return null;
 		}
 	}
 }

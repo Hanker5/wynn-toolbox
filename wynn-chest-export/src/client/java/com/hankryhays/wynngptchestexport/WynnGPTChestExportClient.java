@@ -26,7 +26,10 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		ExportConfig.buildsPath();
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
-			if (!(screen instanceof AbstractContainerScreen<?> container)) {
+			StorageScreens.Kind kind = StorageScreens.kind(screen);
+			// Only the player's own storages: never loot chests, trades or shops (unless capturing samples).
+			if (!(screen instanceof AbstractContainerScreen<?> container) || kind == null
+				|| (kind == StorageScreens.Kind.UNKNOWN && !ExportConfig.capture())) {
 				return;
 			}
 			AbstractContainerScreenAccessor pos = (AbstractContainerScreenAccessor) container;
@@ -44,7 +47,7 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
 				if (event.button() == 0 && inside(event.x(), event.y(), buttonX(pos), pos.wynngpt$topPos())) {
 					pressed[0] = true;
-					InventoryExporter.export(container);
+					InventoryExporter.export(container, kind);
 					return false;
 				}
 				return true;

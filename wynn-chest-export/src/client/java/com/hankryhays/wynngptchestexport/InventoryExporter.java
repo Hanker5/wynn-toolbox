@@ -10,6 +10,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.Slot;
@@ -29,8 +30,13 @@ public final class InventoryExporter {
 	private InventoryExporter() {
 	}
 
-	public static void export(AbstractContainerScreen<?> screen) {
+	public static void export(AbstractContainerScreen<?> screen, StorageScreens.Kind kind) {
 		Minecraft mc = Minecraft.getInstance();
+		send(mc, collect(mc, screen, kind));
+	}
+
+	/** Posts an export to the running app and reports the result in chat. */
+	public static void send(Minecraft mc, JsonObject export) {
 		AppLocator.Result located = AppLocator.locate();
 		if (located instanceof AppLocator.NotConfigured) {
 			say(mc, Component.literal("WynnGPT export: set \"builds_path\" to your WynnGPT builds folder in " + ExportConfig.file()));
@@ -47,7 +53,7 @@ public final class InventoryExporter {
 			return;
 		}
 
-		String body = GSON.toJson(collect(mc, screen));
+		String body = GSON.toJson(export);
 		HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + found.server().port() + "/api/inventory/import"))
 			.timeout(Duration.ofSeconds(10))
 			.header("Content-Type", "application/json")
@@ -70,6 +76,9 @@ public final class InventoryExporter {
 	private static String summary(String responseBody) {
 		try {
 			JsonObject json = GSON.fromJson(responseBody, JsonObject.class);
+			if (json.has("message")) {
+				return json.get("message").getAsString();
+			}
 			JsonObject imported = json.getAsJsonObject("imported");
 			int unknown = json.getAsJsonArray("unknown").size();
 			return imported.get("items").getAsInt() + " new items, " + imported.get("rolls").getAsInt() + " with updated rolls, "
@@ -95,41 +104,82 @@ public final class InventoryExporter {
 		}
 	}
 
-	private static JsonObject collect(Minecraft mc, AbstractContainerScreen<?> screen) {
+	/**
+	 * Export format 2: the storage's own slots (numbered as the game does, page arrows included),
+	 * the player's whole inventory whatever screen is open, and the active character.
+	 */
+	public static JsonObject collect(Minecraft mc, AbstractContainerScreen<?> screen, StorageScreens.Kind kind) {
 		AbstractContainerMenu menu = screen.getMenu();
+		var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
 		JsonObject source = new JsonObject();
 		source.addProperty("title", screen.getTitle().getString());
+		ComponentSerialization.CODEC.encodeStart(ops, screen.getTitle()).result().ifPresent(t -> source.add("title_json", t));
 		source.addProperty("menu", menuName(menu));
 
+		JsonObject root = new JsonObject();
+		root.addProperty("version", 2);
+		root.addProperty("kind", kind.id);
+		root.add("character", character(mc));
+		root.add("source", source);
+		root.add("storage", kind == StorageScreens.Kind.INVENTORY ? new JsonArray() : storage(mc, menu));
+		root.add("inventory", inventory(mc));
+		return root;
+	}
+
+	public static JsonObject character(Minecraft mc) {
+		JsonObject character = new JsonObject();
+		String id = StorageScreens.characterId(mc);
+		if (id != null) {
+			character.addProperty("id", id);
+		}
+		JsonArray lore = new JsonArray();
+		StorageScreens.characterLore(mc).forEach(lore::add);
+		character.add("lore", lore);
+		return character;
+	}
+
+	/** The container's own slots (not the player's), by their slot number in the container. */
+	public static JsonArray storage(Minecraft mc, AbstractContainerMenu menu) {
 		var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
 		JsonArray slots = new JsonArray();
 		for (Slot slot : menu.slots) {
-			ItemStack stack = slot.getItem();
-			if (stack.isEmpty()) {
-				continue;
+			if (!(slot.container instanceof Inventory) && !slot.getItem().isEmpty()) {
+				slots.add(stack(ops, slot.getContainerSlot(), slot.getItem()));
 			}
-			JsonObject entry = new JsonObject();
-			entry.addProperty("slot", slot.index);
-			entry.addProperty("container", slot.container instanceof Inventory ? "player" : "container");
-			entry.addProperty("item_id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
-			entry.addProperty("count", stack.getCount());
-			entry.addProperty("name", stack.getHoverName().getString());
-			JsonArray lore = new JsonArray();
-			for (Component line : stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines()) {
-				lore.add(line.getString());
-			}
-			entry.add("lore", lore);
-			JsonElement raw = ItemStack.CODEC.encodeStart(ops, stack).result().orElse(null);
-			if (raw != null) {
-				entry.add("raw", raw);
-			}
-			slots.add(entry);
 		}
+		return slots;
+	}
 
-		JsonObject root = new JsonObject();
-		root.add("source", source);
-		root.add("slots", slots);
-		return root;
+	/** The player's inventory: 0-8 hotbar, 9-35 main, 36-39 armor, 40 offhand. */
+	public static JsonArray inventory(Minecraft mc) {
+		var ops = mc.level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+		Inventory inventory = mc.player.getInventory();
+		JsonArray slots = new JsonArray();
+		for (int i = 0; i < inventory.getContainerSize(); i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (!stack.isEmpty()) {
+				slots.add(stack(ops, i, stack));
+			}
+		}
+		return slots;
+	}
+
+	private static JsonObject stack(com.mojang.serialization.DynamicOps<JsonElement> ops, int slot, ItemStack stack) {
+		JsonObject entry = new JsonObject();
+		entry.addProperty("slot", slot);
+		entry.addProperty("item_id", BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
+		entry.addProperty("count", stack.getCount());
+		entry.addProperty("name", stack.getHoverName().getString());
+		JsonArray lore = new JsonArray();
+		for (Component line : stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines()) {
+			lore.add(line.getString());
+		}
+		entry.add("lore", lore);
+		JsonElement raw = ItemStack.CODEC.encodeStart(ops, stack).result().orElse(null);
+		if (raw != null) {
+			entry.add("raw", raw);
+		}
+		return entry;
 	}
 
 	private static String menuName(AbstractContainerMenu menu) {
