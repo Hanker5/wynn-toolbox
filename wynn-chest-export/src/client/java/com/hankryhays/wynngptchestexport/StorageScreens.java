@@ -33,7 +33,6 @@ public final class StorageScreens {
 	// The Character Info compass's first tooltip line is the character's id, e.g. "§7a1b2c3d4".
 	private static final int CHARACTER_INFO_SLOT = 7;
 	private static final Pattern CHARACTER_ID = Pattern.compile("^[a-z0-9]{8}$");
-	private static final Pattern FORMAT = Pattern.compile("§.");
 
 	private StorageScreens() {
 	}
@@ -75,6 +74,6 @@ public final class StorageScreens {
 	}
 
 	public static String strip(String text) {
-		return FORMAT.matcher(text == null ? "" : text).replaceAll("").strip();
+		return Controls.clean(text);
 	}
 }

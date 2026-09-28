@@ -177,10 +177,10 @@ def test_the_mod_recognises_real_ender_chest_titles():
     bank = java_string(source, "BANK_TITLE")
     assert real("account-p1.json")["source"]["title"].endswith(bank + "")
     assert real("character-p3.json")["source"]["title"].endswith(bank + "")
-    walker = (MOD / "PageWalker.java").read_text(encoding="utf-8")
+    rules = (MOD / "Controls.java").read_text(encoding="utf-8")
     controls = {s["slot"]: clean(s["name"]) for s in real("account-p1.json")["storage"] if s["slot"] >= 45}
-    assert controls[int(re.search(r"SWITCH_SLOT = (\d+);", walker).group(1))] == java_string(walker, "SWITCH_NAME")
-    assert controls[46] == "Quick Actions" and "46" not in re.findall(r"_SLOT = (\d+);", walker)   # never clicked
+    assert controls[int(re.search(r"SWITCH_SLOT = (\d+);", rules).group(1))] == java_string(rules, "SWITCH_NAME")
+    assert controls[46] == "Quick Actions" and "46" not in re.findall(r"_SLOT = (\d+);", rules)   # never clicked
 
 
 def test_real_pages_are_read(gd):
@@ -197,22 +197,18 @@ def test_real_pages_are_read(gd):
     assert not any(s["slot"] >= 45 for key, _, s in inv.slots() if not key.startswith("inventory"))   # no arrows
 
 
-def test_the_walker_clicks_only_real_arrows_and_the_switch():
-    """The page walker's click rule (PageWalker.java), applied to real slots: on the last page
-    bought, slot 52 is still named "Page 15 >>>>>" but offers to buy the page; it must never
-    be clicked, and neither must Quick Actions (46)."""
-    walker = (MOD / "PageWalker.java").read_text(encoding="utf-8")
-    hint, purchase = java_string(walker, "ARROW_HINT"), java_string(walker, "PURCHASE")
-    switch, switch_hint = java_string(walker, "SWITCH_NAME"), java_string(walker, "SWITCH_HINT")
-
-    def clickable(export, slot):
-        s = next(x for x in real(export)["storage"] if x["slot"] == slot)
-        name, lore = clean(s["name"]), [clean(line) for line in s.get("lore") or []]
-        if slot == 47:
-            return name == switch and switch_hint in lore
-        return bool(re.match(r"^Page \d+\s*[<>]", name)) and hint in lore and not any(purchase in x for x in lore)
-
-    assert clickable("account-p7.json", 51) and clickable("account-p7.json", 52)
-    assert clickable("account-p14-last.json", 51) and not clickable("account-p14-last.json", 52)
-    assert clickable("account-p1.json", 47) and not clickable("account-p1.json", 46)
-    assert page_of(real("account-p14-last.json")["storage"]) == 14
+def test_pages_are_not_dropped_when_the_last_page_read_still_has_a_next_arrow(gd):
+    """Regression: a mod that couldn't read the arrows sent page 1 as a complete walk, and
+    every later Account page was dropped. Page 1 still offered "Page 2 >>>>>", so the app
+    now keeps the rest."""
+    inv = Inventory()
+    for f in ("account-p1.json", "account-p7.json", "account-p14-last.json"):
+        import_export(inv, gd, real(f))
+    early = {**real("account-p1.json"), "kind": "ender_all", "storage": [],
+             "pages": [{"kind": "account", "page": 1, "storage": real("account-p1.json")["storage"]}],
+             "complete": ["account"]}
+    r = import_export(inv, gd, early)
+    assert sorted(inv.places["account"]["pages"], key=int) == ["1", "7", "14"] and r["warnings"]
+    done = {**early, "pages": [{"kind": "account", "page": 14, "storage": real("account-p14-last.json")["storage"]}]}
+    import_export(inv, gd, done)              # read to page 14, whose next slot offers to buy page 15
+    assert sorted(inv.places["account"]["pages"], key=int) == ["1", "7", "14"]

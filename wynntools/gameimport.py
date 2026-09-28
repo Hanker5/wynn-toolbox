@@ -184,6 +184,17 @@ NEXT_SLOT, PREVIOUS_SLOT = 52, 51
 _ARROW = re.compile(r"^Page (\d+)\s*([<>])")
 
 
+def has_next(storage):
+    """Whether a page still offers a working next arrow (not the offer to buy a page)."""
+    for s in storage or []:
+        if s.get("slot") == NEXT_SLOT:
+            m = _ARROW.match(clean(s.get("name")))
+            lore = [clean(line) for line in s.get("lore") or []]
+            return bool(m and m.group(2) == ">" and "Click to go" in lore
+                        and not any("Purchase" in line for line in lore))
+    return False
+
+
 def page_of(storage):
     """The page an ender chest export shows, from its arrows; None if unreadable.
     Neither arrow means the chest has one page."""
@@ -252,7 +263,7 @@ def import_export(inv, gd, body):
     when = _now()
     cid = (body.get("character") or {}).get("id") or "unknown"
     before_items, before_tomes = _placed(inv)
-    warnings, labels, done = [], [], {}
+    warnings, labels, done, tops = [], [], {}, {}
 
     inventory = [c for c in (classify(gd, s) for s in body.get("inventory") or []) if c]
     inv.set_page(f"inventory:{cid}", 1, inventory, when)
@@ -278,11 +289,15 @@ def import_export(inv, gd, body):
                  if c and c["slot"] < 45]
         inv.set_page(key, n, slots, when)
         done.setdefault(key, set()).add(n)
+        tops[(key, n)] = p.get("storage")
         classified += slots
     removed_pages = 0
     complete = body.get("complete")          # true, or the chests ("account", "character") read to the end
     for key, seen in done.items():
         if complete is True or (isinstance(complete, list) and key.split(":")[0] in complete):
+            if has_next(tops[(key, max(seen))]):      # the mod stopped early: keep the rest
+                warnings.append(f"page {max(seen)} still leads to another page, so no pages were dropped")
+                continue
             removed_pages += inv.drop_pages_above(key, max(seen))
     for key, seen in done.items():
         pk = "Account" if key == "account" else "Character"

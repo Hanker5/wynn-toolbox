@@ -17,8 +17,6 @@ import net.minecraft.world.item.component.ItemLore;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Walks through every page of both ender chests and exports them all at once: back to
@@ -31,19 +29,10 @@ import java.util.regex.Pattern;
  * chests walked to the end count as complete (the app drops no pages of the others).
  */
 public final class PageWalker {
-	// The arrows as Wynntils reads them (PersonalStorageContainer): "Page 3 >>>>>" leads to page 3.
-	private static final Pattern ARROW = Pattern.compile("^Page (\\d+)\\s*([<>])");
-	private static final int SWITCH_SLOT = 47;
-	private static final String SWITCH_NAME = "Storage Type";
-	private static final String SWITCH_HINT = "Click to switch";
-	// A real arrow's tooltip ends "Click to go". On the last page bought, the next-page slot
-	// is still named "Page N >>>>>" but offers to buy the page ("Purchase the page ..."):
-	// never click that.
-	private static final String ARROW_HINT = "Click to go";
-	private static final String PURCHASE = "Purchase";
-	private static final int PREVIOUS_SLOT = 51;
-	private static final int NEXT_SLOT = 52;
-	private static final int STORAGE_SLOTS = 45;
+	private static final int SWITCH_SLOT = Controls.SWITCH_SLOT;
+	private static final int PREVIOUS_SLOT = Controls.PREVIOUS_SLOT;
+	private static final int NEXT_SLOT = Controls.NEXT_SLOT;
+	private static final int STORAGE_SLOTS = Controls.STORAGE_SLOTS;
 	private static final int TIMEOUT_TICKS = 60;      // 3 s for a page to arrive
 	private static final int SETTLE_TICKS = 2;        // its slots unchanged this long
 
@@ -152,9 +141,14 @@ public final class PageWalker {
 			click(mc, menu, NEXT_SLOT, to);
 			return;
 		}
+		Slot next = slot(menu, NEXT_SLOT);
+		if (next != null && !next.getItem().isEmpty() && Controls.unreadableArrow(rawName(next.getItem()), lore(next.getItem()))) {
+			finish(mc, "couldn't read the next-page arrow");     // not complete: the app drops nothing
+			return;
+		}
 		complete.add(kind.id);                      // this chest is read to its last page
 		StorageScreens.Kind other = kind == StorageScreens.Kind.ACCOUNT ? StorageScreens.Kind.CHARACTER : StorageScreens.Kind.ACCOUNT;
-		if (complete.size() < 2 && named(menu, SWITCH_SLOT, SWITCH_NAME)) {
+		if (complete.size() < 2 && isSwitch(menu)) {
 			switchingTo = other;
 			click(mc, menu, SWITCH_SLOT, null);
 			return;
@@ -186,7 +180,7 @@ public final class PageWalker {
 
 	private void click(Minecraft mc, AbstractContainerMenu menu, int containerSlot, Integer to) {
 		Slot slot = slot(menu, containerSlot);
-		boolean allowed = containerSlot == SWITCH_SLOT ? named(menu, SWITCH_SLOT, SWITCH_NAME)
+		boolean allowed = containerSlot == SWITCH_SLOT ? isSwitch(menu)
 			: (containerSlot == PREVIOUS_SLOT || containerSlot == NEXT_SLOT) && to != null;
 		if (!allowed || slot == null || mc.gameMode == null || mc.player == null) {
 			finish(mc, "couldn't find the page arrow");
@@ -229,34 +223,27 @@ public final class PageWalker {
 
 	/** The page the menu shows, from its arrows; 1 with none, null if they make no sense. */
 	static Integer page(AbstractContainerMenu menu) {
-		Integer next = arrow(menu, NEXT_SLOT, ">"), previous = arrow(menu, PREVIOUS_SLOT, "<");
-		if (next != null) {
-			return previous != null && previous + 2 != next ? null : next - 1;
-		}
-		return previous != null ? previous + 1 : 1;
+		return Controls.page(arrow(menu, NEXT_SLOT, ">"), arrow(menu, PREVIOUS_SLOT, "<"));
 	}
 
-	/** The page an arrow in `containerSlot` leads to, or null if that slot holds no such arrow. */
+	/** The page a real arrow in `containerSlot` leads to, or null. */
 	private static Integer arrow(AbstractContainerMenu menu, int containerSlot, String direction) {
 		Slot slot = slot(menu, containerSlot);
-		if (slot == null || slot.getItem().isEmpty()) {
-			return null;
-		}
-		Matcher m = ARROW.matcher(name(slot.getItem()));
-		List<String> lore = lore(slot.getItem());
-		boolean real = lore.contains(ARROW_HINT) && lore.stream().noneMatch(line -> line.contains(PURCHASE));
-		return m.find() && m.group(2).equals(direction) && real ? Integer.parseInt(m.group(1)) : null;
+		return slot == null || slot.getItem().isEmpty() ? null
+			: Controls.arrow(rawName(slot.getItem()), lore(slot.getItem()), direction);
+	}
+
+	private static boolean isSwitch(AbstractContainerMenu menu) {
+		Slot slot = slot(menu, SWITCH_SLOT);
+		return slot != null && !slot.getItem().isEmpty() && Controls.isSwitch(rawName(slot.getItem()), lore(slot.getItem()));
+	}
+
+	private static String rawName(ItemStack stack) {
+		return stack.getHoverName().getString();
 	}
 
 	private static List<String> lore(ItemStack stack) {
-		return stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines().stream()
-			.map(line -> StorageScreens.strip(line.getString())).toList();
-	}
-
-	private static boolean named(AbstractContainerMenu menu, int containerSlot, String name) {
-		Slot slot = slot(menu, containerSlot);
-		return slot != null && !slot.getItem().isEmpty() && name(slot.getItem()).equals(name)
-			&& lore(slot.getItem()).contains(SWITCH_HINT);
+		return stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines().stream().map(Component::getString).toList();
 	}
 
 	private static Slot slot(AbstractContainerMenu menu, int containerSlot) {
