@@ -1,0 +1,694 @@
+{
+"version": 2,
+"kind": "account",
+"character": {
+"id": "a1b2c3d4",
+"lore": [
+"§7a1b2c3d4"
+]
+},
+"source": {
+"title": "󏿰󏽨",
+"menu": "minecraft:generic_9x6"
+},
+"storage": [
+{
+"slot": 0,
+"name": "Corkian Amplifier I",
+"item_id": "minecraft:potion",
+"count": 64
+},
+{
+"slot": 1,
+"name": "Corkian Amplifier I",
+"item_id": "minecraft:potion",
+"count": 5
+},
+{
+"slot": 2,
+"name": "Corkian Amplifier II",
+"item_id": "minecraft:potion",
+"count": 24
+},
+{
+"slot": 3,
+"name": "Corkian Amplifier III",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 4,
+"name": "§fMaltic's Recommendation Letter",
+"item_id": "minecraft:paper",
+"count": 1
+},
+{
+"slot": 5,
+"name": "󏀀Breathing Helmet I󏀀",
+"item_id": "minecraft:leather_helmet",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Breathing Helmet I",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿶",
+"󐀦󏿶󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿠󐀂",
+"",
+"+20 Health",
+"Elemental Defences",
+"󏿿 -3󐀐  +5󐀋󐀨",
+"󐀉",
+"󏿿 Combat Level󏾻󐁽8",
+"󐀣󐀰󏾢󐀵󐀄󐀄",
+""
+]
+},
+{
+"slot": 6,
+"name": "󏀀Climbing Helmet󏀀",
+"item_id": "minecraft:leather_helmet",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Climbing Helmet",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿜󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿶",
+"󐀦󏿶󏿿󏿶",
+"",
+"+350 Health",
+"Elemental Defences",
+"󏿿󏿿 +30󐀊 󏿿 +30󐀆󐀨",
+"󐀉",
+"󏿿 Quest󏿜󐀬Ice Nations (Lv. 40)",
+"󏿿 Combat Level󏾻󐁷42",
+"󐀉",
+"Strength󏿚󐁷+5",
+"Agility󏿦󐁷+5",
+"",
+"Combat Experience󏾮󐁤+9% 󏿷",
+"Loot󏿭󐁠+13% 󏿷",
+"Main Attack Damage󏾫󐁤+54 󏿷",
+"Walk Speed󏿐󐁤+6% 󏿷",
+"󐀣󐀰󏾢󐀵󐀄󐀄",
+""
+]
+},
+{
+"slot": 7,
+"name": "§fYahya's Stained Bowl",
+"item_id": "minecraft:bowl",
+"count": 1
+},
+{
+"slot": 8,
+"name": "§fSayleros' Brother Ashes",
+"item_id": "minecraft:gunpowder",
+"count": 1
+},
+{
+"slot": 9,
+"name": "Varied Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 13
+},
+{
+"slot": 10,
+"name": "Packed Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 7
+},
+{
+"slot": 11,
+"name": "Stuffed Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 6
+},
+{
+"slot": 12,
+"name": "Varied Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 4
+},
+{
+"slot": 13,
+"name": "Packed Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 14,
+"name": "Stuffed Crafter Bag [1/1]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 15,
+"name": "󏀀Platinum Ingot󏀀",
+"item_id": "minecraft:potion",
+"count": 40
+},
+{
+"slot": 16,
+"name": "Ability Shard",
+"item_id": "minecraft:potion",
+"count": 64
+},
+{
+"slot": 17,
+"name": "Ability Shard",
+"item_id": "minecraft:potion",
+"count": 54
+},
+{
+"slot": 18,
+"name": "§fCorrupted Potato",
+"item_id": "minecraft:poisonous_potato",
+"count": 1
+},
+{
+"slot": 19,
+"name": "§fSiegfried's Sword",
+"item_id": "minecraft:shears",
+"count": 1
+},
+{
+"slot": 20,
+"name": "󏀀Wyvern Flute󏀀",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 21,
+"name": "Eldritch Outlook Fragment",
+"item_id": "minecraft:potion",
+"count": 3
+},
+{
+"slot": 22,
+"name": "The Eye's Pupil",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 23,
+"name": "󏀀Medico󏀀",
+"item_id": "minecraft:leather_boots",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Medico",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿠󐀂󐀁",
+"",
+"+70 Health",
+"󐀀",
+"󏿿 Combat Level󏾻󐁧17",
+"󐀀",
+"Health󏿥󐁔+18 󏿷",
+"Health Regen󏿈󐁘+8 󏿷",
+"󐀚󐀰󏾫󐀬󐀄󐀄",
+""
+]
+},
+{
+"slot": 24,
+"name": " Fire Powder II",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 27,
+"name": "Blank Powder IV",
+"item_id": "minecraft:gunpowder",
+"count": 4
+},
+{
+"slot": 32,
+"name": "§cAncient Dogun Crystal",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 34,
+"name": "Bipedal Spring [1/1]",
+"item_id": "minecraft:lily_pad",
+"count": 36
+},
+{
+"slot": 35,
+"name": "Speed Surge [1/1]",
+"item_id": "minecraft:ender_pearl",
+"count": 8
+},
+{
+"slot": 36,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 37,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 38,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 39,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 40,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 41,
+"name": "Emerald Pouch [Tier 7]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 43,
+"name": "§fCluckles' Favourite Feather",
+"item_id": "minecraft:feather",
+"count": 1
+},
+{
+"slot": 44,
+"name": "§fThe Mummy's Bandage",
+"item_id": "minecraft:paper",
+"count": 1
+},
+{
+"slot": 45,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+},
+{
+"slot": 46,
+"name": "§dQuick Actions",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"§7Stashing moves items from your",
+"§7inventory into existing non-full",
+"§7stacks in your bank",
+" ",
+"§7Dumping moves all items from",
+"§7your inventory into the bank",
+" ",
+"§7 Left-Click to quick stash",
+"§7 Right-Click to dump except hotbar",
+"§a󐀂󐀂 Shift Right-Click to dump all"
+]
+},
+{
+"slot": 47,
+"name": "§bStorage Type",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"§7The account bank is a private",
+"§7bank available to all your",
+"§7characters",
+" ",
+"§7§8- Character Storage",
+"§7§b- Account Storage",
+" ",
+"§7 Click to switch"
+]
+},
+{
+"slot": 48,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+},
+{
+"slot": 49,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+},
+{
+"slot": 50,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+},
+{
+"slot": 51,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+},
+{
+"slot": 52,
+"name": "§f§lPage 2§a >§2>§a>§2>§a>",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"§7Jump to:",
+"§7-  Page 1",
+"§7-  Page 3",
+"§7-  Page 5",
+"§7-  Page 7",
+"§7-  Page 9",
+"§7-  Page 11",
+"§7-  Page 13",
+" ",
+"§7 Click to go"
+]
+},
+{
+"slot": 53,
+"name": "󟿿",
+"item_id": "minecraft:snow",
+"count": 1
+}
+],
+"inventory": [
+{
+"slot": 0,
+"name": "󏀀Sunstar󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Sunstar",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿜󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿢󐀂󐀁",
+"󐀦󏿶󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿔󐀂",
+"",
+"1,025 DPS",
+" Very Slow (0.83 hits/s)",
+"󏿿󏿿 39-56 󏿿 1,002-1,370",
+"󐀓",
+"",
+"󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂",
+"",
+"󐀀󐀇󏿿󐀃0󐀇󐀃󏿿󐀃115󐀃󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇",
+"",
+"󏿿 Class Type󏿄󐁐Shaman/Skyseer",
+"󏿿 Combat Level󏾻󐂌95",
+"󐀓",
+"󐂃󏿿󏿿󏿸󐀂󏿿󏿶",
+"Life Steal󏿕󐁧+791/3s 󏿷",
+"Attack Speed󏿇󐁸+1 tier 󏿼",
+"Reflection󏿔󐁳+63% 󏿷",
+"Thorns󏿡󐁲+24% 󏿷",
+"Healing Efficiency󏾲󐁵-10% 󏿷",
+"Thunder Damage󏾹󐁴+13% 󏿷",
+"Main Attack Damage󏾫󐁰+1,121 󏿷",
+"󐀭󐀰󏾘󐀿󐀄󐀄",
+""
+]
+},
+{
+"slot": 1,
+"name": "§c[+4600 ❤] §dPotions of Healing §4[10/30]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 2,
+"name": "Potion of  Intelligence [1/2]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 6,
+"name": "󏀀Wyvern Flute󏀀",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 7,
+"name": "§bCharacter Info",
+"item_id": "minecraft:compass",
+"count": 1
+},
+{
+"slot": 8,
+"name": "§7Content Book",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 9,
+"name": "󏀀Coral Ring󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Coral Ring",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿨󐀂󐀁󏿶",
+"󐀦󏿶󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿠󐀂",
+"",
+"+800 Health",
+"Elemental Defences",
+" +50󐀊󐀨󐀨",
+"󐀄",
+"󏿿 Combat Level󏾻󐁮93",
+"󐀄",
+"Dexterity󏿗󐁭-4",
+"",
+"Poison󏿥󐁐-1,500/3s 󏿼",
+"Mana Regen󏿎󐁛+10/5s 󏿼",
+"Health Regen󏿈󐁣+15% 󏿼",
+"󐀞󐀰󏾧󐀰󐀄󐀄",
+""
+]
+},
+{
+"slot": 10,
+"name": "󏀀Intensity󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Intensity",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿨󐀂󐀁󏿶",
+"",
+"+425 Health",
+"󐀍",
+"󏿿 Quest󏿜󐀬The Qira Hive (Lv. 80)",
+"󏿿 Combat Level󏾻󐁼100",
+"󐀍",
+"Elemental Damage󏾴󐁵+12% 󏿼",
+"Spell Damage󏿈󐁵+12% 󏿼",
+"󐀧󐀰󏾞󐀹󐀄󐀄",
+""
+]
+},
+{
+"slot": 11,
+"name": "󏀀Diamond Static Bracelet󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Diamond Static Bracelet",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿎󐀂󐀁󏿶",
+"󐀦󏿶󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿔󐀂",
+"",
+"-450 Health",
+"Elemental Defences",
+"󏿿 +100󐀆󐀨󐀨",
+"󐀘",
+"",
+"󐀇󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂",
+"",
+"󐀅󐀇󏿿󐀃0󐀇󐀂󏿿󐀃100󐀂󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇",
+"",
+"󏿿 Combat Level󏾻󐂖95",
+"󐀘",
+"Dexterity󏿗󐂕+6",
+"",
+"Thunder Damage󏾹󐂋+16% 󏿼",
+"Spell Damage󏿈󐂏+8% 󏿼",
+"Spell Damage󏿈󐂐+60 󏿼",
+"Thunder Defence󏾵󐂋+10% 󏿼",
+"󐀲󐀰󏾓󐁄󐀄󐀄",
+""
+]
+},
+{
+"slot": 12,
+"name": "󏀀Diamond Fusion Necklace󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Diamond Fusion Necklace",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿎󐀂󐀁󏿶",
+"",
+"+0 Health",
+"Elemental Defences",
+"󏿿󏿿 +15󐀋 󏿿 +15󐀇  +15󐀇",
+" +15󐀋 󏿿 +15󐀇󐀨",
+"󐀘",
+"",
+"󐀇󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂",
+"",
+"󐀅󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀅󏿿󐀃20󐀅",
+"",
+"󏿿 Combat Level󏾻󐂖95",
+"󐀘",
+"Strength󏿚󐂔+4",
+"Dexterity󏿗󐂔+4",
+"Intelligence󏿍󐂔+4",
+"Defence󏿝󐂔+4",
+"Agility󏿦󐂔+4",
+"󐀲󐀰󏾓󐁄󐀄󐀄",
+""
+]
+},
+{
+"slot": 13,
+"name": "§6Ingredient Pouch",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 17,
+"name": "Emerald Pouch [Tier 8]",
+"item_id": "minecraft:diamond_axe",
+"count": 1
+},
+{
+"slot": 18,
+"name": "Lutho Teleportation Scroll [2/3]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 19,
+"name": "Nemract Teleportation Scroll [2/3]",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 36,
+"name": "󏀀Storm Brewer󏀀",
+"item_id": "minecraft:leather_boots",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Storm Brewer",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿠󐀂󐀁",
+"󐀦󏿶󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿔󐀂",
+"",
+"+2,640 Health",
+"Elemental Defences",
+"󏿿 +50󐀋  -150󐀄  -15󐀉",
+"󏿿 +48󐀉󐀨󐀨",
+"󐀓",
+"",
+"󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂",
+"",
+"󐀀󐀇󏿿󐀃0󐀇󐀄󏿿󐀃65󐀄󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇󐀇󏿿󐀃0󐀇",
+"",
+"󏿿 Combat Level󏾻󐂌86",
+"󐀓",
+"Dexterity󏿗󐂇+12",
+"",
+"Mana Steal󏿑󐁯+4/3s 󏿷󐀉",
+"Mana Regen󏿎󐁱-8/5s 󏿷",
+"Thunder Damage󏾹󐁳+20% 󏿷",
+"Water Damage󏿄󐁵-16% 󏿷",
+"Spell Damage󏿈󐁹+85 󏿷",
+"Main Attack Damage󏾫󐁴+21% 󏿷",
+"Main Attack Damage󏾫󐁴+506 󏿷",
+"󐀭󐀰󏾘󐀿󐀄󐀄",
+""
+]
+},
+{
+"slot": 37,
+"name": "󏀀Vaward󏀀",
+"item_id": "minecraft:leather_leggings",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Vaward",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿐󐀂󐀁",
+"",
+"+3,990 Health",
+"Elemental Defences",
+" -9󐀐  +45󐀅󐀨",
+"󐀒",
+"󏿿 Combat Level󏾻󐂊99",
+"󐀒",
+"Strength󏿚󐂉+5",
+"Dexterity󏿗󐂉+5",
+"Intelligence󏿍󐂉+5",
+"Defence󏿝󐂉+5",
+"Agility󏿦󐂉+5",
+"",
+"Combat Experience󏾮󐁲+19% 󏿷",
+"Spell Damage󏿈󐁲+13% 󏿷",
+"Main Attack Damage󏾫󐁲+18% 󏿷",
+"󐀬󐀰󏾙󐀾󐀄󐀄",
+""
+]
+},
+{
+"slot": 38,
+"name": "󏀀Ornate Shadow Cloak󏀀",
+"item_id": "minecraft:leather_chestplate",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Ornate Shadow Cloak",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿂󐀂󐀁󏿶",
+"",
+"+4,500 Health",
+"Elemental Defences",
+"󏿿󏿿 +100󐀈 󏿿 +100󐀄󐀪",
+"󐀕",
+"󏿿 Combat Level󏾻󐂌103",
+"󐀕",
+"Health Regen󏿈󐂆-15% 󏿼",
+"Spell Damage󏿈󐂄+20% 󏿼",
+"Spell Damage󏿈󐂆+190 󏿼",
+"Main Attack Damage󏾫󐂄+20% 󏿼",
+"Main Attack Damage󏾫󐂅+680 󏿼",
+"Walk Speed󏿐󐂅+15% 󏿼",
+"󐀯󐀰󏾖󐁁󐀄󐀄",
+""
+]
+},
+{
+"slot": 39,
+"name": "󏀀Spectrum󏀀",
+"item_id": "minecraft:leather_helmet",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Spectrum",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁",
+"󐀦󏿶󏿿󏿶󏿿󏿶󏿿󏿶󏿿󏿶",
+"",
+"+3,300 Health",
+"Elemental Defences",
+"󏿿󏿿 +50󐀊 󏿿 +50󐀆  +50󐀆",
+" +50󐀊 󏿿 +50󐀆󐀨",
+"󐀓",
+"",
+"󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂󐀂󏿧󐀂",
+"",
+"󐀀󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀄󏿿󐀃20󐀄󐀅󏿿󐀃20󐀅",
+"",
+"󏿿 Combat Level󏾻󐂌97",
+"󐀓",
+"Strength󏿚󐂊+4",
+"Dexterity󏿗󐂊+4",
+"Intelligence󏿍󐂊+4",
+"Defence󏿝󐂊+4",
+"Agility󏿦󐂊+4",
+"",
+"Elemental Damage󏾴󐁳+29% 󏿷",
+"󐀭󐀰󏾘󐀿󐀄󐀄",
+""
+]
+}
+]
+}

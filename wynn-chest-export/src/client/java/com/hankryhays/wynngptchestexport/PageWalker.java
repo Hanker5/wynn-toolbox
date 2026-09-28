@@ -18,15 +18,20 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Walks through every page of the open ender chest and exports them all at once: back
- * to page 1 with the previous arrow, then forward with the next arrow until there is none.
- * It only ever clicks an item named exactly like a page arrow, one click at a time, and
- * waits for each page to arrive before the next. Closing the chest stops it; what was
- * read so far is still sent, marked incomplete (the app then drops no pages).
+ * Walks through every page of both ender chests and exports them all at once: back to
+ * page 1 with the previous arrow, forward with the next arrow until there is none, then
+ * "Storage Type" switches to the other chest (Account or Character) and it walks that one.
+ * It only ever clicks the page arrows (slots 51, 52) and the switch (47), each only when
+ * named exactly so, one click at a time, and waits for each page to arrive before the next.
+ * It never touches anything else (46, "Quick Actions", would dump the player's inventory
+ * into the bank). Closing the chest stops it; what was read so far is still sent, and only
+ * chests walked to the end count as complete (the app drops no pages of the others).
  */
 public final class PageWalker {
 	// The arrows as Wynntils reads them (PersonalStorageContainer): "Page 3 >>>>>" leads to page 3.
 	private static final Pattern ARROW = Pattern.compile("^Page (\\d+)\\s*([<>])");
+	private static final int SWITCH_SLOT = 47;
+	private static final String SWITCH_NAME = "Storage Type";
 	private static final int PREVIOUS_SLOT = 51;
 	private static final int NEXT_SLOT = 52;
 	private static final int STORAGE_SLOTS = 45;
@@ -35,10 +40,12 @@ public final class PageWalker {
 
 	private static PageWalker active;
 
-	private final StorageScreens.Kind kind;
+	private StorageScreens.Kind kind;
 	private final int delay;
-	private final Map<Integer, JsonObject> pages = new LinkedHashMap<>();
+	private final Map<String, JsonObject> pages = new LinkedHashMap<>();
+	private final JsonArray complete = new JsonArray();
 	private boolean forward;
+	private StorageScreens.Kind switchingTo;      // after clicking "Storage Type"
 	private int sinceClick;
 	private Integer expecting;        // the page the last click leads to
 	private String signature;
@@ -82,27 +89,39 @@ public final class PageWalker {
 	}
 
 	private void tick(Minecraft mc) {
-		if (!(mc.screen instanceof AbstractContainerScreen<?> screen) || StorageScreens.kind(screen) != kind) {
-			finish(mc, false, "the ender chest was closed");
+		sinceClick++;
+		StorageScreens.Kind now = mc.screen == null ? null : StorageScreens.kind(mc.screen);
+		if (switchingTo != null && now == switchingTo && mc.screen instanceof AbstractContainerScreen<?> other) {
+			Integer page = page(other.getMenu());
+			if (page != null && settled(other.getMenu())) {
+				kind = switchingTo;
+				switchingTo = null;
+				forward = false;
+				sinceClick = 0;
+				capture(mc, other, page);
+			}
+			return;
+		}
+		if (switchingTo != null) {
+			if (sinceClick > TIMEOUT_TICKS) {
+				finish(mc, "the other ender chest didn't open");
+			}
+			return;
+		}
+		if (!(mc.screen instanceof AbstractContainerScreen<?> screen) || now != kind) {
+			finish(mc, "the ender chest was closed");
 			return;
 		}
 		AbstractContainerMenu menu = screen.getMenu();
-		sinceClick++;
 		if (expecting != null) {
 			Integer page = page(menu);
 			if (page == null || !page.equals(expecting)) {
 				if (sinceClick > TIMEOUT_TICKS) {
-					finish(mc, false, "page " + expecting + " didn't open");
+					finish(mc, "page " + expecting + " didn't open");
 				}
 				return;
 			}
-			String now = contents(menu);
-			if (!now.equals(signature)) {
-				signature = now;
-				stable = 0;
-				return;
-			}
-			if (++stable < SETTLE_TICKS) {
+			if (!settled(menu)) {
 				return;
 			}
 			expecting = null;
@@ -124,7 +143,24 @@ public final class PageWalker {
 			click(mc, menu, NEXT_SLOT, to);
 			return;
 		}
-		finish(mc, true, null);
+		complete.add(kind.id);                      // this chest is read to its last page
+		StorageScreens.Kind other = kind == StorageScreens.Kind.ACCOUNT ? StorageScreens.Kind.CHARACTER : StorageScreens.Kind.ACCOUNT;
+		if (complete.size() < 2 && named(menu, SWITCH_SLOT, SWITCH_NAME)) {
+			switchingTo = other;
+			click(mc, menu, SWITCH_SLOT, null);
+			return;
+		}
+		finish(mc, null);
+	}
+
+	private boolean settled(AbstractContainerMenu menu) {
+		String now = contents(menu);
+		if (!now.equals(signature)) {
+			signature = now;
+			stable = 0;
+			return false;
+		}
+		return ++stable >= SETTLE_TICKS;
 	}
 
 	private void capture(Minecraft mc, AbstractContainerScreen<?> screen, int page) {
@@ -132,17 +168,19 @@ public final class PageWalker {
 		entry.addProperty("kind", kind.id);
 		entry.addProperty("page", page);
 		entry.add("storage", InventoryExporter.storage(mc, screen.getMenu()));
-		pages.put(page, entry);
+		pages.put(kind.id + ":" + page, entry);
 		if (source == null) {
 			source = InventoryExporter.collect(mc, screen, kind).getAsJsonObject("source");
 		}
 		say(mc, "WynnGPT: " + label() + " page " + page + " read (" + pages.size() + " so far)…", true);
 	}
 
-	private void click(Minecraft mc, AbstractContainerMenu menu, int containerSlot, int to) {
+	private void click(Minecraft mc, AbstractContainerMenu menu, int containerSlot, Integer to) {
 		Slot slot = slot(menu, containerSlot);
-		if (slot == null || mc.gameMode == null || mc.player == null) {
-			finish(mc, false, "couldn't find the page arrow");
+		boolean allowed = containerSlot == SWITCH_SLOT ? named(menu, SWITCH_SLOT, SWITCH_NAME)
+			: (containerSlot == PREVIOUS_SLOT || containerSlot == NEXT_SLOT) && to != null;
+		if (!allowed || slot == null || mc.gameMode == null || mc.player == null) {
+			finish(mc, "couldn't find the page arrow");
 			return;
 		}
 		expecting = to;
@@ -152,7 +190,7 @@ public final class PageWalker {
 		mc.gameMode.handleInventoryMouseClick(menu.containerId, slot.index, 0, ClickType.PICKUP, mc.player);
 	}
 
-	private void finish(Minecraft mc, boolean complete, String why) {
+	private void finish(Minecraft mc, String why) {
 		active = null;
 		if (pages.isEmpty()) {
 			return;
@@ -160,7 +198,7 @@ public final class PageWalker {
 		JsonObject body = new JsonObject();
 		body.addProperty("version", 2);
 		body.addProperty("kind", "ender_all");
-		body.addProperty("complete", complete);
+		body.add("complete", complete);            // the chests read to their last page
 		body.add("character", InventoryExporter.character(mc));
 		if (source != null) {
 			body.add("source", source);
@@ -170,7 +208,7 @@ public final class PageWalker {
 		JsonArray list = new JsonArray();
 		pages.values().forEach(list::add);
 		body.add("pages", list);
-		if (!complete) {
+		if (why != null) {
 			say(mc, "WynnGPT: stopped after " + pages.size() + " pages (" + why + "); sending those.", false);
 		}
 		InventoryExporter.send(mc, body);
@@ -197,6 +235,11 @@ public final class PageWalker {
 		}
 		Matcher m = ARROW.matcher(name(slot.getItem()));
 		return m.find() && m.group(2).equals(direction) ? Integer.parseInt(m.group(1)) : null;
+	}
+
+	private static boolean named(AbstractContainerMenu menu, int containerSlot, String name) {
+		Slot slot = slot(menu, containerSlot);
+		return slot != null && !slot.getItem().isEmpty() && name(slot.getItem()).equals(name);
 	}
 
 	private static Slot slot(AbstractContainerMenu menu, int containerSlot) {

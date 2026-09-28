@@ -14,6 +14,7 @@ HEROISM_LORE = [
 
 def test_clean_strips_formatting_and_wynncraft_spacing():
     assert clean("\U000cf000§dHeroism\U000cf000") == "Heroism"
+    assert clean("Broken IceÀÀÀBarrows Key") == "Broken Ice Barrows Key"     # as a real export names it
 
 
 def test_reads_real_rolls_from_the_tooltip(gd):
@@ -97,8 +98,8 @@ def test_a_later_export_replaces_the_page(gd):
 def test_characters_keep_their_own_ender_chest_and_inventory(gd):
     inv = Inventory()
     import_export(inv, gd, export("character", page(1, steal(14)), [{"slot": 0, "name": "Spring"}]))
-    import_export(inv, gd, export("character", page(1, steal(5)), [], me="aaaabbbb"))
-    assert sorted(inv.places) == ["character:aaaabbbb", f"character:{ME}", "inventory:aaaabbbb", f"inventory:{ME}"]
+    import_export(inv, gd, export("character", page(1, steal(5)), [], me="zzzz0000"))
+    assert sorted(inv.places) == [f"character:{ME}", "character:zzzz0000", f"inventory:{ME}", "inventory:zzzz0000"]
     assert inv.characters[ME]["class"] == "Archer"                      # guessed from the bow it carries
     assert inv.where(f"inventory:{ME}", 1, 0) == f"Archer {ME} · inventory · hotbar 1"
     import_export(inv, gd, export("inventory", inventory=[]))
@@ -137,3 +138,60 @@ def test_unreadable_page_and_unknown_containers_import_nothing_from_storage(gd):
     assert r["warnings"] and "account" not in inv.places
     import_export(inv, gd, export("unknown", page(1, steal(4))))
     assert not inv.owns("Galleon")
+
+
+def test_only_chests_walked_to_the_end_drop_pages(gd):
+    inv = Inventory()
+    both = [{"kind": k, "storage": page(n, steal(n), last=3)} for k in ("account", "character") for n in (1, 2, 3)]
+    import_export(inv, gd, export("ender_all", pages=both, complete=["account", "character"]))
+    short = [{"kind": k, "storage": page(n, last=2)} for k in ("account", "character") for n in (1, 2)]
+    import_export(inv, gd, export("ender_all", pages=short, complete=["account"]))   # the character walk stopped
+    assert sorted(inv.places["account"]["pages"]) == ["1", "2"]
+    assert sorted(inv.places[f"character:{ME}"]["pages"]) == ["1", "2", "3"]
+
+
+# ---------------------------------------------------------------- real exports (tests/fixtures/exports)
+
+import json  # noqa: E402
+import re  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+EXPORTS = Path(__file__).parent / "fixtures" / "exports"
+MOD = Path(__file__).parent.parent / "wynn-chest-export" / "src" / "client" / "java" / "com" / "hankryhays" / "wynngptchestexport"
+
+
+def real(name):
+    return json.loads((EXPORTS / name).read_text(encoding="utf-8"))
+
+
+def java_string(source, constant):
+    """A Java string constant's value (its \\uXXXX escapes decoded, surrogate pairs joined)."""
+    parts = re.search(rf"{constant} = (.+?);", source).group(1)
+    text = "".join(re.findall(r'"([^"]*)"', parts))
+    return text.encode("latin-1").decode("unicode_escape").encode("utf-16", "surrogatepass").decode("utf-16")
+
+
+def test_the_mod_recognises_real_ender_chest_titles():
+    """The glyph strings the mod matches (StorageScreens.java) are in the titles the game sent."""
+    source = (MOD / "StorageScreens.java").read_text(encoding="utf-8")
+    bank = java_string(source, "BANK_TITLE")
+    assert real("account-p1.json")["source"]["title"].endswith(bank + "")
+    assert real("character-p3.json")["source"]["title"].endswith(bank + "")
+    walker = (MOD / "PageWalker.java").read_text(encoding="utf-8")
+    controls = {s["slot"]: clean(s["name"]) for s in real("account-p1.json")["storage"] if s["slot"] >= 45}
+    assert controls[int(re.search(r"SWITCH_SLOT = (\d+);", walker).group(1))] == java_string(walker, "SWITCH_NAME")
+    assert controls[46] == "Quick Actions" and "46" not in re.findall(r"_SLOT = (\d+);", walker)   # never clicked
+
+
+def test_real_pages_are_read(gd):
+    assert [page_of(real(f)["storage"]) for f in ("account-p1.json", "account-p7.json", "character-p3.json")] == [1, 7, 3]
+    inv = Inventory()
+    for f in ("account-p1.json", "account-p7.json", "character-p3.json", "inventory.json"):
+        import_export(inv, gd, real(f))
+    assert sorted(inv.places) == ["account", "character:a1b2c3d4", "inventory:a1b2c3d4"]
+    assert sorted(inv.places["account"]["pages"]) == ["1", "7"]
+    assert inv.places["character:a1b2c3d4"]["pages"]["3"]["slots"] == []      # an empty page
+    heroism = inv.copies("Heroism")
+    assert len(heroism) == 2 and len({c.fp for c in heroism}) == 2           # two copies, different rolls
+    assert all(c.rolls.get("ls") for c in heroism)                           # read from the tooltips
+    assert not any(s["slot"] >= 45 for key, _, s in inv.slots() if not key.startswith("inventory"))   # no arrows

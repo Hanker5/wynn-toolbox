@@ -26,9 +26,9 @@ public final class StorageScreens {
 
 	// Wynncraft titles its ender chests with custom-font glyphs, not text. These are the
 	// strings Wynntils matches (AccountBankContainer, CharacterBankContainer).
-	private static final String BANK_TITLE = "󏿰󏽨";
-	private static final String ACCOUNT_TITLE = BANK_TITLE + "";
-	private static final String CHARACTER_TITLE = BANK_TITLE + "";
+	private static final String BANK_TITLE = "\uDAFF\uDFF0\uE00F\uDAFF\uDF68";
+	private static final String ACCOUNT_TITLE = BANK_TITLE + "\uF000";
+	private static final String CHARACTER_TITLE = BANK_TITLE + "\uF001";
 
 	// The Character Info compass's first tooltip line is the character's id, e.g. "§7a1b2c3d4".
 	private static final int CHARACTER_INFO_SLOT = 7;

@@ -19,9 +19,12 @@ _ROMAN = {"I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6}
 _TIER = re.compile(r"\bTier\s+(\d+|[IVX]+)\b", re.I)
 
 
+_WIDE_SPACE = re.compile("À+")     # Wynncraft's font draws "À" as a gap ("Broken IceÀÀÀBarrows Key")
+
+
 def clean(text):
     text = "".join(c for c in _FORMAT.sub("", text or "") if unicodedata.category(c) not in _INVISIBLE)
-    return " ".join(text.split())
+    return " ".join(_WIDE_SPACE.sub(" ", text).split())
 
 
 # An identification line in the tooltip: "Walk Speed+18%", "Life Steal+161/3s", "Totem Cost-4".
@@ -234,7 +237,8 @@ def import_export(inv, gd, body):
 
     Format 2 replaces each page it shows (and the character's inventory) with what the
     game showed, so items moved out or sold disappear. `pages` (a walk through every
-    page) replaces each one; with "complete", pages past the last one seen are dropped.
+    page) replaces each one; for the chests in "complete" (or all, if it is true), pages
+    past the last one seen are dropped.
     Copies added by hand are then claimed by the new copies of the same item (rolls equal
     or unknown), so an item isn't counted twice once its place is known.
     Returns {"imported": {...}, "unknown": [names], "message": text for chat, "warnings": [...]}.
@@ -276,8 +280,9 @@ def import_export(inv, gd, body):
         done.setdefault(key, set()).add(n)
         classified += slots
     removed_pages = 0
-    if body.get("complete"):
-        for key, seen in done.items():
+    complete = body.get("complete")          # true, or the chests ("account", "character") read to the end
+    for key, seen in done.items():
+        if complete is True or (isinstance(complete, list) and key.split(":")[0] in complete):
             removed_pages += inv.drop_pages_above(key, max(seen))
     for key, seen in done.items():
         pk = "Account" if key == "account" else "Character"
