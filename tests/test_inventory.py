@@ -76,3 +76,27 @@ def test_spec_tome_pool_parsing(gd):
     assert spec_from({**raw, "tome_pool": "any"}, gd, inv).tome_supply is None
     with pytest.raises(ValueError, match="tome_pool"):
         spec_from({**raw, "tome_pool": "some"}, gd, inv)
+
+
+def test_version_1_files_load_as_copies_added_by_hand(tmp_path):
+    (tmp_path / "v1.json").write_text('{"items": {"Galleon": {"rolls": {"eSteal": 14}}, "Leo": {}}}')
+    inv = load(tmp_path / "v1.json")
+    assert inv.items == [{"name": "Galleon", "rolls": {"eSteal": 14}}, {"name": "Leo"}]
+    assert inv.rolls("Galleon") == {"eSteal": 14} and inv.names() == {"Galleon", "Leo"}
+    save(inv, tmp_path / "v2.json")
+    assert load(tmp_path / "v2.json").to_json()["version"] == 2
+
+
+def test_copies_rolls_and_removing_one_copy():
+    from wynntools.inventory import fingerprint, inventory_slot_label
+    inv = Inventory(items=[{"name": "Galleon", "rolls": {"eSteal": 14}}, {"name": "Galleon", "rolls": {"eSteal": 9}}])
+    low = fingerprint({"eSteal": 9})
+    assert inv.rolls("Galleon") == {"eSteal": 14}                   # no copy named: the first
+    assert inv.rolls("Galleon", low) == {"eSteal": 9}
+    assert inv.rolls("Galleon", "gone0000") == {"eSteal": 14}       # a copy that's gone: the first
+    inv.add_copy("Galleon", {"eSteal": 9})
+    assert inv.counts() == {"Galleon": 3}
+    assert inv.remove("Galleon", low) == 1 and inv.counts() == {"Galleon": 2}
+    assert inv.remove("Galleon") == 2 and not inv.owns("Galleon")
+    assert [inventory_slot_label(s) for s in (39, 40, 9, 4, 14)] == \
+        ["helmet", "offhand", "ring slot 1", "hotbar 5", "row 1, column 6"]

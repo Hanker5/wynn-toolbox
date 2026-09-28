@@ -912,17 +912,29 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     @app.get("/api/inventory")
     def get_inventory():
         i = inv()
-        return {**i.to_json(), "unknown": inv_mod.validate(i, gd)}
+        return {**i.view(), "unknown": inv_mod.validate(i, gd)}
 
     @app.post("/api/inventory")
     async def change_inventory(request: Request):
-        """{"action": "add"|"remove", "kind": "item"|"tome"|"craft"|"aspect"|"unavailable",
-        "name": ..., "rolls": {...}?, "class": ..., "tier": ..., "reason": ...}"""
+        """{"action": "add"|"remove"|"rename_character", "kind": "item"|"tome"|"craft"|"aspect"|
+        "unavailable", "name": ..., "rolls": {...}?, "another": bool?, "index": n?, "fp": ...?,
+        "class": ..., "tier": ..., "reason": ..., "character": id?}
+
+        Items: "add" owns one copy (added by hand) if none is owned; "another" adds one more;
+        "rolls" sets the rolls of the hand copy at "index" (default the first). "remove"
+        takes away every copy, or only one with "fp"."""
         body = await request.json()
         i, name, kind = inv(), body.get("name") or "", body.get("kind", "item")
         action = body.get("action")
+        if action == "rename_character":
+            cid = body.get("character") or ""
+            if cid not in i.characters:
+                raise HTTPException(422, f"unknown character: {cid}")
+            i.characters[cid]["name"] = str(body.get("name") or "").strip()[:40]
+            inv_mod.save(i, inv_path)
+            return i.view()
         if action not in ("add", "remove"):
-            raise HTTPException(422, "action must be add or remove")
+            raise HTTPException(422, "action must be add, remove or rename_character")
         if kind == "aspect":
             cls = body.get("class") or ""
             known = {a["displayName"]: len(a.get("tiers") or []) for a in gd.aspects(cls)}
@@ -934,7 +946,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 raise HTTPException(422, f"tier must be 1..{top}")
             i.set_aspect(cls, name, tier if action == "add" else 0)
             inv_mod.save(i, inv_path)
-            return i.to_json()
+            return i.view()
         if kind == "unavailable":
             try:
                 gd.item(name)
@@ -945,7 +957,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             else:
                 i.unavailable.pop(name, None)
             inv_mod.save(i, inv_path)
-            return i.to_json()
+            return i.view()
         try:
             if kind == "tome":
                 gd.tome(name)
@@ -953,32 +965,39 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 gd.item(name)
         except (KeyError, ValueError, NotImplementedError):
             raise HTTPException(422, f"unknown {kind}: {name}")
-        if body.get("action") == "add":
+        if action == "add":
             if kind == "tome":
                 i.tomes.append(name)
             elif name.startswith("CR-"):
                 if name not in i.crafts:
                     i.crafts.append(name)
             else:
-                entry = i.items.setdefault(name, {})
+                if body.get("another") or not i.owns(name):
+                    i.add_copy(name)
                 if "rolls" in body:
+                    k = body.get("index")
+                    if isinstance(k, int):
+                        entry = i.items[k] if 0 <= k < len(i.items) and i.items[k]["name"] == name else None
+                    else:
+                        entry = next((e for e in i.items if e["name"] == name), None)
+                    if entry is None:
+                        raise HTTPException(422, f"no copy of {name} added by hand to set rolls on "
+                                                 "(rolls of copies in your ender chests come from the game)")
                     rolls = {k: int(v) for k, v in (body["rolls"] or {}).items() if v not in ("", None)}
                     if rolls:
                         entry["rolls"] = rolls
                     else:
                         entry.pop("rolls", None)
-        elif body.get("action") == "remove":
+        else:
             if kind == "tome":
                 if name in i.tomes:
                     i.tomes.remove(name)
             else:
-                i.items.pop(name, None)
+                i.remove(name, body.get("fp"))
                 if name in i.crafts:
                     i.crafts.remove(name)
-        else:
-            raise HTTPException(422, "action must be add or remove")
         inv_mod.save(i, inv_path)
-        return i.to_json()
+        return i.view()
 
     @app.post("/api/inventory/import")
     async def import_inventory(request: Request):
@@ -998,7 +1017,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         i = inv()
         result = gameimport.import_export(i, gd, body)
         inv_mod.save(i, inv_path)
-        return {**i.to_json(), **result}
+        return {**i.view(), **result}
 
     @app.get("/api/spells")
     def spells_api(cls: str, preset: str = "", level: int = 105):

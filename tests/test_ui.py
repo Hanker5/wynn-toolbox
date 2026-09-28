@@ -413,7 +413,7 @@ def test_own_button_rolls_and_upgrades(page, app):
     own.click()
     playwright.expect(own).to_contain_text("Owned")
     inv = json.loads((Path(app.builds_dir) / "inventory.json").read_text())
-    assert "Galleon" in inv["items"]
+    assert inv["items"] == [{"name": "Galleon"}]
     page.click("#open-inventory")
     page.wait_for_selector("#inventory:not([hidden]) .inv-item")
     page.locator(".inv-item:has-text('Galleon') summary").click()          # rolls sit in a drawer
@@ -421,7 +421,7 @@ def test_own_button_rolls_and_upgrades(page, app):
     page.locator(".inv-item:has-text('Galleon') button:has-text('Save rolls')").click()
     page.wait_for_function("document.querySelector('#toast').textContent.includes('Rolls saved')")
     inv = json.loads((Path(app.builds_dir) / "inventory.json").read_text())
-    assert inv["items"]["Galleon"]["rolls"]["eSteal"] == 5
+    assert inv["items"][0]["rolls"]["eSteal"] == 5
     open_build(page, "shaman_105_stormdrain")
     page.wait_for_function(f"!document.querySelector('#ed-tiles').innerText.includes({before.split('Stealing')[1].split(chr(10))[1]!r})")
     assert not page.errors

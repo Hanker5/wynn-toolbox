@@ -1351,10 +1351,43 @@ def cmd_own(a):
         inv_mod.save(inv, a.inventory)
         print(f"{a.inventory}: {len(inv.unavailable)} item(s) every search leaves out")
         return 0
+    if a.action == "find":
+        if not a.names:
+            raise SystemExit("wt own find NAME: what to look for")
+        for q in a.names:
+            hits = inv.find(q)
+            if not hits:
+                print(f"You don't own anything called {q!r}.")
+            for h in hits:
+                extra = f"  x{h['count']}" if h.get("count") else ""
+                if h.get("rolls"):
+                    extra += f"  (rolls: {', '.join(f'{k} {v}' for k, v in h['rolls'].items())}; copy {h['fp']})"
+                print(f"  {h['name']}  [{h['kind']}]  {h['where']}{extra}")
+        return 0
+    if a.action == "character":
+        if len(a.names) != 1 or a.name is None:
+            for cid in sorted(inv.characters):
+                print(f"  {cid}  {inv.character_label(cid)}")
+            if not inv.characters:
+                print("No characters yet: export from the game with the chest-export mod.")
+            if a.names:
+                raise SystemExit("wt own character ID --name TEXT")
+            return 0
+        cid = a.names[0]
+        if cid not in inv.characters:
+            raise SystemExit(f"unknown character {cid!r} (wt own character lists them)")
+        inv.characters[cid]["name"] = a.name.strip()
+        inv_mod.save(inv, a.inventory)
+        print(f"{cid} is now {inv.character_label(cid)}")
+        return 0
     if a.action == "list":
-        for n in sorted(inv.items):
-            r = inv.rolls(n)
-            print(f"  {n}" + (f"  (rolls: {', '.join(f'{k} {v}' for k, v in r.items())})" if r else ""))
+        def rolls_text(r):
+            return f"  (rolls: {', '.join(f'{k} {v}' for k, v in r.items())})" if r else ""
+        hand = [c for c in inv.copies() if not c.placed]
+        if hand:
+            print("Added by hand:")
+            for c in hand:
+                print(f"  {c.name}{rolls_text(c.rolls)}")
         for t, n in sorted(inv.tome_counts().items()):
             print(f"  tome: {t}" + (f"  x{n}" if n > 1 else ""))
         for cls, mine in sorted(inv.aspects.items()):
@@ -1363,6 +1396,19 @@ def cmd_own(a):
         for c in inv.crafts:
             it = gd.item(c)
             print(f"  crafted {it['type']}: {c}")
+        last = None
+        for key, page, slot in inv.slots():
+            if slot.get("kind") != "item":
+                continue
+            if (key, page) != last:
+                last = (key, page)
+                label = inv.place_label(key) + ("" if inv_mod.place_kind(key) == "inventory" else f" · page {page}")
+                print(f"{label}:")
+            where = inv.where(key, page, slot.get("slot")).split(" · ")[-1]
+            print(f"  {slot['name']}  ({where}){rolls_text(slot.get('rolls'))}")
+        many = {n: k for n, k in inv.counts().items() if k > 1}
+        if many:
+            print("More than one copy: " + ", ".join(f"{n} x{k}" for n, k in sorted(many.items())))
         bad = inv_mod.validate(inv, gd)
         if bad:
             print("Not found in the game data: " + ", ".join(bad))
@@ -1391,25 +1437,36 @@ def cmd_own(a):
                 inv.tomes.append(name)
             elif name.startswith("CR-"):
                 gd.item(name)
-                inv.crafts.append(name)
+                if name not in inv.crafts:
+                    inv.crafts.append(name)
             else:
                 gd.item(name)                                # raises on typos
-                entry = inv.items.setdefault(name, {})
+                if a.another or not inv.owns(name):
+                    inv.add_copy(name)
                 if a.roll:
-                    entry["rolls"] = {**entry.get("rolls", {}),
-                                      **{k: int(v) for k, v in (r.split("=") for r in a.roll)}}
+                    hand = [e for e in inv.items if e["name"] == name]
+                    if a.copy:
+                        hand = [e for e in hand if inv_mod.fingerprint(e.get("rolls")) == a.copy]
+                    if a.another:
+                        hand = hand[-1:]
+                    if len(hand) != 1:
+                        raise SystemExit(f"{name}: {len(hand)} copies added by hand match; name one with "
+                                         "--copy FP (wt own find shows each copy's FP). Rolls of copies "
+                                         "in your ender chests come from the game.")
+                    hand[0]["rolls"] = {**hand[0].get("rolls", {}),
+                                        **{k: int(v) for k, v in (r.split("=") for r in a.roll)}}
         else:
-            if a.tome and name in inv.tomes:
-                inv.tomes.remove(name)
-            inv.items.pop(name, None)
+            if a.tome:
+                if name in inv.tomes:
+                    inv.tomes.remove(name)
+                continue
+            inv.remove(name, a.copy)
             if name in inv.crafts:
                 inv.crafts.remove(name)
     inv_mod.save(inv, a.inventory)
-    print(f"{a.inventory}: {len(inv.items)} items, {len(inv.tomes)} tomes, {len(inv.crafts)} crafts")
+    print(f"{a.inventory}: {sum(inv.counts().values())} item copies, {sum(inv.tome_counts().values())} tomes, "
+          f"{len(inv.crafts)} crafts")
     return 0
-
-
-CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
 
 
 def describe_craft(it, cd=None):
@@ -1716,9 +1773,10 @@ def main(argv=None):
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(fn=cmd_upgrades)
     s = sub.add_parser("own", help="manage your inventory (items, tomes, crafts you own)")
-    s.add_argument("action", choices=["add", "remove", "list", "unavailable"],
-                   help="unavailable: items every search leaves out (too expensive, can't get); "
-                        "list them with no names, --remove to take one off")
+    s.add_argument("action", choices=["add", "remove", "list", "find", "character", "unavailable"],
+                   help="find: every copy of an item and where it is; character: list characters, "
+                        "or name one (ID --name TEXT); unavailable: items every search leaves out "
+                        "(too expensive, can't get): list them with no names, --remove to take one off")
     s.add_argument("names", nargs="*")
     s.add_argument("--reason", help="unavailable: why (e.g. \"too expensive\")")
     s.add_argument("--remove", action="store_true", help="unavailable: take the names off the list")
@@ -1727,6 +1785,9 @@ def main(argv=None):
     s.add_argument("--class", dest="cls", help="aspect: the class, e.g. Mage")
     s.add_argument("--tier", type=int, help="aspect: highest tier owned (default: the top tier)")
     s.add_argument("--roll", action="append", metavar="ID=VALUE", help="real roll, e.g. poison=20640")
+    s.add_argument("--another", action="store_true", help="add: one more copy (add alone keeps one)")
+    s.add_argument("--copy", metavar="FP", help="the copy with these rolls (wt own find shows each FP)")
+    s.add_argument("--name", help="character: the name to show for it")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_own)
     s = sub.add_parser("import", help="save a WynnBuilder link as a build file")

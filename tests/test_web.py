@@ -126,8 +126,8 @@ def test_expired_link_gets_a_readable_page(tmp_path):
 
 def test_inventory_api_and_reserved_file(client):
     assert client.post("/api/inventory", json={"action": "add", "name": "Galleon"}).status_code == 200
-    assert client.post("/api/inventory", json={"action": "add", "name": "Galleon",
-                                               "rolls": {"eSteal": 10}}).json()["items"]["Galleon"] == {"rolls": {"eSteal": 10}}
+    got = client.post("/api/inventory", json={"action": "add", "name": "Galleon", "rolls": {"eSteal": 10}}).json()
+    assert got["items"] == [{"name": "Galleon", "rolls": {"eSteal": 10}}] and got["owned"] == {"Galleon": 1}
     assert client.post("/api/inventory", json={"action": "add", "name": "Not An Item"}).status_code == 422
     assert client.get("/api/builds").json() == []                 # inventory.json is not a build
     assert client.put("/api/builds/inventory.json", json={}).status_code == 400
@@ -155,7 +155,7 @@ def test_inventory_import_from_game_dump(client, tmp_path):
     body = r.json()
     assert body["imported"] == {"items": 1, "tomes": 0, "aspects": 1, "rolls": 0}
     assert body["unknown"] == ["Mystery Thing"]
-    assert body["items"] == {"Galleon": {}}
+    assert body["items"] == [{"name": "Galleon"}]
     assert body["aspects"] == {"Mage": {"Aspect of Runic Extravagance": 2}}
     assert (tmp_path / ".last-import.json").exists()
     again = client.post("/api/inventory/import", json={"slots": slots}).json()
@@ -170,7 +170,7 @@ def test_inventory_import_v2_keeps_samples_and_skips_unknown_containers(client, 
     loot = {"version": 2, "kind": "unknown", "character": {"id": "a1b2c3d4"},
             "storage": [{"slot": 0, "name": "Galleon"}], "inventory": [{"slot": 9, "name": "Leo"}]}
     body = client.post("/api/inventory/import", json=loot).json()
-    assert "Leo" in body["items"] and "Galleon" not in body["items"]
+    assert body["owned"] == {"Leo": 1}
     kept = list((tmp_path / ".imports").glob("*-unknown.json"))
     assert len(kept) == 1 and '"Galleon"' in kept[0].read_text(encoding="utf-8")
     assert client.post("/api/inventory/import", json={**loot, "inventory": "nope"}).status_code == 422

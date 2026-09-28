@@ -318,13 +318,14 @@ function searchPicker({ label, placeholder, options, onPick }) {
 }
 
 // ------------------------------------------------------------------ inventory
-S.inv = { items: {}, tomes: [], crafts: [], aspects: {}, unavailable: {} };
-const owns = (name) => !!name && (name in S.inv.items || S.inv.crafts.includes(name));
+S.inv = { items: [], owned: {}, copies: [], tomes: [], tome_counts: {}, crafts: [], aspects: {}, unavailable: {}, place_list: [] };
+const owns = (name) => !!name && (name in S.inv.owned || S.inv.crafts.includes(name));
 async function loadInventory() {
   S.inv = await api("GET", "/api/inventory");
-  const n = Object.keys(S.inv.items).length + S.inv.crafts.length;
+  const n = Object.keys(S.inv.owned).length + S.inv.crafts.length;
   const a = Object.values(S.inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
-  const parts = [[n, "item"], [S.inv.tomes.length, "tome"], [a, "aspect"]].filter(([c]) => c)
+  const t = Object.values(S.inv.tome_counts || {}).reduce((x, y) => x + y, 0);
+  const parts = [[n, "item"], [t, "tome"], [a, "aspect"]].filter(([c]) => c)
     .map(([c, w]) => `${c} ${w}${c === 1 ? "" : "s"}`);
   $("#open-inventory").textContent = parts.length ? `Inventory · ${parts.join(", ")}` : "Inventory";
 }
@@ -359,7 +360,7 @@ const invPrefs = { ownedOnly: {}, aspectClass: null, q: {} };
 async function renderInventory() {
   await loadInventory();
   const inv = S.inv, box = $("#inventory"), tab = invTab();
-  const itemNames = [...Object.keys(inv.items), ...inv.crafts];
+  const itemNames = [...Object.keys(inv.owned), ...inv.crafts];
   const aspectCount = Object.values(inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
   const counts = { Items: itemNames.length, Tomes: inv.tomes.length, Aspects: aspectCount,
     Unavailable: Object.keys(inv.unavailable || {}).length };
@@ -398,7 +399,7 @@ async function invItems(body, inv, names, again) {
     async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); again(); });
   const rows = names.sort().map((n) => {
     const it = S.items[n];
-    const rolls = (inv.items[n] || {}).rolls || {};
+    const rolls = (inv.items.find((e) => e.name === n) || {}).rolls || {};
     const rolled = Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi);
     const canRoll = rolled.length && !n.startsWith("CR-");
     const inputs = rolled.map(([k, [lo, mid, hi]]) => {
