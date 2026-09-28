@@ -182,12 +182,12 @@ function itemLine(it) {
   return out;
 }
 
-/** Where a real roll lands in its range, 0-100 (100 = best), as Wynntils rates it: by value,
- * except spell costs, where the lowest cost is best. Null when the ID can't roll. */
-function rollPct(key, v, lo, hi) {
-  if (lo === hi) return null;
-  const t = Math.min(1, Math.max(0, (v - lo) / (hi - lo)));
-  return 100 * (/^sp(Raw|Pct)\d/.test(key) ? 1 - t : t);
+/** Where a real roll lands in its range, 0-100 (100 = best), as Wynntils rates it. An ID's
+ * range comes as [worst, typical, best] (the server's min/max rolls), so this holds for
+ * negative IDs and spell costs too. Null when the ID can't roll. */
+function rollPct(key, v, worst, best) {
+  if (worst === best) return null;
+  return 100 * Math.min(1, Math.max(0, (v - worst) / (best - worst)));
 }
 /** The average of a copy's roll percentages (Wynntils' overall %), or null without real rolls. */
 function rollQuality(it) {

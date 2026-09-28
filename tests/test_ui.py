@@ -1228,8 +1228,14 @@ def test_storage_pages_search_and_show(page, app):
     playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text(re.compile(r"This copy: \d+\.\d% overall"))
     lo, _, hi = page.evaluate("S.items['Galleon'].ids.eSteal")
     playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text(f"+14% {round(100 * (14 - lo) / (hi - lo))}%")
-    assert page.evaluate("rollPct('spRaw1', -4, -4, -1)") == 100             # the lowest spell cost is best
-    assert round(page.evaluate("rollPct('hprPct', -124, -186, -100)")) == 72  # a negative ID: by value
+    # ranges come as [worst, typical, best]: a spell cost reduction's best is its biggest cut,
+    # a spell cost increase's best is its smallest
+    ids = "fetch('/api/item?name=' + encodeURIComponent(n)).then(r => r.json()).then(it => it.ids.spRaw1)"
+    worst, _, best = page.evaluate(f"n => {ids}", "Anaerobic")
+    assert best < worst < 0 and page.evaluate(f"rollPct('spRaw1', {best}, {worst}, {best})") == 100
+    worst, _, best = page.evaluate(f"n => {ids}", "Flaming Soul")
+    assert worst > best > 0 and page.evaluate(f"rollPct('spRaw1', {best}, {worst}, {best})") == 100
+    assert round(page.evaluate("rollPct('hprPct', -124, -186, -100)")) == 72  # a negative ID: less negative is better
     page.keyboard.press("ArrowRight")                          # → : the next exported page
     playwright.expect(page.get_by_role("button", name="Page 5", exact=True)).to_have_attribute("aria-pressed", "true")
     page.keyboard.press("ArrowLeft")
