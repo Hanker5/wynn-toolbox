@@ -1332,3 +1332,21 @@ def test_tomes_show_ranges_rolls_and_where_each_copy_is(page, app):
     playwright.expect(page.locator(".slot-detail .item-card")).to_contain_text("This copy: 100.0% overall")
     playwright.expect(page.locator(".slot-detail")).to_contain_text("1 other copy you own")
     assert not page.errors
+
+
+def test_equipped_aspects_are_listed_and_marked(page, app):
+    """An Aspects menu export (a real one) lists that character's equipped aspects in
+    Storage and marks them on the Aspects tab."""
+    body = json.loads((Path(__file__).parent / "fixtures" / "exports" / "aspects-p1.json").read_text(encoding="utf-8"))
+    page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
+                  "'application/json'}, body: JSON.stringify(b)})", body)
+    page.click("#open-inventory")
+    page.get_by_role("tab", name="Storage").click()
+    page.locator(".nav-place", has_text="Equipped aspects").click()
+    playwright.expect(page.locator(".tome-row")).to_have_count(5)
+    playwright.expect(page.locator(".tome-row", has_text="Aspect of the Beckoned Legion")).to_contain_text("Tier 1")
+    page.get_by_role("tab", name="Aspects").click()
+    page.get_by_label("Class").select_option("Shaman")
+    card = page.locator(".aspect-card", has_text="Aspect of the Beckoned Legion")
+    playwright.expect(card.locator(".badge")).to_have_text("equipped")
+    assert not page.errors

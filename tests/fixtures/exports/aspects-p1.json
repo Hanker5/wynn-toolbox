@@ -1,0 +1,457 @@
+{
+"version": 2,
+"kind": "aspects",
+"character": {
+"id": "a1b2c3d4",
+"lore": [
+"§7a1b2c3d4"
+]
+},
+"source": {
+"title": "󏿪",
+"menu": "minecraft:generic_9x6"
+},
+"storage": [
+{
+"slot": 4,
+"name": "Aspect of the Beckoned Legion",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7§nPuppet Master§7 gains §f+1§7 §bPuppets§7.",
+"§7 §7Total Damage: §c-1% §8(of your DPS)",
+"§7  ÀÀÀÀ§8( §8Earth: §8-1%§8)",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 11,
+"name": "Shaman's Embodiment of Serene Harmony",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7Your Ultimate charges 20% faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+"§7§a✔ §7Max Mythic Aspects: §f1/1",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾴 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 15,
+"name": "Aspect of the Alraune's Roots",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [3/25]",
+" ",
+"§7§7§nUproot§7 and §7§nHaunting Memory§7",
+"§7§7gain §f+3.5 §7 Range.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 18,
+"name": "Aspect of Acceleration",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀤Tier I >>>>>>>>>> Tier II [1/4]",
+" ",
+"§7§7Your §bPuppets§7 and §bEffigies§7 move §f10%§7 faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 26,
+"name": "Aspect of Occupation",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀩Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7Your §bHummingbird Carvings§7 attack enemies for §f+3.5s§7",
+"§7§7and gain §f+2.5  §7Vision.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 36,
+"name": "Aspect of Exsanguination",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐁔Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7Increase your maximum §bBlood Pool §7 and §bBleeding  §7duration §7by §f+17%§7.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 37,
+"name": "Aspect of the Channeler",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀊Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7§nTribal Chants§7 applies stacks §f0.1s§7 faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 38,
+"name": "Aspect of the Artisan",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀁Tier I >>>>>>>>>> Tier II [2/14]",
+" ",
+"§7§7§nCrystal Knives§7 gains §f+2 pierce.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 39,
+"name": "Aspect of the Eternal Dance",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀔Tier I >>>>>>>>>> Tier II [3/14]",
+" ",
+"§7§7Increase the maximum §nRitual Circle§7 hits",
+"§7§7and radius by §f+1§7.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 40,
+"name": "Aspect of Damnation",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀯Tier II >>>>>>>>>> Tier III [1/25]",
+" ",
+"§7§7Increase §nMalediction§7's damage.",
+"§7",
+"§7§c⚔ §7Total Damage: §f+6% §8(of your DPS, as Main Attack damage)",
+"§7   §8(§6✣ §8Damage: +6%)",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 41,
+"name": "Aspect of Reverberation",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7§nTotemic Smash§7 gains",
+"§7§f+1.25§7  §7Area of Effect.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 42,
+"name": "Aspect of Surging Presence",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀁Tier I >>>>>>>>>> Tier II [1/4]",
+" ",
+"§7§7§nAura§7 travels §f0.1s§7 faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 43,
+"name": "Aspect of Chaotic Demolition",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [1/14]",
+" ",
+"§7§7Increase your maximum §bTraps§7 by §f+2§7.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 44,
+"name": "Aspect of the Steadying Hand",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀓Tier I >>>>>>>>>> Tier II [1/14]",
+" ",
+"§7§7Reduce §nGhostly Trigger§7's cooldown by §f-1.5s§7.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 45,
+"name": "Aspect of the Beastmaster",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀦Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7Increase your §nHound§7's attack speed by §f+25%§7.",
+"§7 ",
+"§7§7Increase your §nSnake§7's weakness effect by §f+2%§7.",
+"§7 ",
+"§7§7Increase your §nCrow§7's distraction duration by §f+0.1s§7.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 46,
+"name": "Aspect of Extreme Current",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀍Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7§nCoursing Restraints§7 gains §f+1s§7  §7Duration.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 47,
+"name": "Aspect of Fragmentation Rounds",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀎Tier I >>>>>>>>>> Tier II [5/14]",
+" ",
+"§7§7§nGrape Bomb§7 deals additional damage.",
+"§7",
+"§7 §7Total Damage: §f+25% §8(of your DPS)",
+"§7  ÀÀÀÀ§8( §8Damage: §8+25%§8)",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 48,
+"name": "Aspect of Undercrank",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀣Tier I >>>>>>>>>> Tier II [4/14]",
+" ",
+"§7§7§nFrenzy§7 builds walk speed §f+3%§7 faster and its",
+"§7maximum walk speed is increased by §f+10%§7.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 49,
+"name": "Aspect of the North Wind",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀁Tier II >>>>>>>>>> Tier III [5/25]",
+" ",
+"§7§7§nSnow Storm§7 gains §f+1.75§7 §7 Range.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 50,
+"name": "Aspect of Battlement Fortification",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [1/25]",
+" ",
+"§7§7§nArrow Shield§7 gains §f+6% §a❁ §7Resistance.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 51,
+"name": "Aspect of Dynamic Entry",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀉Tier II >>>>>>>>>> Tier III [2/25]",
+" ",
+"§7§7§nFierce Stomp§7 gains §f+2.25  §7Area of Effect.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 52,
+"name": "Aspect of Clinging Lichen",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀥Tier II >>>>>>>>>> Tier III [5/25]",
+" ",
+"§7§7§nBryophyte Roots§7 gains §f+0.85  §7Area of Effect.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 53,
+"name": "Aspect of the Thunderbolt",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀉Tier I >>>>>>>>>> Tier II [2/4]",
+" ",
+"§7§7§nArrow Bomb§7 travels §f+12%§7 faster.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+}
+],
+"inventory": [
+{
+"slot": 14,
+"name": "§7Next Page",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": []
+}
+]
+}

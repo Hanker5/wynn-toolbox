@@ -26,6 +26,7 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 	public void onInitializeClient() {
 		ExportConfig.buildsPath();
 		PageWalker.register();
+		AspectWalker.register();
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
 			StorageScreens.Kind kind = StorageScreens.kind(screen);
 			// Only the player's own storages: never loot chests, trades or shops (unless capturing samples).
@@ -47,13 +48,17 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 				}
 			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
-				if (PageWalker.running()) {
+				if (PageWalker.running() || AspectWalker.running()) {
 					return false;                  // hands off while it turns the pages
 				}
 				if (event.button() == 0 && inside(event.x(), event.y(), buttonX(pos), pos.wynngpt$topPos())) {
 					pressed[0] = true;
 					if (walks(kind) && !event.hasShiftDown()) {
-						PageWalker.start(container, kind);
+						if (kind == StorageScreens.Kind.ASPECTS) {
+							AspectWalker.start(container);
+						} else {
+							PageWalker.start(container, kind);
+						}
 					} else {
 						InventoryExporter.export(container, kind);
 					}
@@ -65,7 +70,8 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 	}
 
 	private static boolean walks(StorageScreens.Kind kind) {
-		return (kind == StorageScreens.Kind.ACCOUNT || kind == StorageScreens.Kind.CHARACTER) && ExportConfig.walkPages();
+		return (kind == StorageScreens.Kind.ACCOUNT || kind == StorageScreens.Kind.CHARACTER || kind == StorageScreens.Kind.ASPECTS)
+			&& ExportConfig.walkPages();
 	}
 
 	// Read every frame: the recipe book shifts leftPos without re-initialising the screen.

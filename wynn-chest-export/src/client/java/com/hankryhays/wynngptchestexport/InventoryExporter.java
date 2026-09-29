@@ -122,7 +122,8 @@ public final class InventoryExporter {
 		root.add("character", character(mc));
 		root.add("source", source);
 		root.add("storage", kind == StorageScreens.Kind.INVENTORY ? new JsonArray() : storage(mc, menu));
-		root.add("inventory", inventory(mc));
+		// In the Aspects menu the game shows its own items where the player's inventory goes.
+		root.add("inventory", kind == StorageScreens.Kind.ASPECTS ? new JsonArray() : inventory(mc));
 		return root;
 	}
 

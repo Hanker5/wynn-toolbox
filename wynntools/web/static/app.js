@@ -600,7 +600,7 @@ async function invStorage(body, inv, again) {
       head.replaceChildren(input, h("button", { class: "mini", onclick: save }, "Save"));
       input.focus(); input.select();
     };
-    const label = (p) => ({ inventory: "Inventory", tomes: "Equipped tomes" }[p.kind] || "Ender chest");
+    const label = (p) => ({ inventory: "Inventory", tomes: "Equipped tomes", aspects: "Equipped aspects" }[p.kind] || "Ender chest");
     return h("div", { class: "nav-group" }, head, o.places.map((p) => placeButton(p, label(p), p.label)));
   };
   const picker = h("nav", { class: "place-nav", role: "group", "aria-label": "Storage" }, owners.map(ownerBlock));
@@ -653,18 +653,21 @@ async function invStorage(body, inv, again) {
     cells.set(k, c);
     return c;
   };
-  const tomeRow = (s) => {
-    const t = tomeItem(s.name);
+  // Equipped tomes and aspects: a list, not a chest grid.
+  const equippedRow = (s) => {
+    const t = s.kind === "tome" ? tomeItem(s.name) : null;
     const r = h("button", { class: `tome-row${s.slot === invPrefs.selected ? " selected" : ""}`, "data-slot": s.slot,
       "aria-label": `${s.name}: ${s.where}`, onclick: () => select(s.slot) },
-      slotGlyph(s), h("span", { class: `tier-${t?.tier} detail-name` }, s.name), qualityBadge(t, s.rolls));
-    attachTooltip(r, () => (invPrefs.selected === s.slot ? null : withRolls(tomeItem(s.name), s.rolls)));
+      slotGlyph(s), h("span", { class: `${t ? `tier-${t.tier} ` : ""}detail-name` }, s.name),
+      t ? qualityBadge(t, s.rolls) : h("span", { class: "muted" }, `Tier ${s.tier}`));
+    if (t) attachTooltip(r, () => (invPrefs.selected === s.slot ? null : withRolls(tomeItem(s.name), s.rolls)));
     cells.set(s.slot, r);
     return r;
   };
-  const grid = place.kind === "tomes"
-    ? h("div", { class: "tome-list" }, (page?.slots || []).length ? page.slots.filter((s) => s.kind === "tome").map(tomeRow)
-      : h("p", { class: "muted" }, "No tomes equipped."))
+  const listed = { tomes: ["tome", "No tomes equipped."], aspects: ["aspect", "No aspects equipped."] }[place.kind];
+  const grid = listed
+    ? h("div", { class: "tome-list" }, (page?.slots || []).some((s) => s.kind === listed[0])
+      ? page.slots.filter((s) => s.kind === listed[0]).map(equippedRow) : h("p", { class: "muted" }, listed[1]))
     : place.kind === "inventory"
     ? h("div", { class: "inv-layout" },
       h("div", { class: "chest-grid equip-row", title: "Helmet, chestplate, leggings, boots, offhand" }, [39, 38, 37, 36, 40].map(cell)),
@@ -679,13 +682,13 @@ async function invStorage(body, inv, again) {
   function drawDetail() {
     const s = slots.get(invPrefs.selected);
     if (!s) {
-      const gear = (page?.slots || []).filter((x) => x.kind === "item" || (place.kind === "tomes" && x.kind === "tome"));
+      const gear = (page?.slots || []).filter((x) => x.kind === "item" || (listed && x.kind === listed[0]));
       detail.classList.remove("has-item");
       setKids(detail, h("div", { class: "detail-block wide" }, h("div", { class: "panel-h" }, "Gear on this page"),
         gear.length ? h("div", { class: "detail-list" }, gear.map((x) => {
           const it = slotItem(x);
           return h("button", { class: "detail-row", onclick: () => select(x.slot), "aria-label": `Select ${x.name}` },
-            x.kind === "tome" ? slotGlyph(x) : itemIcon(it?.type, 24, it?.tier), h("span", { class: `tier-${it?.tier} detail-name` }, x.name),
+            x.kind === "item" ? itemIcon(it?.type, 24, it?.tier) : slotGlyph(x), h("span", { class: `tier-${it?.tier} detail-name` }, x.name),
             qualityBadge(it, x.rolls));
         })) : h("p", { class: "muted" }, "No gear on this page."),
         h("p", { class: "hint" }, "Click a slot to see its rolls and where your other copies are.")));
@@ -886,10 +889,14 @@ async function invAspects(body, inv, filterBar, again) {
       S.inv = await api("POST", "/api/inventory", { action: tier ? "add" : "remove", kind: "aspect", class: cls, name: a.name, tier });
       await loadInventory(); inv = S.inv; draw();
     };
+    const wornBy = {};                               // aspect -> the characters that have it equipped
+    for (const p of S.inv.place_list || []) if (p.kind === "aspects")
+      for (const x of p.pages["1"]?.slots || []) (wornBy[x.name] ||= []).push(p.label.split(" · ")[0]);
     setKids(list, shown.length ? shown.map((a) => {
       const own = mine[a.name] || 0;
       return h("div", { class: `inv-item aspect-card${own ? " owned" : ""}` },
         h("div", { class: "row" }, h("span", { class: `tier-${a.rarity} inv-name` }, a.name), h("span", { class: "grow" }),
+          wornBy[a.name] ? h("span", { class: "badge ok", title: `Equipped by ${wornBy[a.name].join(", ")}` }, "equipped") : null,
           h("span", { class: "muted" }, a.rarity)),
         h("div", { class: "tier-pills", role: "group", "aria-label": `${a.name} tier owned` }, a.tiers.map((t, i) =>
           h("button", { class: `mini pill${own >= i + 1 ? " on" : ""}`, title: `${t.threshold ?? "?"} needed\n${t.desc}`,

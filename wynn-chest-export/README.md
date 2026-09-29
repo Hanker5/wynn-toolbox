@@ -24,6 +24,10 @@ In an ender chest, the button turns the pages for you: back to page 1 with the p
 
 It clicks nothing but the arrows (slots 51 and 52) and the switch (47), each only when its name and tooltip say so ("Page 3 >>>>>" with "Click to go"; "Storage Type" with "Click to switch"). On the last page you own, the next slot is still called "Page N >>>>>" but offers to buy the page: it never clicks that, and never "Quick Actions" (46), which would dump your inventory into the bank. It waits for each page to arrive, leaves at least `page_delay_ticks` (default 6; 20 ticks is a second) between clicks, and ignores your clicks while it runs. Closing the chest stops it and sends the pages read so far; only a chest read to its last page has pages past that dropped in the app.
 
+## The Mastery Tomes and Aspects menus
+
+In the Mastery Tomes menu the button exports the tomes that character has equipped. In the Aspects menu it turns the collection's pages the same way: back to the first page with "Previous Page", then forward with "Next Page" (the game puts both in the player-inventory part of the screen) until there is none, and sends every page with the aspects equipped. It clicks nothing else, and sends no inventory from that menu (the game shows its own items there). Shift-click exports only the open page. Only a walk read to the last page sets the collection exactly; one page, or a stopped walk, only raises tiers.
+
 ## Development
 
 `./gradlew runClient` starts a dev client, which reads its config from `run/config/`. The server side of the export is `POST /api/inventory/import` in `wynntools/web/server.py`, and the slot parsing is in `wynntools/gameimport.py`.

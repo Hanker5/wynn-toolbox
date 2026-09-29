@@ -51,7 +51,7 @@ DEFAULT = Path("builds/inventory.json")
 VERSION = 2
 
 # Pages each ender chest can have (Wynntils' AccountBankContainer / CharacterBankContainer).
-PAGES = {"account": 21, "character": 12, "inventory": 1, "tomes": 1}
+PAGES = {"account": 21, "character": 12, "inventory": 1, "tomes": 1, "aspects": 1}
 STORAGE_SLOTS = 45           # an ender chest page's own slots: 5 rows of 9
 HAND = "hand"                # the "place" of a copy added by hand
 _ARMOR = {36: "boots", 37: "leggings", 38: "chestplate", 39: "helmet"}
@@ -125,7 +125,7 @@ def place_character(key):
 
 
 def _place_order(key):
-    return ({"account": 0, "character": 1, "inventory": 2, "tomes": 3}.get(place_kind(key), 4), key)
+    return ({"account": 0, "character": 1, "inventory": 2, "tomes": 3, "aspects": 4}.get(place_kind(key), 5), key)
 
 
 @dataclass
@@ -304,6 +304,8 @@ class Inventory:
             return f"{self.character_label(cid)} · inventory"
         if kind == "tomes":
             return f"{self.character_label(cid)} · equipped tomes"
+        if kind == "aspects":
+            return f"{self.character_label(cid)} · equipped aspects"
         return "added by hand"
 
     def where(self, place, page=None, slot=None):
@@ -314,8 +316,8 @@ class Inventory:
         if place_kind(place) == "inventory":
             if slot is not None:
                 parts.append(inventory_slot_label(slot))
-        elif place_kind(place) == "tomes":
-            pass                         # the tome menu: where it sits there doesn't matter
+        elif place_kind(place) in ("tomes", "aspects"):
+            pass                         # equipped: where it sits in the menu doesn't matter
         else:
             if page is not None:
                 parts.append(f"page {page}")

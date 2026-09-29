@@ -101,3 +101,27 @@ def test_the_mod_cleans_text_as_the_app_does(controls):
     lines = [x for x in dict.fromkeys(lines) if x and "\n" not in x]
     got = controls([(x, []) for x in lines])
     assert [r["clean"] for r in got] == [clean(x) for x in lines]
+
+
+ASPECTS_HARNESS = """
+import com.hankryhays.wynngptchestexport.Controls;
+public class AspectsHarness {
+    public static void main(String[] args) {
+        for (String name : args) System.out.println(Controls.aspectsArrow(name, ">") + " " + Controls.aspectsArrow(name, "<"));
+    }
+}
+"""
+
+
+def test_the_aspects_menu_arrows_are_recognised(controls, tmp_path_factory):
+    """The Aspects menu's arrows, as the game names them (in the player-inventory slots 12 and 14)."""
+    out = tmp_path_factory.mktemp("aspects")
+    (out / "AspectsHarness.java").write_text(ASPECTS_HARNESS, encoding="utf-8")
+    javac = shutil.which("javac")
+    subprocess.run([javac, "-encoding", "UTF-8", "-d", str(out), str(CONTROLS), str(out / "AspectsHarness.java")],
+                   check=True, capture_output=True)
+    p2 = json.loads((EXPORTS / "aspects-p2.json").read_text(encoding="utf-8"))["inventory"]
+    names = {s["slot"]: s["name"] for s in p2}
+    got = subprocess.run([str(Path(javac).with_name("java")), "-cp", str(out), "AspectsHarness",
+                          names[14], names[12], "Aspect of the Chain Knife"], check=True, capture_output=True, text=True)
+    assert got.stdout.split("\n")[:3] == ["true false", "false true", "false false"]

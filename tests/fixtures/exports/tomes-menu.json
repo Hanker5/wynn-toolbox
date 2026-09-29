@@ -1,0 +1,231 @@
+{
+"version": 2,
+"kind": "tomes",
+"character": {
+"id": "a1b2c3d4",
+"lore": [
+"§7a1b2c3d4"
+]
+},
+"source": {
+"title": "󏿛",
+"menu": "minecraft:generic_9x6"
+},
+"storage": [
+{
+"slot": 4,
+"name": "Allegiance Tome Slot",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 11,
+"name": "󏀀Nimble Tome of Combat Mastery III󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Nimble Tome of Combat Mastery III",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀨",
+"󏿿 Combat Level󏾻󐂳105",
+"󐀨",
+"Main Attack Damage󏾫󐂤+95 󏿷",
+""
+]
+},
+{
+"slot": 15,
+"name": "󏀀Surefooted Tome of the Marathon II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Surefooted Tome of the Marathon II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀬",
+"󏿿 Combat Level󏾻󐂻100",
+"󐀬",
+"Sprint󏿦󐂧+15% 󏿷",
+"Sprint Regen󏿉󐂧+18% 󏿷",
+""
+]
+},
+{
+"slot": 19,
+"name": "󏀀Nimble Tome of Combat Mastery II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Nimble Tome of Combat Mastery II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀦",
+"󏿿 Combat Level󏾻󐂳80",
+"󐀦",
+"Main Attack Damage󏾫󐂠+63 󏿷",
+""
+]
+},
+{
+"slot": 22,
+"name": "󏀀Pulsing Tome of Defensive Mastery II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Pulsing Tome of Defensive Mastery II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀮",
+"󏿿 Combat Level󏾻󐂿100",
+"󐀮",
+"Health󏿥󐂬+331 󏿷",
+"Thunder Defence󏾵󐂯+8% 󏿷",
+""
+]
+},
+{
+"slot": 25,
+"name": "󏀀Fleetfooted Tome of the Marathon II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Fleetfooted Tome of the Marathon II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀭",
+"󏿿 Combat Level󏾻󐂽100",
+"󐀭",
+"Walk Speed󏿐󐂭+6% 󏿷",
+""
+]
+},
+{
+"slot": 28,
+"name": "󏀀Harvester's Tome of Mysticism II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Harvester's Tome of Mysticism II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀤",
+"󏿿 Combat Level󏾻󐂫100",
+"󐀤",
+"󐂦󏿿󏿿󏿸󐀂󏿿󏿶",
+"Mana Steal󏿑󐂒+4/3s 󏿷",
+""
+]
+},
+{
+"slot": 30,
+"name": "󏀀Tome of Defensive Mastery󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Tome of Defensive Mastery",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀗",
+"󏿿 Combat Level󏾻󐂕60",
+"󐀗",
+"Health󏿥󐁾+155 󏿷",
+""
+]
+},
+{
+"slot": 31,
+"name": "󏀀Tome of Defensive Mastery󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Tome of Defensive Mastery",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿈󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀗",
+"󏿿 Combat Level󏾻󐂕60",
+"󐀗",
+"Health󏿥󐁽+148 󏿷",
+""
+]
+},
+{
+"slot": 32,
+"name": "󏀀Blooming Tome of Defensive Mastery II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Blooming Tome of Defensive Mastery II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀱",
+"󏿿 Combat Level󏾻󐃅100",
+"󐀱",
+"Health󏿥󐂱+260 󏿷",
+"Earth Defence󏿁󐂵+8% 󏿷",
+""
+]
+},
+{
+"slot": 34,
+"name": "󏀀Tome of Remedial Expertise II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Tome of Remedial Expertise II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿜󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀞",
+"󏿿 Combat Level󏾻󐂢80",
+"󐀞",
+"󐂙󏿿󏿿󏿸󐀂󏿿󏿶",
+"Healing Efficiency󏾲󐂎+3% 󏿷",
+""
+]
+},
+{
+"slot": 38,
+"name": "󏀀Harvester's Tome of Mysticism II󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Harvester's Tome of Mysticism II",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀤",
+"󏿿 Combat Level󏾻󐂫100",
+"󐀤",
+"Mana Steal󏿑󐂒+4/3s 󏿷",
+""
+]
+},
+{
+"slot": 42,
+"name": "󏀀Tome of Scavenging Expertise III󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Tome of Scavenging Expertise III",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀥",
+"󏿿 Combat Level󏾻󐂭105",
+"󐀥",
+"Stealing󏿞󐂝+5% 󏿷",
+""
+]
+},
+{
+"slot": 45,
+"name": "§7Back to Character Info",
+"item_id": "minecraft:potion",
+"count": 1
+},
+{
+"slot": 49,
+"name": "󏀀Syndicate's Tome of Care I󏀀",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+"󏿰󏿏󐀅Syndicate's Tome of Care I",
+"󐀦󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿚󐀂󐀁󏿿󏿿󏿿󏿿󏿿󏿦󐀂󐀁󏿶",
+"󐀗",
+"󏿿 Combat Level󏾻󐂔75",
+"󐀗",
+"󐂋󏿿󏿿󏿸󐀂󏿿󏿶",
+"Loot󏿭󐁼+13% 󏿷",
+"Health Regen󏿈󐂀+2% 󏿷",
+""
+]
+}
+],
+"inventory": []
+}

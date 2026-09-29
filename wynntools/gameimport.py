@@ -181,6 +181,11 @@ def classify(gd, slot):
     return out
 
 
+# The Aspects menu (Wynntils' AspectsContainer): the equipped aspects' slots. Exports from
+# it carry no player inventory (the game shows menu items there).
+ASPECTS_EQUIPPED = (4, 11, 15, 18, 26)
+ASPECT_KINDS = ("aspects", "aspects_all")
+
 # The ender chest's page arrows (Wynntils' PersonalStorageContainer): "Page 3 >>>>>" in
 # slot 52 leads to page 3, "Page 1 <<<<<" in slot 51 back to page 1.
 NEXT_SLOT, PREVIOUS_SLOT = 52, 51
@@ -268,12 +273,15 @@ def import_export(inv, gd, body):
     before_items, before_tomes = _placed(inv)
     warnings, labels, done, tops = [], [], {}, {}
 
+    kind = body.get("kind")
     inventory = [c for c in (classify(gd, s) for s in body.get("inventory") or []) if c]
-    inv.set_page(f"inventory:{cid}", 1, inventory, when)
-    labels.append("inventory")
+    if kind in ASPECT_KINDS:
+        inventory = []           # the Aspects menu shows its own items where the player's inventory goes
+    else:
+        inv.set_page(f"inventory:{cid}", 1, inventory, when)
+        labels.append("inventory")
     classified = list(inventory)
 
-    kind = body.get("kind")
     pages = body.get("pages")
     if pages is None and kind in ("account", "character"):
         pages = [{"kind": kind, "storage": body.get("storage") or []}]
@@ -299,11 +307,27 @@ def import_export(inv, gd, body):
         inv.set_page(f"tomes:{cid}", 1, tomes, when)
         labels.append("equipped tomes")
         classified += tomes
-    elif kind == "aspects":         # the Aspects menu: raises the tiers owned
-        classified += [c for c in (classify(gd, s) for s in body.get("storage") or []) if c and c["kind"] == "aspect"]
-        labels.append("aspects")
-    removed_pages = 0
-    complete = body.get("complete")          # true, or the chests ("account", "character") read to the end
+    complete = body.get("complete")
+    aspect_pages = [p.get("storage") or [] for p in pages or [] if p.get("kind") == "aspects"]
+    if kind == "aspects":
+        aspect_pages.append(body.get("storage") or [])
+    aspects_set = 0
+    if aspect_pages:                # the Aspects menu: equipped ones, and the collection's pages
+        seen = [c for st in aspect_pages for c in (classify(gd, s) for s in st) if c and c["kind"] == "aspect"]
+        equipped = {c["slot"]: c for c in seen if c["slot"] in ASPECTS_EQUIPPED}
+        inv.set_page(f"aspects:{cid}", 1, [equipped[k] for k in sorted(equipped)], when)
+        labels.append("aspects" if len(aspect_pages) == 1 else f"{len(aspect_pages)} aspect pages")
+        if complete is True or (isinstance(complete, list) and "aspects" in complete):
+            before = {c: dict(m) for c, m in inv.aspects.items()}
+            inv.aspects = {}          # read to the last page: exactly what the game shows
+            for c in seen:
+                if c["tier"] > inv.aspect_tier(c["cls"], c["name"]):
+                    inv.set_aspect(c["cls"], c["name"], c["tier"])
+            aspects_set = sum(1 for c, m in inv.aspects.items() for n, t in m.items() if before.get(c, {}).get(n) != t) \
+                + sum(1 for c, m in before.items() for n in m if n not in inv.aspects.get(c, {}))
+        else:
+            classified += seen        # only raises tiers
+    removed_pages = 0          # true, or the chests ("account", "character") read to the end
     for key, seen in done.items():
         if complete is True or (isinstance(complete, list) and key.split(":")[0] in complete):
             if has_next(tops[(key, max(seen))]):      # the mod stopped early: keep the rest
@@ -322,7 +346,7 @@ def import_export(inv, gd, body):
     if guess:
         character["class"] = guess
 
-    aspects = 0
+    aspects = aspects_set
     for s in classified:
         if s["kind"] == "aspect" and s["tier"] > inv.aspect_tier(s["cls"], s["name"]):
             inv.set_aspect(s["cls"], s["name"], s["tier"])

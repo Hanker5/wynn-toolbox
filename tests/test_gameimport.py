@@ -175,8 +175,10 @@ def test_the_mod_recognises_real_ender_chest_titles():
     """The glyph strings the mod matches (StorageScreens.java) are in the titles the game sent."""
     source = (MOD / "StorageScreens.java").read_text(encoding="utf-8")
     bank = java_string(source, "BANK_TITLE")
-    assert real("account-p1.json")["source"]["title"].endswith(bank + "")
-    assert real("character-p3.json")["source"]["title"].endswith(bank + "")
+    assert real("account-p1.json")["source"]["title"].endswith(bank + "\uf000")
+    assert real("character-p3.json")["source"]["title"].endswith(bank + "\uf001")
+    assert java_string(source, "TOMES_TITLE") in real("tomes-menu.json")["source"]["title"]
+    assert java_string(source, "ASPECTS_TITLE") in real("aspects-p1.json")["source"]["title"]
     rules = (MOD / "Controls.java").read_text(encoding="utf-8")
     controls = {s["slot"]: clean(s["name"]) for s in real("account-p1.json")["storage"] if s["slot"] >= 45}
     assert controls[int(re.search(r"SWITCH_SLOT = (\d+);", rules).group(1))] == java_string(rules, "SWITCH_NAME")
@@ -238,3 +240,29 @@ def test_the_aspects_menu_raises_the_tiers_owned(gd):
     inv = Inventory()
     import_export(inv, gd, export("aspects", [{"slot": 18, "name": "Aspect of Runic Extravagance", "lore": ["Tier II"]}]))
     assert inv.aspect_tier("Mage", "Aspect of Runic Extravagance") == 2
+
+
+def test_the_real_mastery_tomes_menu_gives_the_equipped_tomes(gd):
+    inv = Inventory()
+    import_export(inv, gd, real("tomes-menu.json"))
+    equipped = inv.places["tomes:a1b2c3d4"]["pages"]["1"]["slots"]
+    assert len(equipped) == 13 and all(s["kind"] == "tome" for s in equipped)     # 14 slots, the guild one empty
+    assert all(s.get("rolls") for s in equipped)                                   # read from the tooltips
+    assert sum(inv.tome_counts().values()) == 13
+
+
+def test_real_aspect_pages_set_the_collection_and_the_equipped_ones(gd):
+    inv = Inventory(aspects={"Mage": {"Aspect of the Vortex": 3}},
+                    places={"inventory:a1b2c3d4": {"pages": {"1": {"updated": "", "slots": [
+                        {"slot": 0, "name": "Sunstar", "kind": "item"}]}}}})
+    r = import_export(inv, gd, real("aspects-p1.json"))            # one page: only raises tiers
+    assert inv.aspect_tier("Mage", "Aspect of the Vortex") == 3
+    assert [s["name"] for s in inv.places["inventory:a1b2c3d4"]["pages"]["1"]["slots"]] == ["Sunstar"]   # untouched
+    equipped = inv.places["aspects:a1b2c3d4"]["pages"]["1"]["slots"]
+    assert [s["slot"] for s in equipped] == [4, 11, 15, 18, 26] and "aspects" in r["message"]
+    walk = {**real("aspects-p1.json"), "kind": "aspects_all", "storage": [], "complete": ["aspects"],
+            "pages": [{"kind": "aspects", "page": n + 1, "storage": real(f)["storage"]}
+                      for n, f in enumerate(("aspects-p1.json", "aspects-p2.json"))]}
+    import_export(inv, gd, walk)                                    # read to the end: exactly what it shows
+    assert inv.aspect_tier("Mage", "Aspect of the Vortex") == 0
+    assert sum(len(m) for m in inv.aspects.values()) == 5 + 18 + 18

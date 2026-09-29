@@ -1,0 +1,457 @@
+{
+"version": 2,
+"kind": "aspects",
+"character": {
+"id": "a1b2c3d4",
+"lore": [
+"§7a1b2c3d4"
+]
+},
+"source": {
+"title": "󏿪",
+"menu": "minecraft:generic_9x6"
+},
+"storage": [
+{
+"slot": 4,
+"name": "Aspect of the Beckoned Legion",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7§nPuppet Master§7 gains §f+1§7 §bPuppets§7.",
+"§7 §7Total Damage: §c-1% §8(of your DPS)",
+"§7  ÀÀÀÀ§8( §8Earth: §8-1%§8)",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 11,
+"name": "Shaman's Embodiment of Serene Harmony",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7Your Ultimate charges 20% faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+"§7§a✔ §7Max Mythic Aspects: §f1/1",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾴 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 15,
+"name": "Aspect of the Alraune's Roots",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [3/25]",
+" ",
+"§7§7§nUproot§7 and §7§nHaunting Memory§7",
+"§7§7gain §f+3.5 §7 Range.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 18,
+"name": "Aspect of Acceleration",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀤Tier I >>>>>>>>>> Tier II [1/4]",
+" ",
+"§7§7Your §bPuppets§7 and §bEffigies§7 move §f10%§7 faster.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 26,
+"name": "Aspect of Occupation",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀩Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7Your §bHummingbird Carvings§7 attack enemies for §f+3.5s§7",
+"§7§7and gain §f+2.5  §7Vision.",
+" ",
+"§7§a✔ §7Class Req: §fShaman/Skyseer",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7 Click to Unequip"
+]
+},
+{
+"slot": 36,
+"name": "Aspect of Olfactorial Enhancement",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀢Tier I >>>>>>>>>> Tier II [3/4]",
+" ",
+"§7Reduces Sniffer Dog's cooldown by -0.15s.",
+" ",
+"§7§c✖ §7Class Req: §fArcher/Hunter",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 37,
+"name": "Acrobat's Embodiment of Gravity Defiance",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7§nLacerate§7 gains §f+2§7 hits,",
+"§7§7and becomes §f50% §7faster.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+"§7§a✔ §7Max Mythic Aspects: §f1/1",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾴 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 38,
+"name": "Aspect of Clouded Vision",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀈Tier I >>>>>>>>>> Tier II [1/14]",
+" ",
+"§7§7Increase §nSmoke Bomb§7's duration by §f10%§7.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 39,
+"name": "Aspect of the Unstoppable Force",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀂Tier I >>>>>>>>>> Tier II [1/14]",
+" ",
+"§7§7§nAerial Ace§7 gains §f+5%  §7Damage Bonus.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 40,
+"name": "Aspect of Visual Distortion",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀌Tier I >>>>>>>>>> Tier II [5/14]",
+" ",
+"§7§7Reduce §nMirage§7's cooldown by §f0.25s§7.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 41,
+"name": "Aspect of Unyielding Fate",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀃Tier I >>>>>>>>>> Tier II [2/14]",
+" ",
+"§7§7§nBackstab§7's angle to deal double",
+"§7§7damage is increased by §f+20°§7.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 42,
+"name": "Aspect of the Agile Blade",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀋Tier I >>>>>>>>>> Tier II [3/14]",
+" ",
+"§7§7§nAerial Ace§7 gains §f+1.25s  §7Duration.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 43,
+"name": "Aspect of the Pernicious Prankster",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀕Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7You may store §f+15§7 more §bTricks  §7on enemies.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 44,
+"name": "Aspect of the Disappearing Act",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀔Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7Reduce §nShadow Projection§7's cooldown by §f1s§7.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 45,
+"name": "Aspect of Enduring Illusions",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀘Tier II >>>>>>>>>> Tier III [5/25]",
+" ",
+"§7§7§bMirror Clones §7 reduce damage by §f-3.5%§7.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 46,
+"name": "Aspect of the Pinwheel",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [5/25]",
+" ",
+"§7§7§nSpin Attack§7 and §nLacerate",
+"§7§7gain §f+0.85  §7Area of Effect.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 47,
+"name": "Aspect of Redoublement",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [9/25]",
+" ",
+"§7§7§nMultihit§7 gains §f+0.85§7 §7 Range.",
+"§7§7§nBackstab§7 gains §f+1.7§7 §7 Range.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 48,
+"name": "Aspect of Flamboyance",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀃Tier II >>>>>>>>>> Tier III [0/25]",
+" ",
+"§7§7§nBamboozle§7 gains §f+1.75  §7Area of Effect.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 49,
+"name": "Aspect of the Fog Machine",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀏Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7§nSmoke Bomb§7 gains §f+0.65  §7Area of Effect.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 50,
+"name": "Aspect of Athleticism",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀜Tier I >>>>>>>>>> Tier II [1/4]",
+" ",
+"§7§7§nDash§7 is §f8%§7 stronger, §7and",
+"§7§nShadow Projection§7 launches §f7%§7 further.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 51,
+"name": "Aspect of the Stellar Flurry",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier I >>>>>>>>>> Tier II [0/4]",
+" ",
+"§7§7§nMultihit§7 gains §f+1§7 hit.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 52,
+"name": "Aspect of the Chain Knife",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀀Tier II >>>>>>>>>> Tier III [1/25]",
+" ",
+"§7§7Your §nMain Attack§7 gains §f+1.15§7 §7 Range.",
+" ",
+"§7§c✖ §7Class Req: §fAssassin/Ninja",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾠 󐀂",
+" ",
+"§7No empty slots available"
+]
+},
+{
+"slot": 53,
+"name": "Aspect of the Indescribable",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": [
+" ",
+"󐀟Tier I >>>>>>>>>> Tier II [0/14]",
+" ",
+"§7§7Increase your §bRiftspawn§7's attack speed by §f+25%§7.",
+" ",
+"§7§c✖ §7Class Req: §fMage/Dark Wizard",
+" ",
+"§7󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏿿󏾲 󐀂",
+" ",
+"§7No empty slots available"
+]
+}
+],
+"inventory": [
+{
+"slot": 12,
+"name": "§7Previous Page",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": []
+},
+{
+"slot": 14,
+"name": "§7Next Page",
+"item_id": "minecraft:potion",
+"count": 1,
+"lore": []
+}
+]
+}

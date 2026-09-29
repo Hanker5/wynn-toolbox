@@ -20,6 +20,17 @@ public final class Controls {
 	public static final int PREVIOUS_SLOT = 51;
 	public static final int NEXT_SLOT = 52;
 
+	// The Aspects menu: the aspects equipped, the collection's page (18 slots), and its page
+	// arrows, which the game puts in the player-inventory part of the screen (inventory
+	// slots 12 and 14) with no tooltip (Wynntils' AspectsContainer).
+	public static final List<Integer> ASPECTS_EQUIPPED = List.of(18, 11, 4, 15, 26);
+	public static final int ASPECTS_FIRST = 36;
+	public static final int ASPECTS_LAST = 53;
+	public static final int ASPECTS_PREVIOUS_SLOT = 12;
+	public static final int ASPECTS_NEXT_SLOT = 14;
+	private static final String ASPECTS_PREVIOUS = "Previous Page";
+	private static final String ASPECTS_NEXT = "Next Page";
+
 	private static final Pattern ARROW = Pattern.compile("^Page (\\d+)\\s*([<>])");
 	private static final String ARROW_HINT = "Click to go";
 	private static final String PURCHASE = "Purchase";
@@ -63,6 +74,11 @@ public final class Controls {
 
 	public static boolean isSwitch(String name, List<String> lore) {
 		return clean(name).equals(SWITCH_NAME) && lore.stream().map(Controls::clean).toList().contains(SWITCH_HINT);
+	}
+
+	/** Whether an item in the Aspects menu's arrow slot is its "Next Page" (">") or "Previous Page" ("<"). */
+	public static boolean aspectsArrow(String name, String direction) {
+		return clean(name).equals(direction.equals(">") ? ASPECTS_NEXT : ASPECTS_PREVIOUS);
 	}
 
 	/** The page shown, from where its arrows lead; 1 with none, null if they disagree. */
