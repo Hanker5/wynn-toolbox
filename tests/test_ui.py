@@ -379,15 +379,18 @@ def test_inventory_tabs_tomes_aspects_unavailable(page, app):
     read = lambda: json.loads(inv_path.read_text())
     page.click("#open-inventory")
     page.wait_for_selector("#inventory:not([hidden]) .tab")
-    page.get_by_role("tab", name="Tomes").click()
-    page.get_by_label("Filter tomes…").fill("Scavenging Expertise III")
-    own = page.get_by_role("button", name="Own Tome of Scavenging Expertise III")
-    own.click()
-    own.click()
-    page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('2 tomes')")
+    page.get_by_role("tab", name="Items").click()                  # tomes are items there, one card per copy
+    for n in (1, 2):
+        page.get_by_label("Add owned item").fill("Scavenging Expertise III")
+        page.locator(".ac-item", has_text="Tome of Scavenging Expertise III").first.click()
+        page.wait_for_function(f"document.querySelector('#open-inventory').textContent.includes('{n} tome')")
     assert read()["tomes"] == ["Tome of Scavenging Expertise III"] * 2
-    page.get_by_role("button", name="Own one fewer Tome of Scavenging Expertise III").click()
+    page.get_by_role("button", name=re.compile("^Tomes")).click()
+    playwright.expect(page.locator(".inv-item.tome-copy")).to_have_count(2)
+    playwright.expect(page.locator(".inv-item.tome-copy").first).to_contain_text("1 of 2")
+    page.get_by_role("button", name="Remove this copy of Tome of Scavenging Expertise III").first.click()
     page.wait_for_function("document.querySelector('#open-inventory').textContent.includes('1 tome')")
+    playwright.expect(page.locator(".inv-item.tome-copy")).to_have_count(1)
     page.get_by_role("tab", name="Aspects").click()
     page.get_by_label("Class").select_option("Mage")
     page.get_by_label("Filter aspects…").fill("Runic Extravagance")
@@ -1264,12 +1267,12 @@ def test_storage_pages_search_and_show(page, app):
     playwright.expect(page.locator(".owner-name", has_text="Bow main")).to_be_visible()
 
     page.get_by_role("tab", name="Items").click()
-    playwright.expect(page.locator(".inv-item:has-text('Galleon') .copy-row")).to_have_count(2)
+    playwright.expect(page.locator(".inv-item:has-text('Galleon')")).to_have_count(2)             # a card per copy
     page.get_by_role("button", name=re.compile("^Weapons")).click()
     playwright.expect(page.locator(".inv-item")).to_have_count(1)                        # Spring only
     page.get_by_role("button", name=re.compile("^All")).click()
     page.get_by_label("Only items I have more than once").check()
-    playwright.expect(page.locator(".inv-item")).to_have_count(1)                        # Galleon only
+    playwright.expect(page.locator(".inv-item")).to_have_count(2)                        # both Galleons only
     page.get_by_label("Find an item").fill("spring")                # on this tab it filters the list
     playwright.expect(page.locator(".inv-item")).to_have_count(0)
     playwright.expect(page.locator(".inv-found")).to_be_hidden()
@@ -1310,8 +1313,9 @@ def test_editor_picks_which_copy_a_slot_uses(page, app):
 
 
 def test_tomes_show_ranges_rolls_and_where_each_copy_is(page, app):
-    """The Tomes tab shows each tome's ranges; owned copies list where they are (equipped
-    or in a chest) with how well they rolled; equipped tomes have their own Storage entry."""
+    """Tomes are items on the Items tab, one card per copy: where each is (equipped or in a
+    chest) and how well it rolled, or its ranges if its rolls aren't known; equipped tomes
+    have their own Storage entry."""
     pad, tome = "\U000cffff", "Courageous Tome of Defensive Mastery II"
     for body in ({"version": 2, "kind": "tomes", "character": {"id": "a1b2c3d4"}, "inventory": [],
                   "storage": [{"slot": 11, "name": tome, "lore": [f"Health{pad}+345", f"Fire Defence{pad}+10%"]}]},
@@ -1320,12 +1324,18 @@ def test_tomes_show_ranges_rolls_and_where_each_copy_is(page, app):
         page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
                       "'application/json'}, body: JSON.stringify(b)})", body)
     page.click("#open-inventory")
-    page.get_by_role("tab", name="Tomes").click()
-    card = page.locator(".tome-card.owned", has_text=tome)            # (not "... Mastery III")
-    playwright.expect(card).to_contain_text("Health +265 80 to 345")            # the range, as items show it
-    playwright.expect(card.locator(".badge")).to_have_text("equipped")
-    playwright.expect(card.locator(".tome-copy")).to_have_count(2)
-    playwright.expect(card.locator(".tome-copy", has_text="equipped")).to_contain_text("100.0%")   # a perfect roll
+    page.get_by_role("tab", name="Items").click()
+    page.get_by_role("button", name=re.compile("^Tomes")).click()
+    cards = page.locator(".inv-item.tome-copy", has_text=tome)
+    playwright.expect(cards).to_have_count(2)                                          # a card per copy
+    playwright.expect(cards.filter(has_text="equipped")).to_contain_text("100.0%")      # a perfect roll
+    playwright.expect(cards.filter(has_text="Account ender chest")).to_contain_text("Health +265")
+    page.get_by_role("button", name=re.compile(f"^Show {tome}: Account ender chest")).click()   # to where it is
+    page.wait_for_selector('.chest .cell.selected[data-slot="0"]')
+    page.get_by_role("tab", name="Items").click()
+    page.get_by_label("Add owned item").fill("Scavenging Expertise III")
+    page.locator(".ac-item", has_text="Tome of Scavenging Expertise III").first.click()   # added by hand: its ranges
+    playwright.expect(page.locator(".inv-item.tome-copy", has_text="Scavenging")).to_contain_text(re.compile(r"Stealing \+4% \(\d+ to \d+\)"))
     page.get_by_role("tab", name="Storage").click()
     page.locator(".nav-place", has_text="Equipped tomes").click()
     page.locator(".tome-row", has_text=tome).click()

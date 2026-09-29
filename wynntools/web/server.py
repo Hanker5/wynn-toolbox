@@ -927,7 +927,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
 
         Items: "add" owns one copy (added by hand) if none is owned; "another" adds one more;
         "rolls" sets the rolls of the hand copy at "index" (default the first). "remove"
-        takes away every copy, or only one with "fp"."""
+        takes away every copy, only one with "fp", or exactly the one "at" names (items and
+        tomes: {"index"} for a copy added by hand, {"place", "page", "slot"} for one in the game)."""
         body = await request.json()
         i, name, kind = inv(), body.get("name") or "", body.get("kind", "item")
         action = body.get("action")
@@ -993,6 +994,11 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                         entry["rolls"] = rolls
                     else:
                         entry.pop("rolls", None)
+        elif isinstance(body.get("at"), dict):     # one copy: {"index"} added by hand, or {"place", "page", "slot"}
+            at = body["at"]
+            if not i.remove_at(name, "tome" if kind == "tome" else "item", at.get("index"), at.get("place"),
+                               at.get("page"), at.get("slot")):
+                raise HTTPException(409, f"that copy of {name} isn't there any more")
         else:
             if kind == "tome":
                 if name in i.tomes:

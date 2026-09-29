@@ -401,3 +401,22 @@ def test_powdered_item_matches_what_the_totals_count(client, links):
     assert "tDam" in weapon["damage"]                     # neutral damage converts
     assert client.post("/api/item/powdered", json={"name": chest, "powders": ["x9"]}).status_code == 422
     assert client.post("/api/item/powdered", json={"name": "Nope", "powders": []}).status_code == 422
+
+
+def test_removing_exactly_one_copy(client):
+    """Each copy is its own card in the app, so Remove names that copy: identical copies
+    are told apart by where they are."""
+    pad = "\U000cffff"
+    same = {"name": "Galleon", "lore": [f"Stealing{pad}+14%"]}
+    tome = "Tome of Scavenging Expertise III"
+    client.post("/api/inventory/import", json={"version": 2, "kind": "account", "character": {"id": "a1b2c3d4"},
+                                               "inventory": [], "storage": [{"slot": 0, **same}, {"slot": 3, **same},
+                                                                            {"slot": 5, "name": tome}]})
+    client.post("/api/inventory", json={"action": "add", "kind": "tome", "name": tome})
+    post = lambda **b: client.post("/api/inventory", json={"action": "remove", **b})
+    got = post(name="Galleon", at={"place": "account", "page": 1, "slot": 3}).json()
+    assert [(c["place"], c["slot"]) for c in got["copies"]] == [("account", 0)]
+    got = post(name=tome, kind="tome", at={"place": "account", "page": 1, "slot": 5}).json()
+    assert got["tome_counts"] == {tome: 1} and got["tomes"] == [tome]            # the one added by hand stays
+    assert post(name=tome, kind="tome", at={"index": 0}).json()["tome_counts"] == {}
+    assert post(name="Galleon", at={"place": "account", "page": 1, "slot": 3}).status_code == 409

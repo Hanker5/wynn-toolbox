@@ -274,6 +274,24 @@ class Inventory:
                 page["slots"] = keep
         return removed
 
+    def remove_at(self, name, kind="item", index=None, place=None, page=None, slot=None):
+        """Remove exactly one copy of `name` (an item or a tome): the one added by hand at
+        `index` (in `items`, or `tomes`), or the one in `place`, page `page`, slot `slot`.
+        Returns whether it was there."""
+        if place in (None, HAND):
+            found = self.items if kind == "item" else self.tomes
+            if index is not None and 0 <= index < len(found) and \
+                    (found[index]["name"] if kind == "item" else found[index]) == name:
+                del found[index]
+                return True
+            return False
+        pg = ((self.places.get(place) or {}).get("pages") or {}).get(str(page))
+        for k, s in enumerate((pg or {}).get("slots") or []):
+            if s.get("slot") == slot and s["name"] == name and s.get("kind") == kind:
+                del pg["slots"][k]
+                return True
+        return False
+
     def set_page(self, key, page, slots, when):
         """Replace one page of a place with what the game showed."""
         pages = self.places.setdefault(key, {}).setdefault("pages", {})

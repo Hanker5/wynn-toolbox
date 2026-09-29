@@ -555,7 +555,7 @@ button.mini.ghost.danger:hover { color: var(--bad); }
 .items-count { margin: 0; font-size: 12px; }
 .item-sub { font-size: 12px; }
 .copy-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.copy-head .copy-where { flex: 1; min-width: 0; }
+.copy-head .copy-where { flex: 1 1 14em; min-width: 0; }        /* the badges wrap below it before it wraps */
 .copy-rolls { font-size: 12px; }
 .items-toolbar .inv-filter select { width: auto; flex: none; }
 .items-toolbar .inv-filter > .ac { flex: 1; min-width: 200px; }
@@ -624,3 +624,4 @@ button.mini.ghost.danger:hover { color: var(--bad); }
 .tome-row .glyph { width: 42px; height: 42px; display: grid; place-items: center; background: var(--panel-3); border-radius: 3px; color: #ffe27a; }
 .tome-row:hover { border-color: var(--line); }
 .tome-row.selected { border-color: #ffe27a; }
+.tome-icon > div { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px; background: var(--panel-3); color: #ffe27a; font-size: 10px; font-weight: 700; }

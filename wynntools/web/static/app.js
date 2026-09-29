@@ -376,7 +376,7 @@ function ownButton(getName) {
   return b;
 }
 
-const INV_TABS = ["Storage", "Items", "Tomes", "Aspects", "Unavailable"];
+const INV_TABS = ["Storage", "Items", "Aspects", "Unavailable"];
 const ASPECT_CLASSES = ["Archer", "Warrior", "Mage", "Assassin", "Shaman"];
 const TOME_TYPE_LABEL = { weaponTome: "Weapon", armorTome: "Armor", guildTome: "Guild", lootrunTome: "Lootrun",
   gatherXpTome: "Gathering XP", dungeonXpTome: "Dungeon XP", mobXpTome: "Mob XP" };
@@ -494,10 +494,9 @@ async function renderInventory() {
   const itemNames = [...Object.keys(inv.owned), ...inv.crafts];
   const aspectCount = Object.values(inv.aspects || {}).reduce((t, m) => t + Object.keys(m).length, 0);
   const pageCount = inv.place_list.reduce((t, p) => t + Object.keys(p.pages).length, 0);
-  const counts = { Storage: pageCount, Items: inv.copies.length + inv.crafts.length,
-    Tomes: Object.values(inv.tome_counts || {}).reduce((a, b) => a + b, 0), Aspects: aspectCount,
+  const counts = { Storage: pageCount, Items: inv.copies.length + inv.crafts.length + (inv.tome_copies || []).length, Aspects: aspectCount,
     Unavailable: Object.keys(inv.unavailable || {}).length };
-  const titles = { Storage: "Pages exported from the game", Items: "Item copies you own" };
+  const titles = { Storage: "Pages exported from the game", Items: "Item and tome copies you own" };
   const again = () => renderInventory();
   const tabs = h("div", { class: "tabs", role: "tablist" }, INV_TABS.map((t) =>
     h("button", { role: "tab", class: `tab${t === tab ? " on" : ""}`, "aria-selected": t === tab ? "true" : "false",
@@ -505,8 +504,7 @@ async function renderInventory() {
       t, h("span", { class: "badge", title: titles[t] || null }, String(counts[t])))));
   const hints = {
     Storage: "Your ender chests and inventories as the chest-export mod last saw them. In game, click the WynnGPT button in your ender chest to read every page again. Click a slot for details; ← → turn pages.",
-    Items: "Every copy you own and where it is. Copies from the game carry their real rolls; for copies added by hand you can enter them. \"Only items I own\" searches use each copy.",
-    Tomes: "Mark the tomes you own (two of the same tome for a paired slot: use the stepper). Tomes in your ender chests count too.",
+    Items: "Every item and tome you own, one card per copy, with where it is and how well it rolled. For items added by hand you can enter the real rolls. \"Only items I own\" searches use each copy; two copies of a tome can fill a pair of tome slots.",
     Aspects: "Mark each aspect you have and the highest tier you have reached. The editor won't offer a higher tier than that.",
     Unavailable: "Items you can't or won't get (too expensive, not on the market). Every search leaves them out unless you force one into a slot.",
   };
@@ -535,7 +533,6 @@ async function renderInventory() {
   };
   let draw = () => {};
   if (tab === "Storage" || tab === "Items") await drawBody();
-  else if (tab === "Tomes") { const f = filterBar("tomes", "Filter tomes…"); draw = invTomes(body, inv, f, again); body.prepend(f.bar); draw(); }
   else if (tab === "Aspects") await invAspects(body, inv, filterBar, again);
   else invUnavailable(body, inv, again);
 }
@@ -729,145 +726,129 @@ async function invStorage(body, inv, again) {
   };
 }
 
+/** Remove exactly this copy (an item, craft or tome card), by where it is. */
+async function removeCopy(c) {
+  if (c.kind === "craft") return setOwned(c.name, false);
+  const at = c.place === "hand" ? { index: c.index } : { place: c.place, page: c.page, slot: c.slot };
+  S.inv = await api("POST", "/api/inventory", { action: "remove", kind: c.kind === "tome" ? "tome" : "item", name: c.name, at });
+  await loadInventory();
+  if (S.cur && !$("#editor").hidden) { S.cur.checking = true; runCheck(); }
+}
+
 async function invItems(body, inv, names, again) {
   await Promise.all(names.map((n) => itemInfo("any", n)));
-  const addInput = h("input", { placeholder: "Add an item by hand…", "aria-label": "Add owned item" });
-  const addAc = autocomplete(addInput, (q) => api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`),
-    async (o) => { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true); again(); });
-  const byName = {};
-  for (const c of inv.copies) (byName[c.name] ||= []).push(c);
-  const kindOf = (n) => { const t = S.items[n]?.type; return WEAPON_TYPES.includes(t) ? "weapon" : t; };
   const redraw = () => again();
-  const order = (c) => inv.place_list.findIndex((p) => p.key === c.place) * 1e4 + (c.page || 0) * 100 + (c.slot || 0);
-  let shown = names.filter((n) => (invPrefs.itemType === "all" || kindOf(n) === invPrefs.itemType)
-    && (!invPrefs.dupes || (byName[n] || []).length > 1) && (!findQuery() || n.toLowerCase().includes(findQuery())));
-  const sorts = {
-    name: (a, b) => a.localeCompare(b),
-    level: (a, b) => (S.items[b]?.lvl || 0) - (S.items[a]?.lvl || 0) || a.localeCompare(b),
-    where: (a, b) => Math.min(...(byName[a] || []).map(order), 1e9) - Math.min(...(byName[b] || []).map(order), 1e9),
-  };
-  shown = shown.sort(sorts[invPrefs.sort] || sorts.name);
+  const addInput = h("input", { placeholder: "Add an item or tome by hand…", "aria-label": "Add owned item" });
+  const addAc = autocomplete(addInput, async (q) => {
+    const items = await api("GET", `/api/items?slot=any&q=${encodeURIComponent(q)}`);
+    const ql = q.trim().toLowerCase();
+    const tomes = ql.length < 2 ? [] : Object.values(S.tomes || {}).flat().filter((t) => t.name.toLowerCase().includes(ql))
+      .slice(0, 8).map((t) => ({ ...tomeItem(t.name), tome: true }));
+    return [...items, ...tomes];
+  }, async (o) => {
+    if (o.tome) await setOwned(o.name, true, { kind: "tome" });
+    else { S.items[o.name] = { ...o, cls: TYPE_CLASS[o.type] }; await setOwned(o.name, true, { another: true }); }
+    toast(`Added a copy of ${o.name}`); again();
+  });
 
-  const chips = h("div", { class: "type-chips", role: "group", "aria-label": "Item type" }, ITEM_FILTERS.map(([k, label]) => {
-    const n = k === "all" ? names.length : names.filter((x) => kindOf(x) === k).length;
+  // One card per copy: items, crafts and tomes alike, each with where it is kept.
+  const all = [...inv.copies.map((c) => ({ ...c, kind: "item" })),
+    ...inv.crafts.map((n) => ({ name: n, kind: "craft", place: "hand", rolls: {}, where: "added by hand" })),
+    ...(inv.tome_copies || []).map((c) => ({ ...c, kind: "tome" }))];
+  const info = (c) => (c.kind === "tome" ? tomeItem(c.name) : S.items[c.name]);
+  const keyOf = (c) => `${c.kind === "tome" ? "t" : "i"}:${c.name}`;
+  const kindOf = (c) => { if (c.kind === "tome") return "tome"; const t = S.items[c.name]?.type; return WEAPON_TYPES.includes(t) ? "weapon" : t; };
+  const total = {}, same = {}, handSeen = {};
+  for (const c of all) {
+    c.nth = total[keyOf(c)] = (total[keyOf(c)] || 0) + 1;
+    same[`${keyOf(c)}|${c.fp}`] = (same[`${keyOf(c)}|${c.fp}`] || 0) + 1;
+    if (c.place === "hand") c.handNth = handSeen[keyOf(c)] = (handSeen[keyOf(c)] || 0) + 1;
+    c.quality = rollQuality(withRolls(info(c), c.rolls));
+  }
+  const order = (c) => (c.place === "hand" ? -1 : inv.place_list.findIndex((p) => p.key === c.place)) * 1e4 + (c.page || 0) * 100 + (c.slot || 0);
+  const sorts = {
+    name: (a, b) => a.name.localeCompare(b.name) || a.nth - b.nth,
+    level: (a, b) => (info(b)?.lvl || 0) - (info(a)?.lvl || 0) || a.name.localeCompare(b.name),
+    roll: (a, b) => (b.quality ?? -1) - (a.quality ?? -1) || a.name.localeCompare(b.name),
+    where: (a, b) => order(a) - order(b),
+  };
+  const shown = all.filter((c) => (invPrefs.itemType === "all" || kindOf(c) === invPrefs.itemType)
+    && (!invPrefs.dupes || total[keyOf(c)] > 1) && (!findQuery() || c.name.toLowerCase().includes(findQuery())))
+    .sort(sorts[invPrefs.sort] || sorts.name);
+
+  const filters = [...ITEM_FILTERS, ["tome", "Tomes"]];
+  const chips = h("div", { class: "type-chips", role: "group", "aria-label": "Item type" }, filters.map(([k, label]) => {
+    const n = k === "all" ? all.length : all.filter((c) => kindOf(c) === k).length;
     return h("button", { class: `mini pill${invPrefs.itemType === k ? " on" : ""}`, "aria-pressed": invPrefs.itemType === k ? "true" : "false",
       disabled: !n && k !== "all", onclick: () => { invPrefs.itemType = k; redraw(); } }, label, h("span", { class: "chip-n" }, String(n)));
   }));
   const dupes = h("label", { class: "check" }, h("input", { type: "checkbox", checked: invPrefs.dupes }), " Only items I have more than once");
   dupes.querySelector("input").onchange = (e) => { invPrefs.dupes = e.target.checked; redraw(); };
-  const sort = h("select", { "aria-label": "Sort items" }, [["name", "Sort: name"], ["level", "Sort: level"], ["where", "Sort: where kept"]]
-    .map(([v, t]) => h("option", { value: v }, t)));
+  const sort = h("select", { "aria-label": "Sort items" }, [["name", "Sort: name"], ["level", "Sort: level"], ["roll", "Sort: best roll"],
+    ["where", "Sort: where kept"]].map(([v, t]) => h("option", { value: v }, t)));
   sort.value = invPrefs.sort;
   sort.onchange = () => { invPrefs.sort = sort.value; redraw(); };
-  const total = shown.reduce((t, n) => t + Math.max((byName[n] || []).length, 1), 0);
 
-  const rows = shown.map((n) => {
-    const it = S.items[n], copies = byName[n] || [];
-    const sameRolls = {};
-    for (const c of copies) sameRolls[c.fp] = (sameRolls[c.fp] || 0) + 1;
-    const rolled = Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi);
-    const hand = copies.filter((c) => c.place === "hand");
-    const copyRow = (c) => {
-      let drawer = null;
-      if (c.place === "hand" && rolled.length) {
-        const who = hand.length > 1 ? `${n} copy ${hand.indexOf(c) + 1}` : n;
-        const inputs = rolled.map(([k, [lo, mid, hi]]) => {
-          const [label, unit] = idLabel(k);
-          const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
-            "aria-label": `${who} ${label}`, value: c.rolls[k] ?? "" });
-          inp.dataset.id = k;
-          return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
-        });
-        const save = h("button", { class: "mini", onclick: async () => {
-          const r = {};
-          for (const inp of drawer.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
-          await setOwned(n, true, { rolls: r, index: c.index }); toast("Rolls saved"); redraw();
-        } }, "Save rolls");
-        drawer = h("details", { class: "rolls-drawer", open: Object.keys(c.rolls).length > 0 },
-          h("summary", {}, "Real rolls"), h("div", { class: "rolls" }, inputs), h("div", { class: "row" }, save));
-      }
-      const txt = rollsText(c.rolls);
-      return h("div", { class: "copy-row" },
-        h("div", { class: "copy-head" },
-          c.place === "hand" ? h("span", { class: "copy-where" }, "Added by hand")
-            : h("button", { class: "linkish copy-where", "aria-label": `Show ${n}: ${c.where}`, title: "Show it in its ender chest page",
-              onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
-          sameRolls[c.fp] > 1 ? h("span", { class: "badge", title: "Another copy has exactly the same rolls" }, "identical rolls") : null,
-          qualityBadge(it, c.rolls),
-          copies.length > 1 ? h("button", { class: "mini ghost danger",
-            title: c.place === "hand" ? "Remove this copy" : "Remove this copy (until you next export that page)",
-            "aria-label": `Remove this copy of ${n}`, onclick: async () => { await setOwned(n, false, { fp: c.fp }); redraw(); } }, "✕") : null),
-        txt ? h("div", { class: "eq-line copy-rolls" }, txt)
-          : c.place === "hand" && rolled.length ? h("div", { class: "eq-line muted" }, "No real rolls entered: a typical 100% roll counts") : null,
-        drawer);
-    };
-    const card = h("div", { class: "inv-item" },
-      h("div", { class: "row" }, itemIcon(it?.type, 32, it?.tier),
+  const card = (c) => {
+    const it = info(c), n = total[keyOf(c)];
+    const rolled = c.kind === "item" ? Object.entries(it?.ids || {}).filter(([, [lo, , hi]]) => lo !== hi) : [];
+    let drawer = null;
+    if (c.kind === "item" && c.place === "hand" && rolled.length) {
+      const who = handSeen[keyOf(c)] > 1 ? `${c.name} copy ${c.handNth}` : c.name;
+      const inputs = rolled.map(([k, [lo, mid, hi]]) => {
+        const [label, unit] = idLabel(k);
+        const inp = h("input", { type: "number", placeholder: `${mid}`, title: `${label}: rolls ${lo} to ${hi}${unit}`,
+          "aria-label": `${who} ${label}`, value: c.rolls[k] ?? "" });
+        inp.dataset.id = k;
+        return h("label", { class: "roll" }, h("span", { class: "muted" }, `${label}${unit ? ` (${unit.trim()})` : ""}`), inp);
+      });
+      const save = h("button", { class: "mini", onclick: async () => {
+        const r = {};
+        for (const inp of drawer.querySelectorAll("input[data-id]")) if (inp.value !== "") r[inp.dataset.id] = +inp.value;
+        await setOwned(c.name, true, { rolls: r, index: c.index }); toast("Rolls saved"); redraw();
+      } }, "Save rolls");
+      drawer = h("details", { class: "rolls-drawer" },
+        h("summary", {}, Object.keys(c.rolls).length ? "Edit real rolls" : "Enter real rolls"), h("div", { class: "rolls" }, inputs),
+        h("div", { class: "row" }, save));
+    }
+    const txt = rollsText(c.rolls);
+    const ranges = () => Object.entries(it?.stats || {}).map(([k, v]) => {       // a tome whose rolls aren't known
+      const [label, unit] = idLabel(k), [worst, , best] = it.ids?.[k] || [v, v, v];
+      return `${label} ${sign(v)}${unit}` + (worst !== best ? ` (${fmt(worst)} to ${fmt(best)})` : "");
+    }).join(" · ");
+    const icon = c.kind === "tome" ? h("div", { class: "eq-icon tome-icon", "aria-hidden": "true" }, h("div", { class: `${it?.tier}-shadow` }, "Tome"))
+      : itemIcon(it?.type, 32, it?.tier);
+    const el = h("div", { class: `inv-item ${c.kind}-copy` },
+      h("div", { class: "row" }, icon,
         h("div", { class: "inv-main" },
-          h("span", { class: `tier-${it?.tier} inv-name` }, displayName(n), copies.length > 1 ? h("span", { class: "count" }, ` ×${copies.length}`) : null),
+          h("span", { class: `tier-${it?.tier} inv-name` }, displayName(c.name)),
           h("div", { class: "muted item-sub" }, [it?.craft ? it.craft.recipe : `Lv. ${it?.lvl ?? "?"}`, typeLabel(it?.type), it?.tier]
             .filter(Boolean).join(" · "))),
-        n.startsWith("CR-") ? null : h("button", { class: "mini ghost", "aria-label": `Add another copy of ${n}`,
-          title: "Add another copy by hand", onclick: async () => { await setOwned(n, true, { another: true }); redraw(); } }, "+ copy"),
-        h("button", { class: "mini ghost danger", title: copies.length > 1 ? `Remove all ${copies.length} copies` : "Remove",
-          onclick: async () => { await setOwned(n, false); redraw(); } }, copies.length > 1 ? "Remove all" : "Remove")),
-      copies.map(copyRow));
-    attachTooltip(card.querySelector(".eq-icon"), () => withRolls(S.items[n], copies[0]?.rolls));
-    return card;
-  });
+        h("button", { class: "mini ghost danger", "aria-label": `Remove this copy of ${c.name}`,
+          title: c.place === "hand" ? "Remove this copy" : "Remove this copy (until you next export where it is)",
+          onclick: async () => { await removeCopy(c); redraw(); } }, "Remove")),
+      h("div", { class: "copy-head" },
+        c.place === "hand" ? h("span", { class: "copy-where" }, "Added by hand")
+          : h("button", { class: "linkish copy-where", "aria-label": `Show ${c.name}: ${c.where}`, title: "Show where it is",
+            onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
+        n > 1 ? h("span", { class: "badge", title: `You own ${n} of these` }, `${c.nth} of ${n}`) : null,
+        same[`${keyOf(c)}|${c.fp}`] > 1 && Object.keys(c.rolls).length ? h("span", { class: "badge", title: "Another copy has exactly the same rolls" }, "identical rolls") : null,
+        qualityBadge(it, c.rolls)),
+      txt ? h("div", { class: "eq-line copy-rolls" }, txt)
+        : c.kind === "tome" ? h("div", { class: "eq-line copy-rolls muted" }, ranges())
+        : c.kind === "item" && rolled.length ? h("div", { class: "eq-line muted" }, "No real rolls entered: a typical 100% roll counts")
+        : h("div", { class: "eq-line" }, itemLine(it)),
+      drawer);
+    if (c.kind === "tome") attachTooltip(el.querySelector(".eq-icon"), () => withRolls(tomeItem(c.name), c.rolls));
+    else attachTooltip(el.querySelector(".eq-icon"), () => withRolls(S.items[c.name], c.rolls));
+    return el;
+  };
+  const kinds = new Set(all.map(keyOf)).size;
   body.append(h("div", { class: "items-toolbar" }, chips, h("div", { class: "inv-filter" }, dupes, sort, addAc)),
-    h("p", { class: "muted items-count" }, shown.length === names.length ? `${plural(names.length, "item")} · ${plural(total, "copy", "copies")}`
-      : `Showing ${shown.length} of ${plural(names.length, "item")}`),
-    rows.length ? h("div", { class: "inv-grid" }, rows)
-      : h("p", { class: "muted" }, names.length ? "No items match." : "Nothing yet. Export from the game with the chest-export mod, add an item above, or use the ☆ Own button on a build's items."));
-}
-
-function invTomes(body, inv, f, again) {
-  const own = () => ({ ...(inv.tome_counts || {}) });
-  const byHand = () => { const c = {}; for (const t of inv.tomes) c[t] = (c[t] || 0) + 1; return c; };
-  const list = h("div", { class: "inv-tomes" });
-  body.append(list);
-  const step = async (name, delta) => {
-    await setOwned(name, delta > 0, { kind: "tome" });
-    inv = S.inv; draw();
-  };
-  const draw = () => {
-    const c = own(), hand = byHand(), q = (invPrefs.q.tomes || "").toLowerCase(), only = !!invPrefs.ownedOnly.tomes;
-    const groups = Object.keys(S.tomes).sort().map((type) => {
-      const all = S.tomes[type].filter((t) => (!q || t.name.toLowerCase().includes(q)) && (!only || c[t.name]));
-      all.sort((a, b) => (!!c[b.name] - !!c[a.name]) || 0);     // owned first, then the server's level order
-      if (!all.length) return null;
-      const have = S.tomes[type].reduce((t, x) => t + (c[x.name] || 0), 0);
-      return h("section", { class: "panel" }, h("div", { class: "panel-h" }, `${tomeTypeLabel(type)} · ${have} owned`),
-        h("div", { class: "inv-grid" }, all.map((t) => {
-          const n = c[t.name] || 0;
-          const mine = (inv.tome_copies || []).filter((x) => x.name === t.name);
-          const equipped = mine.filter((x) => x.equipped).length;
-          const item = tomeItem(t.name);
-          return h("div", { class: `inv-item tome-card${n ? " owned" : ""}` },
-            h("div", { class: "row" }, h("span", { class: `inv-name tier-${t.tier}` }, t.name), h("span", { class: "grow" }),
-              equipped ? h("span", { class: "badge ok", title: "Equipped on a character" }, equipped > 1 ? `${equipped} equipped` : "equipped") : null,
-              h("span", { class: "muted" }, `Lv. ${t.lvl}`)),
-            h("div", { class: "tome-stats" }, Object.entries(t.stats).map(([a, b]) => {
-              const [l, u] = idLabel(a), [worst, , best] = t.ids?.[a] || [b, b, b];
-              return h("div", { class: "tome-stat" }, h("span", { class: b >= 0 ? "pos" : "neg" }, `${l} ${sign(b)}${u}`),
-                worst !== best ? h("span", { class: "muted range" }, ` ${fmt(worst)} to ${fmt(best)}`) : null);
-            })),
-            mine.length ? h("div", { class: "tome-copies" }, mine.map((x) => h("div", { class: "tome-copy" },
-              x.place === "hand" ? h("span", { class: "muted" }, "added by hand")
-                : h("button", { class: "linkish", title: "Show where it is", "aria-label": `Show ${t.name}: ${x.where}`,
-                  onclick: () => showSlot(x.place, x.page, x.slot) }, x.equipped ? `equipped · ${x.where.split(" · ")[0]}` : x.where),
-              qualityBadge(item, x.rolls), Object.keys(x.rolls).length ? h("span", { class: "eq-line" }, rollsText(x.rolls)) : null))) : null,
-            h("div", { class: "row stepper" },
-              hand[t.name] ? h("button", { class: "mini", "aria-label": `Own one fewer ${t.name}`, onclick: () => step(t.name, -1) }, "−") : null,
-              n ? h("span", { class: "count" }, `×${n}`) : null,
-              h("button", { class: `mini own${n ? " on" : ""}`, "aria-label": `Own ${t.name}`, title: n ? "Add a copy by hand" : null,
-                onclick: () => step(t.name, +1) }, n ? "+" : "☆ Own")));
-        })));
-    }).filter(Boolean);
-    setKids(list, groups.length ? groups : [h("p", { class: "muted" }, only ? "You don't own any tomes that match." : "No tomes match.")]);
-  };
-  return draw;
+    h("p", { class: "muted items-count" }, shown.length === all.length ? `${plural(all.length, "copy", "copies")} of ${plural(kinds, "item")}`
+      : `Showing ${plural(shown.length, "copy", "copies")} of ${all.length}`),
+    shown.length ? h("div", { class: "inv-grid" }, shown.map(card))
+      : h("p", { class: "muted" }, all.length ? "Nothing matches." : "Nothing yet. Export from the game with the chest-export mod, add an item above, or use the ☆ Own button on a build's items."));
 }
 
 async function invAspects(body, inv, filterBar, again) {
