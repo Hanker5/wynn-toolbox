@@ -1494,6 +1494,38 @@ def cmd_own(a):
     return 0
 
 
+def cmd_mod(a):
+    """Install the chest-export mod into a Minecraft folder, or find/check one."""
+    from . import modinstall
+    from . import settings as settings_mod
+    if a.action == "find":
+        found = modinstall.candidates()
+        for c in found:
+            print(f"  {c['path']}  ({c['launcher']}" + (", has Fabric API" if c["fabric_api"] else "")
+                  + (", mod installed" if c["installed"] else "") + ")")
+        if not found:
+            print("No Minecraft folders found where the usual launchers keep them; pass the path.")
+        return 0
+    folder = a.folder or settings_mod.load(BUILDS / "settings.json").get("minecraft_dir")
+    if not folder:
+        raise SystemExit("wt mod install PATH: the Minecraft folder (`wt mod find` lists likely ones)")
+    try:
+        if a.action == "status":
+            st = modinstall.status(folder, BUILDS)
+            print(json.dumps(st, indent=2))
+            return 0 if st.get("current") and st.get("configured") else 1
+        got = modinstall.install(folder, BUILDS)
+    except modinstall.InstallError as e:
+        raise SystemExit(str(e))
+    settings_mod.save({"minecraft_dir": str(Path(got["jar"]).parent.parent)}, BUILDS / "settings.json")
+    print(f"installed {got['jar']}" + (f" (took out {', '.join(got['removed'])})" if got["removed"] else ""))
+    print(f"set builds_path in {got['config']} to {got['builds_path']}")
+    for w in got["warnings"]:
+        print(f"note: {w}")
+    print("Restart Minecraft to load it.")
+    return 0
+
+
 def describe_craft(it, cd=None):
     """Human-readable lines for a crafted item."""
     from .verify import stat
@@ -1815,6 +1847,12 @@ def main(argv=None):
     s.add_argument("--name", help="character: the name to show for it")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.set_defaults(fn=cmd_own)
+    s = sub.add_parser("mod", help="install the chest-export mod into a Minecraft folder")
+    s.add_argument("action", choices=["install", "status", "find"],
+                   help="install: copy the mod in and point it at this app; status: is it there and "
+                        "current; find: likely Minecraft folders")
+    s.add_argument("folder", nargs="?", help="the Minecraft folder (default: the last one installed into)")
+    s.set_defaults(fn=cmd_mod)
     s = sub.add_parser("import", help="save a WynnBuilder link as a build file")
     s.add_argument("link")
     s.add_argument("path")

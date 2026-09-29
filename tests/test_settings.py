@@ -19,7 +19,7 @@ def client(tmp_path):
 
 
 DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None,
-            "sidebar": None}
+            "sidebar": None, "minecraft_dir": None}
 
 
 def test_defaults_and_round_trip(tmp_path):
@@ -39,7 +39,7 @@ def test_update_and_window_settings(tmp_path):
     assert settings.load(f) == out
     for bad in ({"check_updates": "yes"}, {"ignored_update": "; rm -rf ~"},
                 {"window": {"width": "big"}}, {"window": {"width": True}},
-                {"window": {"colour": 1}}, {"window": [1, 2]}):
+                {"window": {"colour": 1}}, {"window": [1, 2]}, {"minecraft_dir": 5}):
         with pytest.raises(ValueError):
             settings.save(bad, f)
     # A hand-edited bad value falls back to the default instead of breaking the app.

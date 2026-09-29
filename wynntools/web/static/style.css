@@ -631,3 +631,15 @@ button.mini.ghost.danger:hover { color: var(--bad); }
 .stat-row > :last-child { text-align: right; }
 .stat-row .range { font-size: 11px; white-space: nowrap; }
 .stat-row:has(.range) { grid-template-columns: minmax(0, 1fr) auto auto; }
+
+/* Installing the chest-export mod */
+.mod-panel { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.mod-panel p { margin: 0; }
+.mod-found { display: flex; flex-direction: column; gap: 4px; }
+.mod-candidate { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid transparent; border-radius: 4px; padding: 5px 8px; text-align: left; cursor: pointer; }
+.mod-candidate:hover { border-color: var(--line); }
+.mod-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; font-size: 12px; }
+.mod-row { gap: 8px; }
+.mod-row input { min-width: 0; }
+.warn-note { color: var(--warn); overflow-wrap: anywhere; }
+.mod-result { display: flex; flex-direction: column; gap: 4px; }

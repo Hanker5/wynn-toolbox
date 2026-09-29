@@ -180,17 +180,17 @@ apart. The search box on the Inventory page finds any item and the exact
 page and slot it's in. A chat message says what was read.
 
 **Setup** (Minecraft **1.21.11**, Fabric Loader and
-[Fabric API](https://modrinth.com/mod/fabric-api)):
+[Fabric API](https://modrinth.com/mod/fabric-api)): in WynnGPT, open
+**Inventory → Game mod…**, pick your Minecraft folder (the app lists the ones
+it finds from the usual launchers: Prism, MultiMC, Modrinth, CurseForge, the
+Minecraft launcher) and click **Install**. The app copies the mod into that
+folder's `mods` and points the mod at the app. Restart Minecraft, open your
+ender chest and click the WynnGPT button. Installing again updates the mod.
 
-1. Copy the ready-built jar into your Minecraft `mods` folder:
-   `wynn-chest-export/build/libs/wynngpt-chest-export-1.1.0.jar`, inside
-   the WynnGPT folder (`%LOCALAPPDATA%\WynnToolbox` on Windows,
-   `~/WynnToolbox` on macOS and Linux, or your clone).
-2. Start Minecraft once. The mod creates `config/wynngpt-chest-export.json`
-   in your Minecraft folder. Set `builds_path` in it to WynnGPT's `builds`
-   folder, for example `C:\\Users\\you\\AppData\\Local\\WynnToolbox\\builds`
-   (JSON needs doubled backslashes) or `/home/you/WynnToolbox/builds`.
-3. Open WynnGPT, then open your ender chest in game and click the button.
+By hand instead: copy `wynn-chest-export/build/libs/wynngpt-chest-export-1.1.0.jar`
+(inside the WynnGPT folder) into your `mods` folder, start Minecraft once, and
+set `builds_path` in `config/wynngpt-chest-export.json` to WynnGPT's `builds`
+folder (JSON needs doubled backslashes on Windows).
 
 If chat says WynnGPT isn't running, open the app and click again (the mod
 finds it through `builds/.server.json`, so `builds_path` must be right). Launchers installed as a Flatpak (Prism

@@ -1,7 +1,7 @@
 """App settings that stick between runs, stored as builds/settings.json.
 
     {"ai": "claude", "check_updates": true, "ignored_update": null, "window": null,
-     "sidebar": null}
+     "sidebar": null, "minecraft_dir": null}
 
 "ai" is the AI assistant the web app starts in its terminal panel on open:
 a key of `web.terminal.AI_CLIS`, "shell" for a plain terminal, or null when
@@ -15,6 +15,8 @@ only when a newer one appears.
 the plain alphabetical list: {"items": [...]}, where each item is a build
 file name or a group {"group": name, "collapsed": bool, "builds": [files]}.
 See `wynntools.sidebar`.
+"minecraft_dir": the Minecraft folder the chest-export mod was last installed into
+(`wynntools.modinstall`), offered again next time.
 """
 import json
 import re
@@ -22,7 +24,7 @@ from pathlib import Path
 
 DEFAULT = Path("builds/settings.json")
 DEFAULTS = {"ai": None, "check_updates": True, "ignored_update": None, "window": None,
-            "sidebar": None}
+            "sidebar": None, "minecraft_dir": None}
 SHELL = "shell"
 WINDOW_KEYS = {"width", "height", "x", "y", "maximized"}
 
@@ -69,6 +71,9 @@ def _problem(key, value):
                 v is None or (isinstance(v, int) and not isinstance(v, bool)))
             if not ok:
                 return f"window.{k} has the wrong type"
+    elif key == "minecraft_dir":
+        if value is not None and not isinstance(value, str):
+            return "minecraft_dir must be a folder path"
     elif key == "sidebar":
         if value is not None:
             from .sidebar import problem

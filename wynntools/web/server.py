@@ -1030,6 +1030,33 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         inv_mod.save(i, inv_path)
         return {**i.view(), **result}
 
+    @app.get("/api/mod")
+    def mod_status():
+        """The chest-export mod: the jar the app ships, the Minecraft folder it was last
+        installed into (and whether it's current there), and folders to offer."""
+        from .. import modinstall
+        folder = settings_mod.load(settings_path).get("minecraft_dir")
+        try:
+            jar = modinstall.bundled_jar().name
+        except modinstall.InstallError as e:
+            return {"jar": None, "problem": str(e), "folder": folder, "status": None, "candidates": []}
+        return {"jar": jar, "folder": folder,
+                "status": modinstall.status(folder, builds_dir) if folder else None,
+                "candidates": modinstall.candidates()}
+
+    @app.post("/api/mod/install")
+    async def mod_install(request: Request):
+        """{"folder": the Minecraft folder (or its mods folder)}: copy the mod there and
+        point its config at this app's builds folder."""
+        from .. import modinstall
+        body = await request.json()
+        try:
+            got = modinstall.install((body or {}).get("folder"), builds_dir)
+        except modinstall.InstallError as e:
+            raise HTTPException(422, str(e))
+        settings_mod.save({"minecraft_dir": str(Path(got["jar"]).parent.parent)}, settings_path)
+        return got
+
     @app.get("/api/spells")
     def spells_api(cls: str, preset: str = "", level: int = 105):
         """Spell names a preset's tree gives (for damage minimums)."""

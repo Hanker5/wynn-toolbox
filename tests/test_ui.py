@@ -1388,3 +1388,33 @@ def test_an_outside_change_waits_for_typing_and_own_edits_dont_redraw(page, app)
     box.blur()
     playwright.expect(page.locator(".inv-item", has_text="Spring")).to_have_count(1)   # then it shows the change
     assert not page.errors
+
+
+def test_installing_the_game_mod(page, app, tmp_path):
+    """The Inventory page's "Game mod…" panel copies the mod into a Minecraft folder and
+    points its config at this app's builds folder."""
+    import os
+    game = tmp_path / "minecraft"
+    (game / "mods").mkdir(parents=True)
+    (game / "options.txt").write_text("")
+    page.click("#open-inventory")
+    page.get_by_role("button", name="Game mod…", exact=True).click()
+    folder = page.get_by_label("Minecraft folder")
+    folder.fill(str(tmp_path / "not-there"))
+    page.get_by_role("button", name="Install", exact=True).click()
+    playwright.expect(page.locator(".mod-result")).to_contain_text("no folder")
+    page.errors.clear()                                    # that 422 was the point
+    folder.fill(str(game))
+    page.get_by_role("button", name="Install", exact=True).click()
+    playwright.expect(page.locator(".mod-result")).to_contain_text("Installed wynngpt-chest-export")
+    playwright.expect(page.locator(".mod-result")).to_contain_text("Fabric API isn't in this mods folder")
+    assert list((game / "mods").glob("wynngpt-chest-export-*.jar"))
+    config = json.loads((game / "config" / "wynngpt-chest-export.json").read_text())
+    assert Path(config["builds_path"]) == Path(app.builds_dir).resolve()
+    if os.environ.get("WT_SHOTS"):
+        page.locator(".mod-panel").screenshot(path=f"{os.environ['WT_SHOTS']}/83-mod-installer.png")
+    page.get_by_role("button", name="Game mod…", exact=True).click()                       # closes
+    page.get_by_role("button", name="Game mod…", exact=True).click()                       # and remembers the folder
+    playwright.expect(page.get_by_label("Minecraft folder")).to_have_value(str(game.resolve()))
+    playwright.expect(page.locator(".mod-panel")).to_contain_text("Installed and set up")
+    assert not page.errors

@@ -499,6 +499,46 @@ function rerenderInventoryWhenIdle() {
   renderInventory();
 }
 
+/** The panel that installs the chest-export mod into the player's Minecraft folder. */
+async function modPanel(box) {
+  const info = await api("GET", "/api/mod").catch((e) => ({ problem: e.message, candidates: [] }));
+  const folder = h("input", { class: "grow", placeholder: "Your Minecraft folder: the one with mods, config and saves",
+    "aria-label": "Minecraft folder", value: info.folder || info.candidates?.[0]?.path || "", spellcheck: "false" });
+  const result = h("div", { class: "mod-result", "aria-live": "polite" });
+  const go = h("button", { class: "primary", disabled: !info.jar }, "Install");
+  go.onclick = async () => {
+    go.disabled = true; setKids(result, h("p", { class: "muted" }, "Installing…"));
+    try {
+      const r = await api("POST", "/api/mod/install", { folder: folder.value });
+      setKids(result,
+        h("p", { class: "pos" }, `✔ Installed ${r.jar.split(/[\\/]/).pop()} in ${r.jar.replace(/[\\/][^\\/]*$/, "")}` +
+          (r.removed.length ? ` (took out ${r.removed.join(", ")})` : "")),
+        h("p", { class: "muted" }, `The mod now sends exports to ${r.builds_path}.`),
+        r.warnings.map((w) => h("p", { class: "warn-note" }, "⚠ ", w)),
+        h("p", {}, "Restart Minecraft (or the launcher's instance) to load it, then click the WynnGPT button in your ender chest."));
+      toast("Mod installed");
+    } catch (e) { setKids(result, h("p", { class: "neg" }, e.message)); }
+    go.disabled = false;
+  };
+  folder.onkeydown = (e) => { if (e.key === "Enter") go.click(); };
+  const st = info.status;
+  const now = st && !st.problem ? (st.current && st.configured ? h("p", { class: "pos" }, `✔ Installed and set up in ${st.folder}.`)
+    : st.installed?.length ? h("p", { class: "warn-note" }, `An older copy (${st.installed.join(", ")}) is in ${st.folder}: install again to update it.`)
+      : null) : null;
+  setKids(box,
+    h("div", { class: "panel-h" }, "Install the game mod"),
+    h("p", { class: "muted" }, "The chest-export mod adds a WynnGPT button to your inventory, ender chests, tomes and aspects menus in game, so everything you own shows up here. Pick the Minecraft folder your launcher uses for Wynncraft; the app copies the mod into its mods folder and points it at this app. It needs Fabric Loader and Fabric API for Minecraft 1.21.11."),
+    info.problem ? h("p", { class: "neg" }, info.problem) : null,
+    now,
+    info.candidates?.length ? h("div", { class: "mod-found" }, h("div", { class: "muted" }, "Found on this computer:"),
+      info.candidates.map((c) => h("button", { class: "mod-candidate", title: c.path, onclick: () => { folder.value = c.path; folder.focus(); } },
+        h("span", { class: "mod-path" }, c.path), h("span", { class: "muted" }, c.launcher),
+        c.fabric_api ? h("span", { class: "badge ok" }, "Fabric API") : null,
+        c.installed ? h("span", { class: "badge" }, "installed") : null))) : null,
+    h("div", { class: "row mod-row" }, folder, go),
+    result);
+}
+
 async function renderInventory() {
   await loadInventory();
   const inv = S.inv, box = $("#inventory"), tab = invTab();
@@ -532,8 +572,19 @@ async function renderInventory() {
   const refind = debounce(() => { drawFound(found); if (tab === "Storage" || tab === "Items") drawBody(); }, 150);
   find.oninput = () => { invPrefs.find = find.value; refind(); };
   find.onkeydown = (e) => { if (e.key === "Escape" && find.value) { e.preventDefault(); find.value = ""; find.oninput(); } };
-  setKids(box, h("div", { class: "head inv-head" }, h("h2", { style: "margin:0" }, "Inventory"), find), found, tabs,
-    h("p", { class: "hint" }, hints[tab]), body);
+  const mod = h("section", { class: "panel mod-panel", hidden: !invPrefs.modOpen });
+  const modBtn = h("button", { class: `mini${invPrefs.modOpen ? " on" : ""}`, "aria-expanded": invPrefs.modOpen ? "true" : "false",
+    title: "Install the chest-export mod into Minecraft" }, "Game mod…");
+  const toggleMod = (open = !invPrefs.modOpen) => {
+    invPrefs.modOpen = open; mod.hidden = !open; modBtn.classList.toggle("on", open);
+    modBtn.setAttribute("aria-expanded", String(open));
+    if (open) { modPanel(mod); mod.scrollIntoView({ block: "nearest" }); }
+  };
+  modBtn.onclick = () => toggleMod();
+  invPrefs.openMod = () => toggleMod(true);
+  if (invPrefs.modOpen) modPanel(mod);
+  setKids(box, h("div", { class: "head inv-head" }, h("h2", { style: "margin:0" }, "Inventory"), find, h("span", { class: "grow" }), modBtn),
+    mod, found, tabs, h("p", { class: "hint" }, hints[tab]), body);
   drawFound(found);
   const filterBar = (key, placeholder, extra = []) => {
     const q = h("input", { type: "search", placeholder, "aria-label": placeholder, value: invPrefs.q[key] || "" });
@@ -560,7 +611,8 @@ async function invStorage(body, inv, again) {
   const places = inv.place_list;
   if (!places.length) {
     body.append(h("div", { class: "panel" }, h("p", {}, "Nothing exported from the game yet."),
-      h("p", { class: "muted" }, "With the chest-export mod installed (see the README), open your ender chest in game and click the WynnGPT button beside it: it reads every page of your Account and Character ender chests. Click it in your inventory to add what you carry.")));
+      h("p", { class: "muted" }, "With the chest-export mod installed, open your ender chest in game and click the WynnGPT button beside it: it reads every page of your Account and Character ender chests. Click it in your inventory to add what you carry."),
+      h("button", { class: "primary", onclick: () => invPrefs.openMod?.() }, "Install the game mod…")));
     return;
   }
   if (!places.some((p) => p.key === invPrefs.place)) invPrefs.place = places[0].key;
