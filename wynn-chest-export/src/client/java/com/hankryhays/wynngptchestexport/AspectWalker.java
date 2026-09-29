@@ -79,7 +79,13 @@ public final class AspectWalker {
 			String now = aspects(menu);
 			if (now.equals(before)) {                 // the page hasn't turned yet
 				if (sinceClick > TIMEOUT_TICKS) {
-					finish(mc, "the next page didn't open", false);
+					// The last page still shows "Next Page", which then leads nowhere: a page that
+					// isn't full was the last one. A full one might not be, so the walk stays incomplete.
+					if (forward && count(menu) < Controls.ASPECTS_LAST - Controls.ASPECTS_FIRST + 1) {
+						finish(mc, null, true);
+					} else {
+						finish(mc, "the next page didn't open", false);
+					}
 				}
 				return;
 			}
@@ -178,6 +184,19 @@ public final class AspectWalker {
 			}
 		}
 		return null;
+	}
+
+	/** How many aspects the page shows. */
+	private static int count(AbstractContainerMenu menu) {
+		int n = 0;
+		for (Slot slot : menu.slots) {
+			int k = slot.getContainerSlot();
+			if (!(slot.container instanceof Inventory) && k >= Controls.ASPECTS_FIRST && k <= Controls.ASPECTS_LAST
+				&& !slot.getItem().isEmpty()) {
+				n++;
+			}
+		}
+		return n;
 	}
 
 	/** The aspects the page shows, to tell when a new page has arrived. */

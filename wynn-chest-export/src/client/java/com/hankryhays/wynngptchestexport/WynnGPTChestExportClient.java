@@ -27,6 +27,7 @@ public class WynnGPTChestExportClient implements ClientModInitializer {
 		ExportConfig.buildsPath();
 		PageWalker.register();
 		AspectWalker.register();
+		StorageScreens.register();
 		ScreenEvents.AFTER_INIT.register((client, screen, width, height) -> {
 			StorageScreens.Kind kind = StorageScreens.kind(screen);
 			// Only the player's own storages: never loot chests, trades or shops (unless capturing samples).

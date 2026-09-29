@@ -399,7 +399,7 @@ def test_inventory_tabs_tomes_aspects_unavailable(page, app):
     assert read()["aspects"] == {"Mage": {"Aspect of Runic Extravagance": 2}}
     page.get_by_role("tab", name="Unavailable").click()
     page.get_by_label("Add unavailable item").fill("Galleon")
-    page.get_by_text("Galleon").first.click()
+    page.locator(".ac-item", has_text="Galleon").first.click()   # (get_by_text could pick a hidden hover card)
     page.wait_for_selector(".inv-item:has-text('Galleon')")
     assert "Galleon" in read()["unavailable"]
     page.locator(".inv-item:has-text('Galleon') button:has-text('Remove')").click()
@@ -1329,13 +1329,20 @@ def test_tomes_show_ranges_rolls_and_where_each_copy_is(page, app):
     cards = page.locator(".inv-item.tome-copy", has_text=tome)
     playwright.expect(cards).to_have_count(2)                                          # a card per copy
     playwright.expect(cards.filter(has_text="equipped")).to_contain_text("100.0%")      # a perfect roll
-    playwright.expect(cards.filter(has_text="Account ender chest")).to_contain_text("Health +265")
+    playwright.expect(cards.locator(".stat-grid")).to_have_count(0)                     # details off: no stat blocks
+    page.get_by_label("Show details").check()
+    health = cards.filter(has_text="Account ender chest").locator(".stat-row", has_text="Health")   # stat, roll, %
+    playwright.expect(health).to_contain_text("+265")
+    playwright.expect(health.locator(".roll-pct")).to_have_text(re.compile(r"^\d+%$"))
     page.get_by_role("button", name=re.compile(f"^Show {tome}: Account ender chest")).click()   # to where it is
     page.wait_for_selector('.chest .cell.selected[data-slot="0"]')
     page.get_by_role("tab", name="Items").click()
     page.get_by_label("Add owned item").fill("Scavenging Expertise III")
     page.locator(".ac-item", has_text="Tome of Scavenging Expertise III").first.click()   # added by hand: its ranges
-    playwright.expect(page.locator(".inv-item.tome-copy", has_text="Scavenging")).to_contain_text(re.compile(r"Stealing \+4% \(\d+ to \d+\)"))
+    stealing = page.locator(".inv-item.tome-copy", has_text="Scavenging").locator(".stat-row", has_text="Stealing")
+    playwright.expect(stealing).to_contain_text("+4%")
+    playwright.expect(stealing.locator(".range")).to_have_text(re.compile(r"^\d+ to \d+$"))
+    playwright.expect(page.get_by_label("Show details")).to_be_checked()               # remembered
     page.get_by_role("tab", name="Storage").click()
     page.locator(".nav-place", has_text="Equipped tomes").click()
     page.locator(".tome-row", has_text=tome).click()
@@ -1359,4 +1366,25 @@ def test_equipped_aspects_are_listed_and_marked(page, app):
     page.get_by_label("Class").select_option("Shaman")
     card = page.locator(".aspect-card", has_text="Aspect of the Beckoned Legion")
     playwright.expect(card.locator(".badge")).to_have_text("equipped")
+    assert not page.errors
+
+
+def test_an_outside_change_waits_for_typing_and_own_edits_dont_redraw(page, app):
+    """Regression: every change to inventory.json re-rendered the Inventory page, even the
+    page's own edits (already shown), so what was being typed vanished half the time. A
+    change from outside (an export from the game) now waits until the field is left."""
+    page.click("#open-inventory")
+    page.get_by_role("tab", name="Items").click()
+    box = page.get_by_label("Add owned item")
+    box.fill("Galleo")
+    page.evaluate("document.querySelector('#inventory .items-toolbar').dataset.mark = 'same'")   # gone if redrawn
+    page.evaluate("fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': 'application/json'}, "
+                  "body: JSON.stringify({version: 2, kind: 'inventory', character: {id: 'a1b2c3d4'}, "
+                  "inventory: [{slot: 0, name: 'Spring'}]})})")
+    page.wait_for_function("S.inv.copies.some((c) => c.name === 'Spring')")      # the page heard it ...
+    page.wait_for_timeout(300)
+    assert box.input_value() == "Galleo"                                          # ... and left the typing alone
+    assert page.evaluate("document.querySelector('#inventory .items-toolbar').dataset.mark") == "same"
+    box.blur()
+    playwright.expect(page.locator(".inv-item", has_text="Spring")).to_have_count(1)   # then it shows the change
     assert not page.errors

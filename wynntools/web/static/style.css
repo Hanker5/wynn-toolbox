@@ -625,3 +625,9 @@ button.mini.ghost.danger:hover { color: var(--bad); }
 .tome-row:hover { border-color: var(--line); }
 .tome-row.selected { border-color: #ffe27a; }
 .tome-icon > div { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px; background: var(--panel-3); color: #ffe27a; font-size: 10px; font-weight: 700; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 2px 18px; font-size: 12px; }
+.stat-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 3.2em; gap: 6px; align-items: baseline; }
+.stat-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.stat-row > :last-child { text-align: right; }
+.stat-row .range { font-size: 11px; white-space: nowrap; }
+.stat-row:has(.range) { grid-template-columns: minmax(0, 1fr) auto auto; }

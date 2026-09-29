@@ -174,7 +174,7 @@ function itemLine(it) {
   for (const [k, v] of Object.entries(it.stats)) {
     if (k === "hp") continue;
     const [label, unit] = idLabel(k);
-    bits.push(h("span", { class: v >= 0 ? "pos" : "neg" }, `${label} ${sign(v)}${unit}`));
+    bits.push(h("span", { class: goodClass(k, v) }, `${label} ${sign(v)}${unit}`));
   }
   for (const m of it.majors) bits.push(h("span", { class: "major", title: "Major ID" }, majorName(m)));
   const out = [];
@@ -228,7 +228,7 @@ function itemCard(it) {
     const after = pct != null ? h("span", { class: `roll-pct ${pctClass(pct)}`, title: `${fmt(lo)} to ${fmt(hi)}` }, ` ${Math.round(pct)}%`)
       : lo !== hi ? h("span", { class: "muted range" }, ` ${fmt(lo)} to ${fmt(hi)}`) : null;
     lines.push(h("div", { class: "ic-row" }, h("span", {}, elemTag(el), label),
-      h("span", {}, h("span", { class: `${v >= 0 ? "pos" : "neg"}${real != null ? " real" : ""}`,
+      h("span", {}, h("span", { class: `${goodClass(k, v)}${real != null ? " real" : ""}`,
         title: real != null ? "This copy's real roll" : null }, `${sign(v)}${unit}`), after)));
   }
   if (overall != null) lines.push(h("div", { class: "ic-sub muted" }, "Underlined: this copy's rolls; % is where each lands in its range (100% = best)"));
@@ -488,6 +488,17 @@ async function drawFound(box) {
       : h("p", { class: "muted" }, `You don't have anything called “${invPrefs.find.trim()}” in your inventory, ender chests or items added by hand.`));
 }
 
+/** Re-render the Inventory page for a change from outside it, but not under the player's
+ * typing: while a field on the page has focus, wait until it loses it. */
+function rerenderInventoryWhenIdle() {
+  const el = document.activeElement;
+  if (el && $("#inventory").contains(el) && el.matches("input, select, textarea")) {
+    el.addEventListener("blur", () => setTimeout(() => { if (!$("#inventory").hidden) renderInventory(); }, 200), { once: true });
+    return;
+  }
+  renderInventory();
+}
+
 async function renderInventory() {
   await loadInventory();
   const inv = S.inv, box = $("#inventory"), tab = invTab();
@@ -726,6 +737,24 @@ async function invStorage(body, inv, again) {
   };
 }
 
+/** Green for what helps, red for what hurts: a spell cost is good when it goes down. */
+const goodClass = (key, v) => ((v >= 0) !== /^sp(Raw|Pct)\d/.test(key) ? "pos" : "neg");
+
+/** A copy's stats as a table: each ID's value and, for a real roll, where it lands in its range
+ * (colored as elsewhere); without real rolls, the typical value and its range. */
+function statGrid(it, rolls) {
+  const real = rolls && Object.keys(rolls).length;
+  const keys = real ? Object.keys(rolls) : Object.keys(it?.ids || {}).filter((k) => it.ids[k][0] !== it.ids[k][2]);
+  return h("div", { class: "stat-grid" }, keys.map((k) => {
+    const [label, unit, el] = idLabel(k), r = it?.ids?.[k];
+    const v = real ? rolls[k] : r[1], pct = real && r ? rollPct(k, v, r[0], r[2]) : null;
+    return h("div", { class: "stat-row" }, h("span", { class: "stat-label", title: label }, elemTag(el), label),
+      h("span", { class: goodClass(k, v) }, `${sign(v)}${unit}`),
+      pct != null ? h("span", { class: `roll-pct ${pctClass(pct)}` }, `${Math.round(pct)}%`)
+        : r && r[0] !== r[2] ? h("span", { class: "muted range", title: "Its range, worst to best" }, `${fmt(r[0])} to ${fmt(r[2])}`) : h("span"));
+  }));
+}
+
 /** Remove exactly this copy (an item, craft or tome card), by where it is. */
 async function removeCopy(c) {
   if (c.kind === "craft") return setOwned(c.name, false);
@@ -784,6 +813,9 @@ async function invItems(body, inv, names, again) {
   }));
   const dupes = h("label", { class: "check" }, h("input", { type: "checkbox", checked: invPrefs.dupes }), " Only items I have more than once");
   dupes.querySelector("input").onchange = (e) => { invPrefs.dupes = e.target.checked; redraw(); };
+  const showDetails = store.get("wt-inv-details") === "1";
+  const details = h("label", { class: "check" }, h("input", { type: "checkbox", checked: showDetails }), " Show details");
+  details.querySelector("input").onchange = (e) => { store.set("wt-inv-details", e.target.checked ? "1" : "0"); redraw(); };
   const sort = h("select", { "aria-label": "Sort items" }, [["name", "Sort: name"], ["level", "Sort: level"], ["roll", "Sort: best roll"],
     ["where", "Sort: where kept"]].map(([v, t]) => h("option", { value: v }, t)));
   sort.value = invPrefs.sort;
@@ -811,11 +843,6 @@ async function invItems(body, inv, names, again) {
         h("summary", {}, Object.keys(c.rolls).length ? "Edit real rolls" : "Enter real rolls"), h("div", { class: "rolls" }, inputs),
         h("div", { class: "row" }, save));
     }
-    const txt = rollsText(c.rolls);
-    const ranges = () => Object.entries(it?.stats || {}).map(([k, v]) => {       // a tome whose rolls aren't known
-      const [label, unit] = idLabel(k), [worst, , best] = it.ids?.[k] || [v, v, v];
-      return `${label} ${sign(v)}${unit}` + (worst !== best ? ` (${fmt(worst)} to ${fmt(best)})` : "");
-    }).join(" · ");
     const icon = c.kind === "tome" ? h("div", { class: "eq-icon tome-icon", "aria-hidden": "true" }, h("div", { class: `${it?.tier}-shadow` }, "Tome"))
       : itemIcon(it?.type, 32, it?.tier);
     const el = h("div", { class: `inv-item ${c.kind}-copy` },
@@ -831,20 +858,23 @@ async function invItems(body, inv, names, again) {
         c.place === "hand" ? h("span", { class: "copy-where" }, "Added by hand")
           : h("button", { class: "linkish copy-where", "aria-label": `Show ${c.name}: ${c.where}`, title: "Show where it is",
             onclick: () => showSlot(c.place, c.page, c.slot) }, c.where),
+        c.unidentified ? h("span", { class: "badge", title: "Not identified yet: it has no rolls until an Item Identifier unlocks it" }, "unidentified") : null,
         n > 1 ? h("span", { class: "badge", title: `You own ${n} of these` }, `${c.nth} of ${n}`) : null,
         same[`${keyOf(c)}|${c.fp}`] > 1 && Object.keys(c.rolls).length ? h("span", { class: "badge", title: "Another copy has exactly the same rolls" }, "identical rolls") : null,
         qualityBadge(it, c.rolls)),
-      txt ? h("div", { class: "eq-line copy-rolls" }, txt)
-        : c.kind === "tome" ? h("div", { class: "eq-line copy-rolls muted" }, ranges())
-        : c.kind === "item" && rolled.length ? h("div", { class: "eq-line muted" }, "No real rolls entered: a typical 100% roll counts")
+      !showDetails ? null
+        : it && (Object.keys(c.rolls).length || Object.values(it.ids || {}).some(([a, , b]) => a !== b)) ? statGrid(it, c.rolls)
         : h("div", { class: "eq-line" }, itemLine(it)),
+      showDetails && (c.unidentified || (c.place === "hand" && c.kind !== "craft")) && !Object.keys(c.rolls).length
+        ? h("div", { class: "hint" }, c.unidentified ? "Unidentified: typical values and their ranges until it's identified."
+          : "Real rolls unknown: typical values and their ranges.") : null,
       drawer);
     if (c.kind === "tome") attachTooltip(el.querySelector(".eq-icon"), () => withRolls(tomeItem(c.name), c.rolls));
     else attachTooltip(el.querySelector(".eq-icon"), () => withRolls(S.items[c.name], c.rolls));
     return el;
   };
   const kinds = new Set(all.map(keyOf)).size;
-  body.append(h("div", { class: "items-toolbar" }, chips, h("div", { class: "inv-filter" }, dupes, sort, addAc)),
+  body.append(h("div", { class: "items-toolbar" }, chips, h("div", { class: "inv-filter" }, details, dupes, sort, addAc)),
     h("p", { class: "muted items-count" }, shown.length === all.length ? `${plural(all.length, "copy", "copies")} of ${plural(kinds, "item")}`
       : `Showing ${plural(shown.length, "copy", "copies")} of ${all.length}`),
     shown.length ? h("div", { class: "inv-grid" }, shown.map(card))
@@ -2830,9 +2860,14 @@ function watch() {
   es.onmessage = async (ev) => {
     const { changed, removed, open } = JSON.parse(ev.data);
     if (changed.includes("inventory.json") || removed.includes("inventory.json")) {
+      // Only a change the page doesn't show yet (an export from the game, the AI's `wt own`):
+      // its own edits already re-rendered it, and a second render would drop what's being typed.
+      const shown = JSON.stringify(S.inv);
       await loadInventory();
-      if (!$("#inventory").hidden) renderInventory();
-      if (S.cur && !$("#editor").hidden && $("#ed-tomes")) { renderTomes(); renderAspects(); renderEquipment(); }   // stars, copies
+      if (JSON.stringify(S.inv) !== shown) {
+        if (!$("#inventory").hidden) rerenderInventoryWhenIdle();
+        if (S.cur && !$("#editor").hidden && $("#ed-tomes")) { renderTomes(); renderAspects(); renderEquipment(); }   // stars, copies
+      }
     }
     await loadList();
     const c = S.cur; if (!c) return;

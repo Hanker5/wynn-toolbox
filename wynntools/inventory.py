@@ -136,6 +136,7 @@ class Copy:
     page: int | None = None
     slot: int | None = None
     index: int | None = None         # position in Inventory.items, for copies added by hand
+    unidentified: bool = False       # not identified yet: no real rolls
 
     @property
     def fp(self):
@@ -184,7 +185,8 @@ class Inventory:
         for key, page, s in self.slots():
             if s.get("kind") == "item" and (name is None or s["name"] == name):
                 for _ in range(max(int(s.get("count") or 1), 1)):
-                    out.append(Copy(s["name"], s.get("rolls") or {}, key, page, s.get("slot")))
+                    out.append(Copy(s["name"], s.get("rolls") or {}, key, page, s.get("slot"),
+                                    unidentified=bool(s.get("unidentified"))))
         return out
 
     def copy(self, name, fp):
@@ -376,7 +378,8 @@ class Inventory:
         out["owned"] = self.counts()
         out["tome_counts"] = self.tome_counts()
         out["copies"] = [{"name": c.name, "rolls": c.rolls, "fp": c.fp, "place": c.place, "page": c.page,
-                          "slot": c.slot, "index": c.index, "where": self.where(c.place, c.page, c.slot)}
+                          "slot": c.slot, "index": c.index, "where": self.where(c.place, c.page, c.slot),
+                          **({"unidentified": True} if c.unidentified else {})}
                          for c in self.copies()]
         out["tome_copies"] = [{"name": c.name, "rolls": c.rolls, "fp": c.fp, "place": c.place, "page": c.page,
                                "slot": c.slot, "index": c.index, "equipped": place_kind(c.place) == "tomes",

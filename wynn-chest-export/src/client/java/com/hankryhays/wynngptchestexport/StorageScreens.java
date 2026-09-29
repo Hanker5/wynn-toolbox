@@ -1,5 +1,6 @@
 package com.hankryhays.wynngptchestexport;
 
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -38,6 +39,9 @@ public final class StorageScreens {
 	// The Character Info compass's first tooltip line is the character's id, e.g. "§7a1b2c3d4".
 	private static final int CHARACTER_INFO_SLOT = 7;
 	private static final Pattern CHARACTER_ID = Pattern.compile("^[a-z0-9]{8}$");
+	// Some menus (Aspects) replace the whole inventory, compass included, with their own items:
+	// the id last read stands in, kept fresh while no such menu is open.
+	private static String lastCharacterId;
 
 	private StorageScreens() {
 	}
@@ -66,14 +70,24 @@ public final class StorageScreens {
 		return Kind.UNKNOWN;
 	}
 
-	/** The active character's id, or null when the compass isn't where Wynncraft keeps it. */
+	/** The active character's id: from the compass, else the one last read there (null if never). */
 	public static String characterId(Minecraft mc) {
 		List<String> lore = characterLore(mc);
-		if (lore.isEmpty()) {
-			return null;
+		String first = lore.isEmpty() ? "" : strip(lore.getFirst());
+		if (CHARACTER_ID.matcher(first).matches()) {
+			lastCharacterId = first;
 		}
-		String first = strip(lore.getFirst());
-		return CHARACTER_ID.matcher(first).matches() ? first : null;
+		return lastCharacterId;
+	}
+
+	/** Read the compass once a second while no menu covers the inventory (after a character switch, too). */
+	public static void register() {
+		int[] ticks = {0};
+		ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+			if (++ticks[0] % 20 == 0 && mc.player != null && (mc.screen == null || mc.screen instanceof InventoryScreen)) {
+				characterId(mc);
+			}
+		});
 	}
 
 	public static List<String> characterLore(Minecraft mc) {

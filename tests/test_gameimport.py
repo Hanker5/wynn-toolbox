@@ -266,3 +266,26 @@ def test_real_aspect_pages_set_the_collection_and_the_equipped_ones(gd):
     import_export(inv, gd, walk)                                    # read to the end: exactly what it shows
     assert inv.aspect_tier("Mage", "Aspect of the Vortex") == 0
     assert sum(len(m) for m in inv.aspects.values()) == 5 + 18 + 18
+
+
+def test_an_unidentified_item_has_no_real_rolls(gd):
+    """Regression: an unidentified item's tooltip shows each ID as a range ("+3% to +13%");
+    its low end was read as the roll, so two sealed Demon Tides rated 0% on every ID."""
+    inv = Inventory()
+    import_export(inv, gd, real("account-p14-last.json"))
+    tides = inv.copies("Demon Tide")
+    assert tides and all(c.rolls == {} and c.unidentified for c in tides)
+    assert inv.view()["copies"][[c["name"] for c in inv.view()["copies"]].index("Demon Tide")]["unidentified"]
+    assert read_rolls(gd.item("Demon Tide"), [f"Healing Efficiency{PAD}+3% to +13%"]) == {}
+    others = [c for c in inv.copies() if c.name != "Demon Tide"]
+    assert any(c.rolls for c in others)                        # identified items keep theirs
+
+
+def test_an_export_without_a_character_goes_to_the_one_playing(gd):
+    """The Aspects menu hides the compass the character id is read from: its equipped aspects
+    belong to the character seen most recently, not to an "unknown" one."""
+    inv = Inventory()
+    import_export(inv, gd, export("inventory", me="zzzz0000"))
+    import_export(inv, gd, export("inventory"))                      # ME plays now
+    import_export(inv, gd, {**real("aspects-p1.json"), "character": {"lore": []}})
+    assert f"aspects:{ME}" in inv.places and "unknown" not in inv.characters

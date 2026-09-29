@@ -55,13 +55,26 @@ for _name, _e in _ELEMENTS.items():
     _LABELS[(f"{_name} Defence", "%")] = f"{_e}DefPct"
 
 
+# An unidentified item's tooltip says so, and shows each ID as a range ("+3% to +13%"),
+# not a roll: it has no real rolls until it is identified.
+_SEALED = ("power has been sealed", "item identifier can unlock")
+_RANGE = re.compile(r"[+-]?\d[\d,]*(%|/3s|/5s| tier)?\s*to\s*[+-]?\d")
+
+
+def unidentified(lore):
+    return any(k in clean(line).lower() for line in lore or [] for k in _SEALED)
+
+
 def read_rolls(item, lore):
     """The real roll of each identification an identified item's tooltip shows,
-    as {id: value} limited to the IDs this item actually rolls."""
-    if item.get("fixID"):
+    as {id: value} limited to the IDs this item actually rolls. None for an
+    unidentified item (its tooltip shows ranges): it gets none."""
+    if item.get("fixID") or unidentified(lore):
         return {}
     out = {}
     for line in lore or []:
+        if _RANGE.search(clean(line)):
+            continue                     # a range, not a roll
         m = _ID_LINE.match(clean(line))
         if not m:
             continue
@@ -162,6 +175,8 @@ def classify(gd, slot):
         found = read_rolls(gd.item_by_name[name], slot.get("lore"))
         if found:
             out["rolls"] = found
+        elif unidentified(slot.get("lore")):
+            out["unidentified"] = True
         return out
     if name in gd.tome_by_name:
         out["kind"] = "tome"
@@ -251,6 +266,13 @@ def _guess_class(gd, slots):
     return max(seen, key=seen.get) if seen else None
 
 
+def _last_character(inv):
+    """For an export without a character id (a menu that hides the compass): the character
+    seen most recently, the one playing."""
+    known = {k: v for k, v in inv.characters.items() if k != "unknown"}
+    return max(known, key=lambda k: known[k].get("seen") or "") if known else "unknown"
+
+
 def import_export(inv, gd, body):
     """Import one export from the mod.
 
@@ -269,7 +291,7 @@ def import_export(inv, gd, body):
                           f"{i['aspects']} aspects. Update the chest-export mod to track pages and slots.")
         return out
     when = _now()
-    cid = (body.get("character") or {}).get("id") or "unknown"
+    cid = (body.get("character") or {}).get("id") or _last_character(inv)
     before_items, before_tomes = _placed(inv)
     warnings, labels, done, tops = [], [], {}, {}
 
@@ -341,7 +363,7 @@ def import_export(inv, gd, body):
         warnings.append("this container isn't one of your ender chests; only your inventory was read")
 
     character = inv.characters.setdefault(cid, {"name": ""})
-    character["seen"] = when
+    character["seen"] = datetime.datetime.now().isoformat(timespec="microseconds")   # orders who played last
     guess = _guess_class(gd, inventory)
     if guess:
         character["class"] = guess
