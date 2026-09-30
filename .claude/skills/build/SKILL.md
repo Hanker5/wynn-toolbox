@@ -82,7 +82,10 @@ Then collect only what is still missing:
   included); only `--shortlists` can't. `wt gear --owned` defaults to owned tomes.
   A tome goes only in a slot of its own type (`wt edit --tome` refuses others).
 - **Aspects**: `wt own add --aspect --class Mage NAME --tier N` records the ones
-  they have. Searches don't choose aspects. `wt aspects builds/<name>.json`
+  they have. With a damage-model goal, `"aspect_pool": "owned"` (or `wt gear
+  --aspects owned`; `--owned` does it too) lets the local search fill the empty
+  aspect slots as it goes; `any` picks from every aspect at its top tier (goals
+  to collect). `wt aspects builds/<name>.json`
   lists the class's aspects with the tree nodes each works through (and whether
   the build's tree has them); `--recommend --goal <puppet_dps | ehp | ...>`
   ranks them for the empty slots (`--owned`: only theirs, at the tier they

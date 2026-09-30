@@ -446,6 +446,16 @@ def _print_goal(spec, r):
         print("Goal numbers (typical rolls): " + " · ".join(shown))
 
 
+def _print_chosen_aspects(spec, aspects, gd):
+    names = {x["id"]: x["displayName"] for x in gd.aspects(spec.cls)}
+    kept = {x[0] for x in spec.aspects or () if x}
+    chosen = [f"{names[x[0]]} (tier {x[1]})" for x in aspects if x and x[0] not in kept]
+    empty = sum(1 for x in aspects if not x)
+    print(f"Aspects the search chose ({spec.aspect_pool}): " + ("; ".join(chosen) or "none")
+          + (f". {empty} slot{'s' * (empty != 1)} left empty: no other aspect "
+             f"{'you own ' if spec.aspect_pool == 'owned' else ''}raised the goal" if empty else ""))
+
+
 def cmd_gear(a):
     from .search import describe_explanation, kind_for
     from .search import run as run_search
@@ -509,6 +519,11 @@ def cmd_gear(a):
         if unusable:
             raise SystemExit(f"the search can't use these kept items: {', '.join(unusable)} (above the "
                              f"level, excluded, not owned, or for another class); --change those slots")
+    if a.aspects or (a.owned and "aspect_pool" not in raw and not a.shortlists
+                     and kind_for(spec) == "local"):       # owned aspects wherever they count
+        raw["aspect_pool"] = a.aspects or "owned"
+        spec.aspect_pool = raw["aspect_pool"]
+        spec.aspect_supply = dict(inventory.aspects.get(spec.cls) or {}) if spec.aspect_pool == "owned" else None
     kind = kind_for(spec, a.shortlists)
     if kind == "shortlists" and not a.shortlists:
         print("(damage-model minimums use the shortlist search; the exact search can't check them)")
@@ -543,6 +558,9 @@ def cmd_gear(a):
         if pairs:
             print("Note: the same tome sits in two paired slots; WynnBuilder allows it, but whether "
                   "the game does is untested (knowledge/mechanics.md).")
+    if r.aspects is not None:
+        b.aspects = r.aspects
+        _print_chosen_aspects(spec, r.aspects, gd)
     if not a.tree and spec.atree and b.weapon and gd.weapon_class(b.weapon) == spec.cls:
         b.atree = set(spec.atree) | b.atree
     b.skillpoints = r.skillpoints
@@ -562,6 +580,12 @@ def cmd_gear(a):
     saved_spec = {k: v for k, v in raw.items() if not k.startswith("_")}
     if a.edit:
         doc, lines = _merge_into(old_doc, buildfile.from_build(b, gd), gd, a.tree, r.skillpoints)
+        if r.aspects is not None:            # the search's choice (the kept ones included)
+            chosen = buildfile.from_build(b, gd).get("aspects")
+            if chosen != (old_doc.get("aspects") or None):
+                lines.append("  aspects     now " + (", ".join(f"{e[0]} (tier {e[1]})" for e in chosen if e)
+                                                     if chosen else "none"))
+            doc["aspects"] = chosen
         doc["spec"] = saved_spec
         if a.candidate:
             out_path = _candidate_path(a.edit, a.candidate)
@@ -1085,6 +1109,8 @@ def cmd_tradeoffs(a):
     for o in out["options"]:
         r = o["result"]
         b = _build_from(raw, r.equipment, a.tree, gd, r.tomes)
+        if r.aspects is not None:
+            b.aspects = r.aspects
         if not a.tree and spec.atree:
             b.atree = set(spec.atree) | b.atree
         b.skillpoints = r.skillpoints
@@ -1793,6 +1819,9 @@ def main(argv=None):
     s.add_argument("--tomes", choices=["owned", "any"],
                    help="let the search (exact or local) choose the tomes the spec leaves empty: from your inventory "
                         "or any tome (a spec's \"tome_pool\" does the same)")
+    s.add_argument("--aspects", choices=["owned", "any"],
+                   help="let the local search fill the empty aspect slots: from your inventory (at the tier "
+                        "you own) or any aspect at its top tier (a spec's \"aspect_pool\" does the same)")
     s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
     s.add_argument("--time-limit", type=int, default=600, metavar="SECONDS",
                    help="stop searching after this long (default 600); the exact search then "

@@ -17,7 +17,13 @@ gear the first pass found. Other goals leave the weapon to the program.
 
 Tomes: with "tome_pool" owned/any, the gear program also picks tomes for the
 empty tome slots at every step (as the exact search does), and each pick is
-checked with those tomes in. A re-searched build's aspects and its powders on
+checked with those tomes in.
+
+Aspects: with "aspect_pool" owned/any, the empty aspect slots are filled for the
+current build (one slot at a time, each the aspect that raises the goal most on
+top of those before it, every trial checked exactly), and filled again whenever
+the gear improves; the next straight-line step then counts them. Aspects that
+don't raise the goal leave their slot empty. A re-searched build's aspects and its powders on
 items that stay count from the start (Spec.aspects, Spec.powders).
 
 Spare skill points: with a derived goal, points the gear doesn't need go where
@@ -49,6 +55,7 @@ class Eval:
     sp_assigned: list
     shortfall: float             # summed relative shortfall on damage-model floors (0 = met)
     tomes: list | None = None    # 14 tome ids (with the ones the search chose)
+    aspects: tuple | None = None  # 5 (aspect id, tier) or None it was checked with
 
 
 def _uses_damage(keys):
@@ -64,6 +71,10 @@ class LocalSearch:
         self.budget = skill_points(spec.level)
         self.choose_tomes = spec.tome_pool != "fixed"
         self.tome_ids = list(spec.tomes) + [None] * (14 - len(spec.tomes))
+        self.fixed_aspects = tuple((list(spec.aspects or []) + [None] * 5)[:5])
+        self.aspect_choices = spec.aspect_choices(gd)
+        self.choose_aspects = bool(self.aspect_choices) and any(a is None for a in self.fixed_aspects)
+        self.aspects = self.fixed_aspects      # the ones evaluate() checks with
         self.derived = spec.derived_floors()
         keys = list(spec.objective) + list(self.derived)
         self.damage = _uses_damage(keys)
@@ -103,13 +114,15 @@ class LocalSearch:
     def key(self, names, tomes=None):
         """A candidate's key in `evaluated` and `legal`: its 9 names, and its tomes
         when the search chooses them."""
-        return tuple(names) + (tuple(tomes or self.tome_ids) if self.choose_tomes else ())
+        return tuple(names) + (tuple(tomes or self.tome_ids) if self.choose_tomes else ()) \
+            + ((self.aspects,) if self.choose_aspects else ())
 
-    def _build(self, names, manual, tomes=None):
-        return self.spec.build(names, tomes or self.tome_ids, manual)
+    def _build(self, names, manual, tomes=None, aspects=None):
+        return self.spec.build(names, tomes or self.tome_ids, manual,
+                               aspects=list(aspects if aspects is not None else self.aspects))
 
-    def _score(self, names, manual, tomes=None):
-        b = self._build(names, manual, tomes)
+    def _score(self, names, manual, tomes=None, aspects=None):
+        b = self._build(names, manual, tomes, aspects)
         stats = build_stats(b, self.gd, self.spec.roll, self.spec.inventory)
         rep = damage_report(b, self.gd, self.spec.roll, self.spec.inventory, base=stats)
         m = from_report(rep)
@@ -175,8 +188,56 @@ class LocalSearch:
                     break
         (neg_short, value), m = cur
         ev = Eval(list(names), value, manual_for(extra), m,
-                  [sp.assigned[j] + extra[j] for j in range(5)], -neg_short, tomes)
+                  [sp.assigned[j] + extra[j] for j in range(5)], -neg_short, tomes, self.aspects)
         self.evaluated[key] = ev
+        return ev
+
+    # ------------------------------------------------------------ aspects
+    def pick_aspects(self, ev):
+        """The aspects to check `ev`'s gear with: the kept ones, and the empty
+        slots filled one at a time, each with the choice that raises (shortfall,
+        goal) most on top of those before it (its skill points as they are).
+        Aspects that don't raise it alone aren't tried on top of others."""
+        def score(aspects):
+            v, short, _, _ = self._score(ev.names, ev.manual, ev.tomes, aspects)
+            return (-short, v)
+        cur = list(self.fixed_aspects)
+        free = [k for k, a in enumerate(cur) if a is None]
+        cur_v = score(cur)
+        pool = []
+        for c in self.aspect_choices:                      # each alone, in the first free slot
+            trial = list(cur)
+            trial[free[0]] = c
+            if score(trial) > (cur_v[0], cur_v[1] + 1e-9):
+                pool.append(c)
+        for k in free:
+            best = None
+            for c in pool:
+                trial = list(cur)
+                trial[k] = c
+                v = score(trial)
+                if best is None or v > best[0]:
+                    best = (v, c)
+            if best is None or best[0] <= (cur_v[0], cur_v[1] + 1e-9):
+                break
+            cur[k], cur_v = best[1], best[0]
+            pool.remove(best[1])
+        return tuple(cur)
+
+    def with_best_aspects(self, ev):
+        """`ev` checked with the aspects that suit its gear best (the better of
+        those and the ones it has)."""
+        if not self.choose_aspects or ev is None:
+            return ev
+        self.aspects = ev.aspects
+        new = self.pick_aspects(ev)
+        if new == ev.aspects:
+            return ev
+        old, self.aspects = self.aspects, new
+        ev2 = self.evaluate(ev.names, ev.tomes)
+        if ev2 and (-ev2.shortfall, ev2.value) > (-ev.shortfall, ev.value):
+            return ev2
+        self.aspects = old
         return ev
 
     # ------------------------------------------------------------ linearization
@@ -253,7 +314,8 @@ class LocalSearch:
             return None
         return Result(best.value, best.names, best.sp_assigned, time.time() - self.t0,
                       skillpoints=best.manual, metrics=best.metrics,
-                      tomes=best.tomes if self.choose_tomes else None)
+                      tomes=best.tomes if self.choose_tomes else None,
+                      aspects=list(best.aspects) if self.choose_aspects else None)
 
     def _keys(self, model):
         keys = set(SKILLS)
@@ -318,12 +380,13 @@ class LocalSearch:
         def left():
             return max(1, self.time_limit - (time.time() - self.t0))
         best = None
-        cur = self.evaluate([None] * 8 + [weapon]) if weapon else None
+        self.aspects = self.fixed_aspects          # each weapon chooses its own
+        cur = self.with_best_aspects(self.evaluate([None] * 8 + [weapon])) if weapon else None
         if cur is None:              # no weapon yet, or the weapon alone fails: the program's pick
             got = model.solve(max_rounds=200, time_limit=left(), accept=accept)
             if got is None:
                 return None
-            cur = best = self.evaluate(got.names, got.tomes)
+            cur = best = self.with_best_aspects(self.evaluate(got.names, got.tomes))
         for rnd in range(self.rounds):
             self._tick((index + rnd / self.rounds) / max(total, 1), best and best.value)
             g, _, m0 = self.gradient(cur.names, cur.manual, cur.tomes)
@@ -354,7 +417,7 @@ class LocalSearch:
                     best, improved = ev, True
             if not improved:
                 break
-            cur = best
+            cur = best = self.with_best_aspects(best)
         return best
 
     def _objective(self, model, grad):

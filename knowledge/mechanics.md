@@ -210,6 +210,10 @@ entries may be stated as fact.
   range but could also mean tomes roll narrower. In-game test: compare a tome's
   percentage in Wynntils' tooltip with the app's, or record the rolls of a dozen
   copies of one tome.
+- Whether the game limits **which aspects can be worn together** (by rarity, say,
+  or one Embodiment at a time). WynnBuilder takes any five of a class's aspects,
+  and the search (`aspect_pool`) does the same. Test: equip a second Mythic
+  aspect (or a second Embodiment) and see whether the game refuses it.
 - Tome "levels" (100, 120) are not player-level requirements (they exceed the
   level cap); the search doesn't filter tomes by level. Only guild tomes carry
   skill points (data), and only they count in item skill requirements.

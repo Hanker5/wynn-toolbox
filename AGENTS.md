@@ -44,10 +44,14 @@ questions; you run the commands.
      hand: the output says which, and the build keeps them. If a mana floor
      relied on spare points going into Intelligence, say so; WynnBuilder won't
      do that itself.
-   - **Aspects are empty** in new solver builds; say so. (Players can add them in
-     the editor, `wt edit --aspect`, or the build file's `aspects`; they change
-     damage, not totals. `wt aspects --recommend` ranks them by a goal. A
-     re-search of a build keeps its aspects and counts them while searching.)
+   - **Aspects are empty** in new solver builds unless the search chose them
+     (`aspect_pool` / `--aspects`, `wt gear --owned` with a damage-model goal);
+     say which. Chosen ones come from the player's aspects at the tier they own,
+     or from any aspect at its top tier (goals to collect); slots no aspect
+     improved stay empty. (Players can add them in the editor, `wt edit
+     --aspect`, or the build file's `aspects`; they change damage, not totals.
+     `wt aspects --recommend` ranks them by a goal. A re-search of a build keeps
+     its aspects and counts them while searching.)
    - Tomes are **goals to collect** unless the player said they own them. When
      the search chose them (`tome_pool` / `--tomes`), say from which pool: the
      player's inventory, or any tome (goals to collect); and that a tome may fill
@@ -159,6 +163,7 @@ the sandbox, including the ones that talk to the web app.
 | spec `require_sets` / `max_set_pieces` / `exclude_sets` | `require_sets`: `{set name: pieces}` wear at least that many pieces of a set (its bonus is then in every total). `max_set_pieces`: `{set name: pieces}` at most that many (the build form's "At most N pieces of a set"). `exclude_sets`: sets none of whose pieces are used (forced items excepted). A `require_major` can also be met through a set bonus. Sets WynnBuilder calls an "illegal item combination" past a count (the Hive sets: one piece) are always capped, and a build over the limit fails `wt verify`. |
 | spec acquisition keys | `exclude`, `exclude_tiers` (e.g. `["Mythic"]`), `at_most_one` (lists of item names), `prefer` (names: a tiebreak), `force`, and `--owned`. The inventory's unavailable list is always left out. |
 | `wt gear spec.json --owned` | Build only from owned items (empty slots allowed, except the weapon). Owned items use their real rolls. Tomes come from the inventory too, unless the spec lists tomes. |
+| `wt gear spec.json --aspects owned\|any` (spec `"aspect_pool"`) | The local search also fills the empty aspect slots: from the player's aspects (at the tier owned) or any aspect at its top tier, choosing again as the gear improves and counting them in every check. Only damage-model goals and minimums change with aspects; an item-stat search chooses none (and says so). `--owned` uses owned aspects when the local search runs. Chosen aspects are saved in the build. |
 | `wt gear spec.json --tomes owned\|any` (spec `"tome_pool"`) | The search also chooses the tomes the spec leaves empty: from the inventory, or any tome. The exact and local searches both do (damage-model minimums then run the local search); only `--shortlists` can't. Chosen tomes are saved in the build. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
 | `wt mod install [MINECRAFT_DIR] \| status [DIR] \| find` | The chest-export mod: install copies it into a Minecraft folder's `mods` (replacing older copies) and sets its config's `builds_path` to this app (the folder is remembered); `status` says whether it's there and current; `find` lists Minecraft folders the usual launchers keep. The app's Inventory → Game mod… does the same. |

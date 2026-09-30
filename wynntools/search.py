@@ -102,6 +102,12 @@ def spec_from(raw, gd, inventory=None):
     unavailable = set(getattr(inventory, "unavailable", None) or {})
     forced = {v for v in (raw.get("force") or {}).values() if v}
     exclude |= unavailable - forced
+    apool = raw.get("aspect_pool") or "fixed"
+    if apool not in TOME_POOLS:
+        raise ValueError(f"'aspect_pool' is {', '.join(TOME_POOLS)}, not {apool!r}")
+    asupply = None
+    if apool == "owned":
+        asupply = dict((inventory.aspects.get(raw["class"]) or {}) if inventory is not None else {})
     return Spec(cls=raw["class"], level=int(raw["level"]), objective=objective, floors=floors,
                 require_major=list(raw.get("require_major") or []),
                 exclude_major=list(raw.get("exclude_major") or []), caps=caps,
@@ -113,7 +119,7 @@ def spec_from(raw, gd, inventory=None):
                 tome_pool=pool, tome_supply=supply,
                 topn=int(raw.get("topn") or 8), crafted=bool(raw.get("crafted")),
                 roll=raw.get("roll") or "base", at_most_one=[list(g) for g in groups],
-                prefer=prefer, spare_sp=raw.get("spare_sp"))
+                prefer=prefer, spare_sp=raw.get("spare_sp"), aspect_pool=apool, aspect_supply=asupply)
 
 
 def needs_tree(spec):
@@ -149,8 +155,8 @@ class Outcome:
 def kind_for(spec, shortlists=False):
     if spec.derived_objective() or (MIN_ELEDEF in spec.objective and spec.derived_floors()):
         return "local"
-    if spec.derived_floors() and spec.tome_pool != "fixed":
-        return "local"             # the shortlist search can't choose tomes; the local one can
+    if spec.derived_floors() and (spec.tome_pool != "fixed" or spec.aspect_pool != "fixed"):
+        return "local"             # the shortlist search can't choose tomes or aspects; the local one can
     if spec.derived_floors() or shortlists:
         return "shortlists"
     return "exact"
@@ -164,6 +170,9 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
     if spec.tome_pool != "fixed" and kind == "shortlists":
         raise ValueError("the shortlist search can't choose tomes ('tome_pool': owned/any); the exact "
                          "and local searches can (leave out --shortlists)")
+    if spec.aspect_pool != "fixed" and kind == "shortlists":
+        raise ValueError("the shortlist search can't choose aspects ('aspect_pool': owned/any); the "
+                         "local search can (leave out --shortlists)")
     note = KIND_NOTES[kind]
     confirm_note = None
     found = None
@@ -209,6 +218,12 @@ def run(spec, gd, kind=None, progress=None, confirm=False, explain_failure=True,
     if r is not None and spec.tome_pool != "fixed":
         note += ("; tomes chosen from the ones you own" if spec.tome_pool == "owned"
                  else "; tomes chosen from any tome (ones to collect)")
+    if r is not None and spec.aspect_pool != "fixed":
+        if kind != "local":
+            note += "; no aspects chosen: aspects change only damage-model numbers, and this goal has none"
+        else:
+            note += ("; aspects chosen from the ones you own, at the tier you own" if spec.aspect_pool == "owned"
+                     else "; aspects chosen from any aspect at its top tier (ones to collect)")
     explanation = None
     if r is None and explain_failure:
         from .explain import explain

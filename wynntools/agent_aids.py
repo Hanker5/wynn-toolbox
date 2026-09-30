@@ -106,6 +106,18 @@ def check_spec(raw, gd, tree=None, inventory=None):
     if spec.tome_pool == "any":
         warnings.append("tome_pool any: the search may pick tomes the player doesn't own; they are goals "
                         "to collect, and it may put the same tome in two paired slots (untested in game)")
+    if spec.aspect_pool != "fixed":
+        if kind == "shortlists":
+            errors.append("'aspect_pool' owned/any can't go with the shortlist search; leave out --shortlists")
+        elif kind == "exact":
+            warnings.append("'aspect_pool' does nothing here: aspects change only damage-model numbers "
+                            "(effective HP, regen with %, DPS, spell damage), and this spec has none")
+        elif spec.aspect_pool == "owned" and not spec.aspect_supply:
+            warnings.append(f"'aspect_pool' is owned but the inventory has no {spec.cls} aspects: none will "
+                            f"be chosen (`wt own add NAME --aspect --class {spec.cls} --tier N`)")
+        elif spec.aspect_pool == "any":
+            warnings.append("aspect_pool any: the search may pick aspects the player doesn't own, at their "
+                            "top tier; they are goals to collect")
     if kind == "local":
         warnings.append("a derived goal runs the local search: a minute or more, and the result is "
                         "good but not proven best (say so)")
@@ -165,8 +177,13 @@ def report(doc, gd, path, inventory=None):
               "(130%) rolls: say which one you quote",
               "  - Skill points: " + (f"set by hand for some skills (final totals {sp}); the build keeps them"
                                       if hand else "automatic"),
-              "  - Aspects: " + ("present, as in the file" if aspects else "empty (players can add them; "
-                                                                        "they change damage, not totals)"),
+              "  - Aspects: " + ({"owned": "chosen by the search from the player's aspects, at the tier "
+                                          "they own",
+                                 "any": "chosen by the search from ANY aspect at its top tier: goals to "
+                                        "collect (check which the player owns)"}.get(spec.get("aspect_pool"))
+                                if aspects and spec.get("aspect_pool") in ("owned", "any") else
+                                "present, as in the file" if aspects else
+                                "empty (players can add them; they change damage, not totals)"),
               {"owned": f"  - Tomes: {tomes}/14, chosen by the search from the tomes in the player's inventory",
                "any": f"  - Tomes: {tomes}/14, chosen by the search from ANY tome: goals to collect "
                       f"(check which the player owns); the same tome may fill two paired slots (untested in game)",

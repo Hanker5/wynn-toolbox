@@ -2441,6 +2441,10 @@ function renderSolver(pre = {}) {
       h("option", { value: "@owned" }, "only tomes I own"), h("option", { value: "@any" }, "any tome (ones to collect)")),
     h("optgroup", { label: "Use the tomes of a build" }, S.builds.map((b) => h("option", { value: b.file }, b.name))));
   if (pre.from) f.tomesFrom.value = pre.from;
+  f.aspectsFrom = h("select", { title: "Aspects change only damage-model numbers (effective HP, regen, DPS, spell damage): the local search fills the empty slots" },
+    h("option", { value: "" }, pre.from ? "keep the build's" : "none"),
+    h("optgroup", { label: "Let the search fill empty slots" },
+      h("option", { value: "owned" }, "only aspects I own"), h("option", { value: "any" }, "any aspect (ones to collect)")));
   f.preset = h("select", { "aria-label": "Tree preset" });
   f.topn = h("input", { type: "number", value: 8, min: 4, max: 20 });
   f.asCandidate = h("input", { type: "checkbox", checked: !!pre.from });
@@ -2627,7 +2631,8 @@ function renderSolver(pre = {}) {
       require_major: [...majors], exclude_major: [...noMajors], caps,
       require_sets: { ...reqSets }, exclude_sets: [...noSets], max_set_pieces: { ...maxSets }, force, exclude: [...exclude], at_most_one: groups,
       prefer: Object.fromEntries([...prefer].map((n) => [n, 0])),
-      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, ...(pool ? { tome_pool: pool } : {}), topn: +f.topn.value || 8,
+      exclude_tiers: f.mythic.checked ? ["Mythic"] : [], tomes, ...(pool ? { tome_pool: pool } : {}),
+      ...(f.aspectsFrom.value ? { aspect_pool: f.aspectsFrom.value } : {}), topn: +f.topn.value || 8,
       crafted: f.crafted.checked && !f.owned.checked };
   }
   const treeArgs = () => ({ tree_preset: f.preset.value || null,
@@ -2725,7 +2730,8 @@ function renderSolver(pre = {}) {
       let file = `${stem}.json`, n = 2;
       while (S.builds.some((b) => b.file === file)) file = `${stem}-${n++}.json`;
       const out = await api("POST", "/api/candidates", { file, name, spec: { ...spec, objective: { [r.damage]: 1 } },
-        equipment: o.equipment, skillpoints: o.skillpoints, tomes: o.tomes || null, ...treeArgs(), parent,
+        equipment: o.equipment, skillpoints: o.skillpoints, tomes: o.tomes || null, aspects: o.aspects || null,
+        ...treeArgs(), parent,
         keep_from: pre.from || null });
       await loadList();
       return out.file;
@@ -2814,9 +2820,9 @@ function renderSolver(pre = {}) {
           "Any item stat works, at 100% rolls unless you own the item. " +
           "Effective HP, regen with %, DPS and spell damage are WynnBuilder's numbers with the tree and no powders; they use the shortlist search."))),
     h("details", { class: "card fold", open: !!(majors.size || noMajors.size || Object.keys(reqSets).length || Object.keys(maxSets).length || noSets.size || exclude.size || prefer.size || groups.length || pre.force?.weapon || pre.from) },
-      h("summary", {}, "Items: weapon, major IDs, sets, tomes, leave out"),
+      h("summary", {}, "Items: weapon, major IDs, sets, tomes, aspects, leave out"),
       h("div", { class: "form" }, field("Weapon (optional)", weaponAc), field("Tomes", f.tomesFrom),
-        field("Required major IDs", majorIn), field("Avoid these major IDs", noMajorIn)),
+        field("Aspects", f.aspectsFrom), field("Required major IDs", majorIn), field("Avoid these major IDs", noMajorIn)),
       majorChips, noMajorChips,
       h("div", { class: "form", style: "margin-top:10px" }, field("Require a set", reqSetPicker),
         field("At most N pieces of a set", maxSetPicker), field("Avoid a set", noSetPicker)),

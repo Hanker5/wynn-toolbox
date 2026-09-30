@@ -1015,6 +1015,17 @@ def test_solver_limits_a_set(page):
     assert not page.errors
 
 
+def test_solver_lets_the_search_choose_aspects(page):
+    """The Aspects field puts aspect_pool in the spec the search gets."""
+    page.click("text=New build from goals")
+    open_fold(page, "Items")
+    page.locator("label:has-text('Aspects') select").select_option("owned")
+    with page.expect_request("**/api/solve") as req:
+        page.click("#solver-run")
+    assert req.value.post_data_json["spec"]["aspect_pool"] == "owned"
+    assert not page.errors
+
+
 def test_illegal_set_combination_is_explained(page, app, gd):
     """Two Master Hive pieces: the build isn't verified, and the Sets panel says why."""
     from wynntools.codec import Build

@@ -31,7 +31,7 @@ redirects retired ones). Say which items changed since, if any. Legacy
 **Done when.** Links from at least three older versions import, with the
 changed items reported; the session links keep verifying after a patch.
 
-## 3. Aspects in the search  (damage accuracy)
+## 3. Aspects in the search  (damage accuracy) — DONE
 **Why.** New builds carry empty aspects, and aspects change endgame damage a
 lot, so damage searches can rank gear for a build nobody will play.
 `wt aspects --recommend` ranks aspects for a finished build only.

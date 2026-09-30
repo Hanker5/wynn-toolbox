@@ -128,11 +128,13 @@ def keep_in_search(spec, doc, gd):
 
 def carry_over(new, old, gd):
     """A search result's build file `new`, made from build file `old`: the aspects
-    come along while the class is the same, and the powders and copies of items that
+    come along while the class is the same (unless the search chose aspects: those
+    already include the kept ones), and the powders and copies of items that
     stayed in their slot. Returns `new`."""
     old_eq = list(old.get("equipment") or [None] * 9)
     new_eq = list(new.get("equipment") or [None] * 9)
-    if old.get("aspects") and any(old["aspects"]) and old_eq[8] and new_eq[8] \
+    if not (new.get("aspects") and any(new["aspects"])) \
+            and old.get("aspects") and any(old["aspects"]) and old_eq[8] and new_eq[8] \
             and gd.weapon_class(old_eq[8]) == gd.weapon_class(new_eq[8]):
         new["aspects"] = [list(e) if e else None for e in old["aspects"]]
     if old.get("powders"):

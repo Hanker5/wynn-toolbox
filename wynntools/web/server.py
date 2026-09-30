@@ -704,8 +704,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         return on_progress
 
     def build_doc(raw, spec, equipment, skillpoints, name, notes="", preset=None, tree_names=None,
-                  parent=None, tome_ids=None):
-        """A build file for a search result (`tome_ids`: the tomes the search chose)."""
+                  parent=None, tome_ids=None, aspects=None):
+        """A build file for a search result (`tome_ids`, `aspects`: the tomes and
+        the 5 (aspect id, tier) or None the search chose)."""
         tomes = [None if t is None else gd.name(gd.tome(t)) for t in tome_ids] if tome_ids else \
             [t or None for t in raw.get("tomes") or []]
         doc = {"name": name, "notes": notes, "level": spec.level,
@@ -716,6 +717,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
             doc["copies"] = inv_mod.copies_of(equipment)
         if parent:
             doc["parent"] = parent
+        if aspects and any(aspects):
+            names = {x["id"]: x["displayName"] for x in gd.aspects(spec.cls)}
+            doc["aspects"] = [None if x is None else [names[x[0]], x[1]] for x in aspects]
         if preset:
             b = buildfile.to_build({**doc, "tree": []}, gd)
             b.atree = solve_tree(gd.tree(spec.cls), preset_weights(preset, gd),
@@ -758,7 +762,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                     job["error"] = (out.explanation or {}).get("summary") or "no build satisfies these constraints"
                     return
                 doc = build_doc(raw, spec, r.equipment, r.skillpoints, body.get("name") or p.stem,
-                                body.get("notes", ""), preset, body.get("tree"), parent, r.tomes)
+                                body.get("notes", ""), preset, body.get("tree"), parent, r.tomes, r.aspects)
                 if base:
                     buildfile.carry_over(doc, base, gd)
                 buildfile.write(p, buildfile.refresh(doc, gd, owned))
@@ -792,7 +796,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
                 job["result"] = {
                     "damage": out["damage"], "tank": out["tank"], "checked": out["checked"],
                     "options": [{k: v for k, v in o.items() if k != "result"} |
-                                {"equipment": o["result"].equipment, "tomes": o["result"].tomes}
+                                {"equipment": o["result"].equipment, "tomes": o["result"].tomes,
+                                 "aspects": o["result"].aspects}
                                 for o in out["options"]]}
                 job["state"] = "done"
             except Cancelled:
@@ -807,7 +812,7 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     async def save_candidate(request: Request):
         """Save one search result (e.g. a trade-off row) as a build: {"file", "name",
         "spec", "equipment", "skillpoints", "tree_preset", "tree", "parent", "tomes"
-        (ids the search chose), "keep_from" (a build whose aspects and powders carry over)}."""
+        (ids the search chose), "aspects" (the search's (id, tier) picks), "keep_from" (a build whose aspects and powders carry over)}."""
         body = await request.json()
         p = path_for(body["file"])
         if p.exists():
@@ -818,7 +823,8 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         spec, owned = spec_for(body["spec"])
         doc = build_doc(body["spec"], spec, body["equipment"], body.get("skillpoints"),
                         body.get("name") or p.stem, body.get("notes", ""),
-                        body.get("tree_preset") or None, body.get("tree"), parent, body.get("tomes"))
+                        body.get("tree_preset") or None, body.get("tree"), parent, body.get("tomes"),
+                        body.get("aspects"))
         base = body.get("keep_from")
         if base and path_for(base).exists():
             buildfile.carry_over(doc, buildfile.read(path_for(base)), gd)

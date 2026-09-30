@@ -70,6 +70,10 @@ def _set_stat(stats, key):
     return stats.get("hpBonus", 0) if key == "hp" else stats.get(key, 0)
 
 
+def _aspect_list(aspects):
+    return list(aspects) + [None] * (5 - len(aspects)) if aspects and any(aspects) else None
+
+
 def derived_goal(key):
     return key in DERIVED_GOALS or key.startswith(DAMAGE_GOAL_PREFIX)
 
@@ -110,6 +114,28 @@ class Spec:
     # -> (item name, [powder ids]): they count while that item stays in that slot.
     aspects: list | None = None
     powders: dict = field(default_factory=dict)
+    # "fixed": exactly `aspects`. "owned"/"any": the local search also fills the empty
+    # aspect slots, from `aspect_supply` (name -> highest tier owned) or any of the
+    # class's aspects at the top tier. Only damage-model numbers change with aspects.
+    aspect_pool: str = "fixed"
+    aspect_supply: dict | None = None
+
+    def aspect_choices(self, gd):
+        """[(aspect id, tier)] the search may add: the pool's, minus aspects the
+        spec keeps, and minus aspects WynnBuilder's data gives no effect."""
+        if self.aspect_pool == "fixed":
+            return []
+        kept = {a[0] for a in self.aspects or () if a}
+        out = []
+        for a in gd.aspects(self.cls):
+            tiers = a.get("tiers") or []
+            if a["id"] in kept or not any(t.get("abilities") for t in tiers):
+                continue
+            tier = len(tiers) if self.aspect_pool == "any" else \
+                min(int((self.aspect_supply or {}).get(a["displayName"]) or 0), len(tiers))
+            if tier:
+                out.append((a["id"], tier))
+        return out
 
     def set_limits(self, gd):
         """{set name: most pieces a build may wear}: `max_set_pieces`, and the game's
@@ -123,10 +149,10 @@ class Spec:
             out[name] = min(n, out.get(name, n))
         return out
 
-    def build(self, names, tomes=None, manual=None):
+    def build(self, names, tomes=None, manual=None, aspects=None):
         """A codec.Build for a candidate (9 names), as the damage model should see
-        it: the tree, `tomes` (default the spec's), and the aspects and powders
-        the spec keeps."""
+        it: the tree, `tomes` (default the spec's), `aspects` (default the ones the
+        spec keeps) and the powders the spec keeps."""
         from .codec import POWDERABLE, Build
         powders = [[] for _ in POWDERABLE]
         for k, slot in enumerate(POWDERABLE):
@@ -137,7 +163,7 @@ class Spec:
                      tomes=list(tomes) if tomes is not None else
                      list(self.tomes) + [None] * (14 - len(self.tomes)),
                      skillpoints=manual, atree=set(self.atree or ()),
-                     aspects=list(self.aspects) if self.aspects and any(self.aspects) else None)
+                     aspects=_aspect_list(aspects if aspects is not None else self.aspects))
 
     def derived_floors(self):
         """{key: minimum} of the floors only the damage model can check."""
@@ -164,6 +190,7 @@ class Result:
     proven: bool = True                 # exact search: proven best (False: stopped at the time limit)
     bound: float | None = None          # exact search: the best score any build could reach
     tomes: list | None = None           # 14 tome ids the search chose (tome_pool owned/any), else None
+    aspects: list | None = None         # 5 (aspect id, tier) or None the search chose (aspect_pool), else None
 
 
 def assign_for_floors(sp, floors, budget):

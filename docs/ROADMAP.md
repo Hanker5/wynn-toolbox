@@ -21,10 +21,8 @@ Rough priority order. Want to take one? Say so in an issue first; see
    WynnBuilder page (`-m live`).
 5. **More skills**: `explain` (walk a player through a decoded build), `decode`
    for quick lookups. (`wt compare` and the Compare builds page are done.)
-6. **Aspects** chosen by the search. (Owned aspects are tracked and limit the
-   editor's picker; `wt aspects --recommend` ranks them for a finished build;
-   searches keep a build's aspects but don't choose them yet. Next in
-   `docs/PLAN.md`.)
+6. ~~**Aspects** chosen by the search.~~ Done: `aspect_pool` / `wt gear
+   --aspects` lets the local search fill empty aspect slots as it goes.
 7. **Custom items** in the link codec; legacy (pre-binary) links and legacy
    crafted hashes. (Links made with older versions' data are done: read with
    that data and brought to today's, `wynntools/upgrade.py`.)
