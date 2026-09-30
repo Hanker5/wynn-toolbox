@@ -254,7 +254,7 @@ def check_link(link, gd=None, inventory=None, copies=None):
         from .inventory import with_copies
         build.equipment = with_copies(build.equipment, copies)
     from .data import GameData
-    gd = gd if gd is not None and gd.version == build.version else GameData(build.version)
+    gd = gd.for_version(build.version) if gd is not None else GameData(build.version)
     report = {"build": build, "summary": summarize(build, gd, inventory=inventory), "problems": []}
     if encode(build, gd) != h:
         report["problems"].append("link does not round-trip through the encoder")

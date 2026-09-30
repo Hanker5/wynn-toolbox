@@ -30,9 +30,9 @@ Rough priority order. Want to take one? Say so in an issue first; see
 8. **Crafting**: consumables (potions, scrolls, food); powders as crafting
    ingredients in suggestions; crafted weapon DPS from the damage calculator.
 9. ~~**Ability tree view.**~~ Done: the web app draws WynnBuilder's tree layout.
-10. **CI**: the fast suite runs on Linux, macOS and Windows for every push and
-   pull request. Still to do: a scheduled run that refreshes data and flags
-   breakage after a game patch.
+10. ~~**CI**~~ Done: the fast suite runs on Linux, macOS and Windows for every
+   push and pull request, and a daily `patch watch` run refreshes the data and
+   runs the fast and differential suites to flag breakage after a game patch.
 11. **Local AI models.** A choice in the setup wizard and `wt config ai` for a
    model running on the player's own computer (for example through
    [Ollama](https://ollama.com)), so the toolbox works without a cloud AI

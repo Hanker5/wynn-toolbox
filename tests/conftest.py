@@ -1,7 +1,12 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
+
+# No routine checks for a new game version during tests (subprocesses inherit it);
+# tests that need one stub the download and clear this.
+os.environ["WYNN_TOOLBOX_OFFLINE"] = "1"
 
 from wynntools.data import GameData
 

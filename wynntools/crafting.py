@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 
 from .bits import BitReader, BitWriter
-from .data import LATEST, load
+from .data import load
 from .rules import ROLLED_IDS, SKILLS, js_round
 
 NO_INGREDIENT = "No Ingredient"
@@ -52,7 +52,7 @@ class Craft:
 class CraftData:
     """Ingredients and recipes, set up the way js/load_ing.js init_maps does."""
 
-    def __init__(self, version=LATEST):
+    def __init__(self, version=None):
         ings = [dict(i) for i in load("ingreds", version)]
         extra = [{"name": NO_INGREDIENT, "displayName": NO_INGREDIENT, "tier": 0, "lvl": 0,
                   "skills": list(ALL_SKILLS), "ids": {},

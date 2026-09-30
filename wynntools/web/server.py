@@ -29,7 +29,7 @@ from .. import updates
 from .. import variants
 from ..codec import SLOTS, TOME_SLOTS, powder_name
 from ..damage import POWDER_SPECIALS
-from ..data import VERSIONS, GameData
+from ..data import VERSIONS, GameData, latest
 from ..derived import DAMAGE_KEYS, DERIVED
 from ..gear_solver import CLASS_WEAPON, SUM_FLOORS, upgrades
 from ..presets import PRESETS, preset_weights
@@ -133,6 +133,9 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
     # ------------------------------------------------------------ security
     @app.middleware("http")
     async def guard(request: Request, call_next):
+        nonlocal gd
+        if gd.version != latest():        # a link from a newer version grew the list
+            gd = GameData()
         if request.headers.get("host") not in allowed_hosts:
             return JSONResponse({"detail": "forbidden host"}, status_code=403)
         # The token in the URL wins over the cookie: after `wt serve` restarts

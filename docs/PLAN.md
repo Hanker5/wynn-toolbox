@@ -2,7 +2,7 @@
 
 Worked in this order, one at a time. Each step ships with tests.
 
-## 1. Survive game patches without a release  (reliability)
+## 1. Survive game patches without a release  (reliability) — DONE
 **Why.** The list of WynnBuilder versions was typed into `wynntools/data.py`. A
 link made after a patch carries a version number the toolbox doesn't know, so
 every import failed ("it isn't a WynnBuilder build link") until a new release

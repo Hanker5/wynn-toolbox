@@ -14,7 +14,7 @@ import re
 
 from . import buildfile
 from .codec import SLOTS, decode, link_hash
-from .data import LATEST, VERSIONS
+from .data import VERSIONS, UnknownVersion
 from .verify import SKILL_NAMES
 
 SLOT_NAMES = {"ring1": "ring 1", "ring2": "ring 2"}
@@ -37,13 +37,17 @@ def diagnose_link(link, gd, inventory=None, name=None):
         findings.append({"level": level, "code": code, "message": message})
     try:
         b = decode(link_hash(link), gd)
+        gd = gd.for_version(b.version)
+    except UnknownVersion as e:
+        add("error", "new_version", f"The toolbox can't read this link yet: {e}.")
+        return {"ok": False, "findings": findings, "doc": None}
     except NotImplementedError as e:
         text = str(e)
         if "only supported for the latest version" in text:
             m = re.search(r"this link is for ([\d.]+)", text)
             add("error", "old_version",
                 f"This link was made with WynnBuilder's data for {m.group(1) if m else 'an older version'}; "
-                f"the toolbox reads links made with the current data ({VERSIONS[LATEST]}) only.")
+                f"the toolbox reads links made with the current data ({VERSIONS[-1]}) only.")
         else:
             add("error", "unreadable", f"The toolbox can't read this link: {text}.")
         return {"ok": False, "findings": findings, "doc": None}

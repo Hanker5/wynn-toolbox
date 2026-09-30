@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 from .bits import BitReader, BitWriter, is_binary_link
 from .crafting import decode_craft_hash, encode_craft_hash, read_craft, write_craft
-from .data import LATEST, GameData
+from .data import VERSIONS, GameData, UnknownVersion, ensure_version, latest
 
 SLOTS = ["helmet", "chestplate", "leggings", "boots", "ring1", "ring2",
          "bracelet", "necklace", "weapon"]
@@ -40,7 +40,7 @@ class Build:
     skillpoints: list | None = None     # None = let WynnBuilder assign automatically
     aspects: list | None = None         # None, or 5 entries of (aspect id, tier) / None
     atree: set = field(default_factory=set)  # active ability node ids, root included
-    version: int = LATEST
+    version: int = field(default_factory=latest)
     remapped: list = field(default_factory=list)   # decode: slots whose item id was retired
                                                    # and redirected to today's item
 
@@ -96,6 +96,11 @@ def decode(link, gd=None):
     r = BitReader(text)
     r.read(6)
     version = r.read(VERSION_BITLEN)
+    if not ensure_version(version):
+        raise UnknownVersion(
+            f"this link was made with a newer WynnBuilder version (number {version + 1}) than "
+            f"the toolbox knows (up to {VERSIONS[-1]}, number {len(VERSIONS)}), and WynnBuilder "
+            f"couldn't be reached for its new data; connect to the internet and run `wt fetch`")
     gd = gd if gd is not None and gd.version == version else GameData(version)
     enc = gd.enc
 

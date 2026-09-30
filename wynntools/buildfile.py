@@ -29,7 +29,7 @@ import tempfile
 from pathlib import Path
 
 from .codec import POWDER_ELEMENTS, POWDER_TIERS, POWDERABLE, TOME_SLOTS, Build, powder_name, to_link
-from .data import LATEST
+from .data import latest
 from .verify import check_link
 
 GENERATED = ("link", "status")
@@ -44,7 +44,7 @@ def powder_id(name):
 
 def to_build(doc, gd):
     from .inventory import with_copies
-    b = Build(equipment=with_copies(doc["equipment"], doc.get("copies")), level=doc["level"], version=LATEST)
+    b = Build(equipment=with_copies(doc["equipment"], doc.get("copies")), level=doc["level"], version=latest())
     tomes = doc.get("tomes") or []
     b.tomes = [None if t is None else gd.tome(t)["id"] for t in tomes] \
         + [None] * (len(TOME_SLOTS) - len(tomes))

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link, tome_kind
-from .data import LATEST, VERSIONS, GameData, fetch
+from .data import VERSIONS, GameData, check_versions, fetch, latest, refresh_versions
 from . import buildfile
 from . import inventory as inv_mod
 from .gear_solver import upgrades
@@ -154,7 +154,9 @@ def cmd_fetch(a):
 
     def downloaded(done, total, name):
         client.report(done / total, f"{done}/{total} files · {name}")
-    print("cached in", fetch(refresh=a.refresh, progress=downloaded))
+    for name in refresh_versions():
+        print(f"WynnBuilder has data for a new game version: {name}")
+    print(f"data {VERSIONS[-1]} cached in", fetch(refresh=a.refresh, progress=downloaded))
 
 
 def _link_arg(arg, gd):
@@ -194,6 +196,7 @@ def cmd_damage(a):
     gd = GameData()
     inventory = inv_mod.load(a.inventory) if a.inventory else None
     build = decode(link_hash(_link_arg(a.link, gd)), gd)
+    gd = gd.for_version(build.version)
     specials = None
     if a.special or a.armor_boost:
         specials = {"weapon": None, "armor": {}}
@@ -246,7 +249,7 @@ def _build_from(spec, equipment, tree_preset, gd, tome_ids=None):
     """A Build for a search result. `tome_ids`: the 14 tomes the search chose
     (tome_pool owned/any); otherwise the spec's own."""
     b = Build(equipment=equipment, level=spec["level"],
-              tomes=list(tome_ids) if tome_ids else _resolve_tomes(spec.get("tomes"), gd), version=LATEST)
+              tomes=list(tome_ids) if tome_ids else _resolve_tomes(spec.get("tomes"), gd), version=latest())
     if tree_preset:
         b.atree = _tree_for(b.level, b.weapon, tree_preset, gd)
     return b
@@ -1163,6 +1166,7 @@ def cmd_powders(a):
     doc = buildfile.read(a.build) if a.build.endswith(".json") else None
     from .codec import decode, link_hash
     b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
+    gd = gd.for_version(b.version)
     tier = a.tier
     explicit = a.write not in (None, "suggested")      # a scope named (all counts)
     scope = _powder_scope(a.write) if explicit else None
@@ -1249,6 +1253,7 @@ def cmd_aspects(a):
     doc = buildfile.read(a.build) if a.build.endswith(".json") else None
     from .codec import decode, link_hash
     b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
+    gd = gd.for_version(b.version)
     if b.weapon is None:
         raise SystemExit("aspects belong to a class: the build needs a weapon")
     cls = gd.weapon_class(b.weapon)
@@ -1579,6 +1584,7 @@ def cmd_compare(a):
     from .compare import compare
     gd = GameData()
     ba, bb = (decode(link_hash(_link_arg(x, gd)), gd) for x in (a.a, a.b))
+    gd = gd.for_version(ba.version)
     roll = "max" if a.perfect else "base"
     r = compare(ba, bb, gd, roll)
     na, nb = (Path(x).stem if x.endswith(".json") else "A" if i == 0 else "B"
@@ -1712,6 +1718,13 @@ def app_main():
         sys.stdout = sys.stdout or log
         sys.stderr = sys.stderr or log
     main(sys.argv[1:] or ["serve"])
+
+
+def _check_for_new_data():
+    """Pick up a game patch without a new release (at most twice a day)."""
+    for name in check_versions():
+        print(f"WynnBuilder has data for a new game version ({name}); using it from now on.",
+              file=sys.stderr)
 
 
 def main(argv=None):
@@ -1973,6 +1986,8 @@ def main(argv=None):
     s.add_argument("--builds", default="builds", help="folder of build files")
     s.set_defaults(fn=cmd_update)
     a = p.parse_args(argv)
+    if a.cmd not in ("fetch", "update", "config", "mod"):
+        _check_for_new_data()
     if a.cmd in NO_PROGRESS:
         sys.exit(a.fn(a) or 0)
     from .web import client

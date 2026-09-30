@@ -124,7 +124,7 @@ the sandbox, including the ones that talk to the web app.
 
 | Command | What it does |
 |---|---|
-| `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`. Refresh after a game patch. |
+| `wt fetch [--refresh]` | Download WynnBuilder data into `data/<version>/`, reading its current version list first. A new game version is also picked up on its own: `wt` checks at most twice a day, and at once when a link names a version it doesn't know. `--refresh` re-downloads the current version's files. |
 | `wt decode <link or build file>` / `wt verify ...` | Decode, total up and check. Exit 1 on any problem. |
 | `wt gear <spec.json> [--tree PRESET] --save builds/x.json` | Exact gear search (MILP over every usable item), optionally solve the tree, print a verified link, save a build file and open it in the app. `--shortlists [--confirm]` uses the older per-slot search (automatic with damage floors). |
 | `wt gear --edit builds/x.json [spec.json] [--change SLOTS \| --keep SLOTS] [--save-as builds/y.json \| --candidate NAME]` | Re-search an existing build in place: only the `--change` slots (or all but the `--keep` ones; locked slots always stay), with the given spec or the one the build was made with. Keeps its name, notes, tree, aspects and powders on unchanged items, and prints what changed. `--candidate` saves the result as a candidate instead. |
@@ -270,8 +270,12 @@ a test checks it.
 
 ## Maintenance
 
-- After a Wynncraft patch: `bin/wt-init --refresh`, then run the tests. Add the
-  new version name to `VERSIONS` in `wynntools/data.py` if the builder added one.
+- After a Wynncraft patch: `bin/wt-init --refresh`, then run the tests. The
+  tools read WynnBuilder's version list themselves (`data/versions.json`); add the
+  new name to `BUILTIN_VERSIONS` in `wynntools/data.py` too (the offline
+  fallback). The daily `patch watch` workflow fails until you do, and whenever
+  fresh data breaks a test. Set `WYNN_TOOLBOX_OFFLINE=1` to turn the automatic
+  checks off (the tests do).
 - Test suites: `uv run pytest` (fast, default), `-m differential` (compare with
   WynnBuilder's own JS), `-m ui` (drive the web app in headless Chromium; first
   run `uv run playwright install chromium`), `-m live` (open every session link

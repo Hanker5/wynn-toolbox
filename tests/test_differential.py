@@ -19,7 +19,8 @@ from wynntools import codec
 from wynntools.bits import BitWriter
 from wynntools.crafting import (ACCESSORY_TYPES, ARMOR_TYPES, WEAPON_TYPES, Craft,
                                 craft_item, encode_craft_hash)
-from wynntools.data import BASE_URL, CACHE_DIR, VERSIONS, load
+from wynntools.data import (BASE_URL, BUILTIN_VERSIONS, CACHE_DIR, VERSIONS, VERSIONS_URL,
+                             load, parse_versions)
 from wynntools.rules import SKILLS
 
 pytestmark = pytest.mark.differential
@@ -227,3 +228,12 @@ def test_skillpoints_match_wynnbuilder(gd, js_dir):
         assert r.total_assigned == j["total"], where
         assert r.final == j["final"], where
         assert r.set_counts == j["sets"], where
+
+
+def test_builtin_version_list_is_current():
+    """Fails after a game patch until BUILTIN_VERSIONS is updated. The app reads
+    WynnBuilder's list itself; this keeps its offline fallback current."""
+    with urllib.request.urlopen(VERSIONS_URL, timeout=60) as r:
+        names = parse_versions(r.read().decode("utf-8"))
+    assert names[:len(BUILTIN_VERSIONS)] == BUILTIN_VERSIONS, "WynnBuilder renumbered its versions"
+    assert names == BUILTIN_VERSIONS, f"new versions to add to BUILTIN_VERSIONS: {names[len(BUILTIN_VERSIONS):]}"
