@@ -1,4 +1,61 @@
-# Plan: next features (agreed 2026-09-21)
+# Plan: next features (agreed 2026-09-30)
+
+Worked in this order, one at a time. Each step ships with tests.
+
+## 1. Survive game patches without a release  (reliability)
+**Why.** The list of WynnBuilder versions was typed into `wynntools/data.py`. A
+link made after a patch carries a version number the toolbox doesn't know, so
+every import failed ("it isn't a WynnBuilder build link") until a new release
+was installed.
+
+**Work.** Read the version list from WynnBuilder's `js/load_item.js` (at
+`wt fetch`, at most twice a day otherwise, and at once when a link names an
+unknown version); keep the built-in list as the offline fallback. Say plainly
+when a link is newer than the data and can't be updated. A scheduled CI run
+refreshes the data, runs the fast and differential suites and flags a
+built-in list that has fallen behind.
+
+**Done when.** A link with the next version number decodes after the list
+grows, without a code change; offline, it gets a clear message; the
+scheduled workflow runs.
+
+## 2. Read links made with older data  (reach)
+**Why.** Links shared on Discord, forums and videos are often a patch or two
+old; anything but the latest version is refused.
+
+**Work.** Decode with that version's encoding constants (already stored per
+version) and resolve items with the current data (ids are stable; `remapID`
+redirects retired ones). Say which items changed since, if any. Legacy
+(pre-binary) links and custom items stay out of scope.
+
+**Done when.** Links from at least three older versions import, with the
+changed items reported; the session links keep verifying after a patch.
+
+## 3. Aspects in the search  (damage accuracy)
+**Why.** New builds carry empty aspects, and aspects change endgame damage a
+lot, so damage searches can rank gear for a build nobody will play.
+`wt aspects --recommend` ranks aspects for a finished build only.
+
+**Work.** Let the local search fill aspect slots (from owned aspects at their
+tier, or any), alongside gear, for damage-model goals; save them in the build.
+
+**Done when.** A damage search with owned aspects beats "search gear, then
+recommend aspects" on the session specs, or ties them.
+
+## 4. Local AI models, measured first  (audience)
+**Why.** A paid AI account is the main barrier for players. Weaker models are
+most likely to break rules 1 and 2 (numbers from `wt` only, verified links only).
+
+**Work.** First an evaluation: a set of player requests, checking each reply
+went through `wt verify` and quoted only numbers from `wt` output. Run it on
+the current assistants (it doubles as a regression test for the build skill),
+then on local models. Only then the setup-wizard and `wt config ai` choice.
+
+**Done when.** The evaluation runs; a local model is offered only if it passes.
+
+---
+
+# Earlier plan (agreed 2026-09-21) — all done
 
 Worked in this order. Each step ships with tests; anything ported from
 WynnBuilder is checked against WynnBuilder's own JavaScript with the QuickJS
@@ -77,4 +134,4 @@ helper and `wt craft`; flag ingredients with no known source.
   WynnBuilder's exact rules and cut until one passes. On 12 random specs it beat
   the shortlists 9 times (up to 6%) and tied 3; it ties every session spec.
   Damage floors stay on the shortlist search (too many near-ties to cut one by one).
-- Publish to GitHub (waiting on the personal-account login).
+- DONE: Publish to GitHub (`Hanker5/wynn-toolbox`).

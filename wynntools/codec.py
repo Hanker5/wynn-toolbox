@@ -1,7 +1,7 @@
 """Decode and encode WynnBuilder build links.
 
-Port of js/builder/build_encode_decode.js (binary format). Crafted and custom
-items, and legacy (pre-binary) links, are not supported yet.
+Port of js/builder/build_encode_decode.js (binary format). Custom items and
+legacy (pre-binary) links are not supported yet.
 """
 from dataclasses import dataclass, field
 
