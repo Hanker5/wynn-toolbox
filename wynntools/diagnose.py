@@ -6,15 +6,16 @@ Each finding is {"level", "code", "message"}:
          a link the toolbox can't read;
   warn   it works, but not the way the player may think: skill points set by
          hand for only some skills, items above the build's level, retired item
-         ids, items marked unavailable;
+         ids, items marked unavailable, what changed since an older link was made;
   info   limits of the numbers: crafted ranges, powder specials off, puppet
          damage models, untradable items.
 """
 import re
 
 from . import buildfile
-from .codec import SLOTS, decode, link_hash
-from .data import VERSIONS, UnknownVersion
+from .codec import SLOTS
+from .data import UnknownVersion
+from .upgrade import read_link
 from .verify import SKILL_NAMES
 
 SLOT_NAMES = {"ring1": "ring 1", "ring2": "ring 2"}
@@ -36,25 +37,30 @@ def diagnose_link(link, gd, inventory=None, name=None):
     def add(level, code, message):
         findings.append({"level": level, "code": code, "message": message})
     try:
-        b = decode(link_hash(link), gd)
+        b, upgraded = read_link(link, gd)
         gd = gd.for_version(b.version)
     except UnknownVersion as e:
         add("error", "new_version", f"The toolbox can't read this link yet: {e}.")
         return {"ok": False, "findings": findings, "doc": None}
     except NotImplementedError as e:
-        text = str(e)
-        if "only supported for the latest version" in text:
-            m = re.search(r"this link is for ([\d.]+)", text)
-            add("error", "old_version",
-                f"This link was made with WynnBuilder's data for {m.group(1) if m else 'an older version'}; "
-                f"the toolbox reads links made with the current data ({VERSIONS[-1]}) only.")
-        else:
-            add("error", "unreadable", f"The toolbox can't read this link: {text}.")
+        add("error", "unreadable", f"The toolbox can't read this link: {e}.")
         return {"ok": False, "findings": findings, "doc": None}
     except (KeyError, ValueError, IndexError) as e:
         why = str(e).strip(chr(34)) if not isinstance(e, IndexError) else "it isn't a WynnBuilder build link"
         add("error", "unreadable", f"The toolbox can't read this link: {why}.")
         return {"ok": False, "findings": findings, "doc": None}
+    except OSError:
+        add("error", "offline", "This link was made with an older version's data, which the toolbox "
+                                "couldn't download from WynnBuilder (offline?). Try again when online.")
+        return {"ok": False, "findings": findings, "doc": None}
+    if upgraded:
+        changed = bool(upgraded["notes"])
+        add("warn" if changed else "info", "old_version",
+            f"This link was made with WynnBuilder's data for {upgraded['from']}; the build is saved "
+            f"with today's ({upgraded['to']})" + (", and these changed since:" if changed
+                                                   else ". Nothing in it changed since."))
+        for n in upgraded["notes"]:
+            add("warn", "changed_since", n["message"][:1].upper() + n["message"][1:] + ".")
 
     doc = {"name": name or "", "notes": "", **buildfile.from_build(b, gd)}
     try:

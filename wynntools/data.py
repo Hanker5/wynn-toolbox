@@ -33,10 +33,14 @@ class UnknownVersion(NotImplementedError):
     """A link names a version newer than any the toolbox knows, and WynnBuilder's
     current list couldn't be read."""
 
-# Per-version files live under data/<version>/. Items and tomes for the latest
-# version come from WynnBuilder's "baseline" bundle instead.
+# Per-version files live under data/<version>/. Items, tomes and ingredients for
+# the latest version come from WynnBuilder's "baseline" bundle instead; for an
+# older one (a link made before a patch) from that version's own folder, as
+# WynnBuilder's `load_old_version` reads them.
 _VERSIONED = {"encoding": "encoding_consts.json", "atree": "atree.json",
               "majid": "majid.json", "aspects": "aspects.json"}
+_OLD = {"items": "items.json", "tomes": "tomes.json", "ingreds": "ingreds.json",
+        "recipes": "recipes.json"}
 _BASELINE = {"items": "data/baseline/compressed/compress.json",
              "tomes": "data/baseline/tomes.json",
              "ingreds": "data/baseline/compressed/ingreds_compress.json",
@@ -159,13 +163,9 @@ def ensure_version(version):
 
 
 def _url(kind, version):
-    if kind in _BASELINE:
-        if version != latest():
-            raise NotImplementedError(
-                f"{kind} data is only supported for the latest version ({VERSIONS[-1]}); "
-                f"this link is for {VERSIONS[version]}.")
+    if kind in _BASELINE and version == latest():
         return f"{BASE_URL}/{_BASELINE[kind]}"
-    return f"{BASE_URL}/data/{VERSIONS[version]}/{_VERSIONED[kind]}"
+    return f"{BASE_URL}/data/{VERSIONS[version]}/{(_OLD | _VERSIONED)[kind]}"
 
 
 def fetch(version=None, refresh=False, progress=None):
@@ -183,8 +183,7 @@ def fetch(version=None, refresh=False, progress=None):
     todo = [t for t in todo if refresh or not t[0].exists()]
     for done, (dest, url, timeout, optional) in enumerate(todo, 1):
         try:
-            with urllib.request.urlopen(url, timeout=timeout) as r:
-                dest.write_bytes(r.read())
+            dest.write_bytes(_download(url, timeout))
         except OSError:
             if not optional:      # icons are optional; the app falls back to plain slots
                 raise

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .codec import POWDERABLE, SLOTS, TOME_SLOTS, Build, powder_name, to_link, tome_kind
 from .data import VERSIONS, GameData, check_versions, fetch, latest, refresh_versions
+from .upgrade import summary_lines
 from . import buildfile
 from . import inventory as inv_mod
 from .gear_solver import upgrades
@@ -19,6 +20,8 @@ from .verify import check_link, wrong_tome_text
 def _print_report(ok, rep, gd):
     b, s = rep["build"], rep["summary"]
     t = s["totals"]
+    for line in summary_lines(rep.get("upgraded")):
+        print(line)
     print(f"Level {b.level} · data {VERSIONS[b.version]}")
     for i, (slot, name) in enumerate(zip(SLOTS, b.equipment)):
         pw = ""
@@ -58,6 +61,8 @@ def _print_report(ok, rep, gd):
         print(f"Set {st['name']} ({st['pieces']}/{st['of']}): {bonus or 'no bonus at this count'}")
     _print_skillpoints(s)
     print("Note: totals above are 100% rolls; real items roll 30-130%.")
+    if rep.get("upgraded"):
+        print(f"Today's link (use this one): {rep['link']}")
     print("VERIFIED OK" if ok else "PROBLEMS:\n  - " + "\n  - ".join(rep["problems"]))
 
 
@@ -159,6 +164,16 @@ def cmd_fetch(a):
     print(f"data {VERSIONS[-1]} cached in", fetch(refresh=a.refresh, progress=downloaded))
 
 
+def _read_link(arg, gd):
+    """(build, gd) for a link, hash or build file; a link from an older version is
+    brought to today's data, and what changed is printed."""
+    from .upgrade import read_link
+    b, info = read_link(_link_arg(arg, gd), gd)
+    for line in summary_lines(info):
+        print(line)
+    return b, gd.for_version(b.version)
+
+
 def _link_arg(arg, gd):
     """A link, a bare hash, or a path to a build file."""
     if arg.endswith(".json") and Path(arg).exists():
@@ -191,12 +206,10 @@ def cmd_decode(a):
 
 def cmd_damage(a):
     """WynnBuilder's spell/melee damage and effective HP for a link or build file."""
-    from .codec import decode, link_hash
     from .damage import summary
     gd = GameData()
     inventory = inv_mod.load(a.inventory) if a.inventory else None
-    build = decode(link_hash(_link_arg(a.link, gd)), gd)
-    gd = gd.for_version(build.version)
+    build, gd = _read_link(a.link, gd)
     specials = None
     if a.special or a.armor_boost:
         specials = {"weapon": None, "armor": {}}
@@ -1164,9 +1177,7 @@ def cmd_powders(a):
     gd = GameData()
     inventory = inv_mod.load(a.inventory)
     doc = buildfile.read(a.build) if a.build.endswith(".json") else None
-    from .codec import decode, link_hash
-    b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
-    gd = gd.for_version(b.version)
+    b, gd = (buildfile.to_build(doc, gd), gd) if doc else _read_link(a.build, gd)
     tier = a.tier
     explicit = a.write not in (None, "suggested")      # a scope named (all counts)
     scope = _powder_scope(a.write) if explicit else None
@@ -1251,9 +1262,7 @@ def cmd_aspects(a):
     gd = GameData()
     inventory = inv_mod.load(a.inventory)
     doc = buildfile.read(a.build) if a.build.endswith(".json") else None
-    from .codec import decode, link_hash
-    b = buildfile.to_build(doc, gd) if doc else decode(link_hash(a.build), gd)
-    gd = gd.for_version(b.version)
+    b, gd = (buildfile.to_build(doc, gd), gd) if doc else _read_link(a.build, gd)
     if b.weapon is None:
         raise SystemExit("aspects belong to a class: the build needs a weapon")
     cls = gd.weapon_class(b.weapon)
@@ -1580,11 +1589,9 @@ def cmd_craft(a):
 
 def cmd_compare(a):
     """Two builds (links or build files) side by side."""
-    from .codec import decode, link_hash
     from .compare import compare
     gd = GameData()
-    ba, bb = (decode(link_hash(_link_arg(x, gd)), gd) for x in (a.a, a.b))
-    gd = gd.for_version(ba.version)
+    (ba, gd), (bb, _) = (_read_link(x, gd) for x in (a.a, a.b))
     roll = "max" if a.perfect else "base"
     r = compare(ba, bb, gd, roll)
     na, nb = (Path(x).stem if x.endswith(".json") else "A" if i == 0 else "B"

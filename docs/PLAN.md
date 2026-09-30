@@ -19,7 +19,7 @@ built-in list that has fallen behind.
 grows, without a code change; offline, it gets a clear message; the
 scheduled workflow runs.
 
-## 2. Read links made with older data  (reach)
+## 2. Read links made with older data  (reach) — DONE
 **Why.** Links shared on Discord, forums and videos are often a patch or two
 old; anything but the latest version is refused.
 

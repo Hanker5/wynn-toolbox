@@ -237,3 +237,63 @@ def test_builtin_version_list_is_current():
         names = parse_versions(r.read().decode("utf-8"))
     assert names[:len(BUILTIN_VERSIONS)] == BUILTIN_VERSIONS, "WynnBuilder renumbered its versions"
     assert names == BUILTIN_VERSIONS, f"new versions to add to BUILTIN_VERSIONS: {names[len(BUILTIN_VERSIONS):]}"
+
+
+@pytest.mark.parametrize("version", ["2.0.1.1", "2.1.3.0", "2.2.0.0", "2.2.3.0"])
+def test_old_version_links_decode_like_wynnbuilder(js_dir, version):
+    """Links made with an older version's data (narrower item and tome ids, six
+    powder tiers before 2.2): WynnBuilder's decoder, given that version's
+    encoding constants and items, reads the same equipment, powders, tomes, skill
+    points and level as ours."""
+    from wynntools.codec import POWDERABLE, SLOTS, Build, decode, encode, powder_name
+    from wynntools.data import GameData
+    v = VERSIONS.index(version)
+    og = GameData(v)
+    rng = random.Random(v)
+    kinds = {s: s.rstrip("12") for s in SLOTS[:8]}
+    by_type = {}
+    for it in og.items:
+        by_type.setdefault(it["type"], []).append(og.name(it))
+    weapons = [n for t in ("wand", "bow", "dagger", "spear", "relik") for n in by_type.get(t, [])]
+    tiers = og.enc["POWDER_TIERS"]
+    links = []
+    for _ in range(60):
+        eq = [None if rng.random() < 0.2 else rng.choice(by_type[kinds[s]]) for s in SLOTS[:8]]
+        eq.append(rng.choice(weapons))
+        powders = [[rng.randrange(5) * 7 + rng.randrange(tiers) for _ in range(rng.randint(0, 4))]
+                   for _ in POWDERABLE]
+        tomes = [None if rng.random() < 0.5 else rng.choice(og.tomes)["id"] for _ in range(og.enc["TOME_NUM"])]
+        sp = None if rng.random() < 0.5 else [None if rng.random() < 0.4 else rng.randint(-20, 100)
+                                              for _ in range(5)]
+        if sp is not None and all(x is None for x in sp):
+            sp = None
+        level = og.enc["MAX_LEVEL"] if rng.random() < 0.3 else rng.randint(1, og.enc["MAX_LEVEL"] - 1)
+        b = Build(eq, level, powders, tomes, sp, None, set(), v)
+        links.append(encode(b, og))
+    items = [{"id": i["id"], "name": og.name(i)} for i in og.items]
+    redirects = [[i["id"], i["remapID"]] for i in load("items", v)["items"] if "remapID" in i]
+    tomes = [{"id": t["id"], "name": og.name(t)} for t in og.tomes]
+    program = f"""
+      if (!Array.prototype.at) Array.prototype.at = function (i) {{ return this[i < 0 ? this.length + i : i]; }};
+      DEC = {json.dumps(og.enc)}; ENC = DEC;
+      idMap = new Map({json.dumps(items)}.map((i) => [i.id, i.name]));
+      redirectMap = new Map({json.dumps(redirects)});
+      tomeIDMap = new Map({json.dumps(tomes)}.map((t) => [t.id, t.name]));
+      tomeRedirectMap = new Map();
+      JSON.stringify({json.dumps(links)}.map((h) => {{
+        const cur = new BitVectorCursor(new BitVector(h, h.length * 6), 0);
+        const version = decodeHeader(cur);
+        const [equipment, powders] = decodeEquipment(cur);
+        return {{version, equipment, powders, tomes: decodeTomes(cur), sp: decodeSp(cur),
+                 level: decodeLevel(cur)}};
+      }}))"""
+    js = run_js(js_dir, program)
+    names = {t["id"]: og.name(t) for t in og.tomes}
+    for h, j in zip(links, js):
+        b = decode(h)
+        assert j["version"] == v
+        assert j["equipment"] == [n or None for n in b.equipment], h
+        assert j["powders"] == ["".join(powder_name(p) for p in ps) for ps in b.powders], h
+        want = [names[t] if t is not None else None for t in b.tomes]
+        assert (j["tomes"] or [None] * len(want)) == want, h
+        assert j["sp"] == b.skillpoints and j["level"] == b.level, h

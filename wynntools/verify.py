@@ -3,7 +3,7 @@
 Each check here exists because the design session produced a wrong answer
 without it; see knowledge/mechanics.md "Mistakes the verifiers catch".
 """
-from .codec import SLOTS, TOME_SLOTS, decode, encode, link_hash, tome_kind
+from .codec import BASE_URL, SLOTS, TOME_SLOTS, encode, link_hash, tome_kind
 from .skillpoints import WYNN_ORDER, SPItem, apply_manual, calculate_skillpoints, set_bonus_stats
 from .rules import SKILLS, base_hp, legal_set_pieces, max_mana, poison_per_second, rolled, skill_points
 
@@ -248,15 +248,18 @@ def wrong_tome_text(tome, slot, gd):
 def check_link(link, gd=None, inventory=None, copies=None):
     """Run every check on a link. Returns (ok, report). `copies` (a build file's) says
     which copy of each owned item the build uses."""
+    from .upgrade import read_link
     h = link_hash(link)
-    build = decode(h, gd)
+    build, upgraded = read_link(h, gd)       # a link from an older version: today's build
     if copies:
         from .inventory import with_copies
         build.equipment = with_copies(build.equipment, copies)
     from .data import GameData
     gd = gd.for_version(build.version) if gd is not None else GameData(build.version)
-    report = {"build": build, "summary": summarize(build, gd, inventory=inventory), "problems": []}
-    if encode(build, gd) != h:
+    report = {"build": build, "summary": summarize(build, gd, inventory=inventory), "problems": [],
+              "upgraded": upgraded, "link": BASE_URL + encode(build, gd)}
+    old = upgraded["old_build"] if upgraded else build
+    if encode(old, GameData(old.version) if upgraded else gd) != h:
         report["problems"].append("link does not round-trip through the encoder")
     s = report["summary"]
     for slot, name in zip(("helmet", "chestplate", "leggings", "boots", "ring1", "ring2",

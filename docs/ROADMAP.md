@@ -26,7 +26,8 @@ Rough priority order. Want to take one? Say so in an issue first; see
    searches keep a build's aspects but don't choose them yet. Next in
    `docs/PLAN.md`.)
 7. **Custom items** in the link codec; legacy (pre-binary) links and legacy
-   crafted hashes; item data for older game versions.
+   crafted hashes. (Links made with older versions' data are done: read with
+   that data and brought to today's, `wynntools/upgrade.py`.)
 8. **Crafting**: consumables (potions, scrolls, food); powders as crafting
    ingredients in suggestions; crafted weapon DPS from the damage calculator.
 9. ~~**Ability tree view.**~~ Done: the web app draws WynnBuilder's tree layout.
