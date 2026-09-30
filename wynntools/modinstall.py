@@ -89,8 +89,8 @@ def install(minecraft_dir, builds_dir, jars=JARS):
     if not any(mods.glob("fabric-api*.jar")):
         warnings.append("Fabric API isn't in this mods folder: the mod needs it (and Fabric Loader), "
                         "from modrinth.com/mod/fabric-api for Minecraft 1.21.11")
-    if "/.var/app/" in str(folder):
-        app = str(folder).split("/.var/app/", 1)[1].split("/", 1)[0]
+    if "/.var/app/" in folder.as_posix():
+        app = folder.as_posix().split("/.var/app/", 1)[1].split("/", 1)[0]
         warnings.append(f"This launcher is a Flatpak: it can't see the app's builds folder until you allow it. "
                         f"Run: flatpak override --user --filesystem={builds}:ro {app} (then restart the launcher)")
     return {"jar": str(mods / jar.name), "removed": removed, "config": str(config_dir / CONFIG),

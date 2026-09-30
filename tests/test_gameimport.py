@@ -289,3 +289,18 @@ def test_an_export_without_a_character_goes_to_the_one_playing(gd):
     import_export(inv, gd, export("inventory"))                      # ME plays now
     import_export(inv, gd, {**real("aspects-p1.json"), "character": {"lore": []}})
     assert f"aspects:{ME}" in inv.places and "unknown" not in inv.characters
+
+
+def test_the_one_playing_is_found_when_the_clock_has_not_moved(gd, monkeypatch):
+    """Regression (Windows CI): Python 3.12's clock there ticks every ~15 ms, so both
+    exports above got the same "seen" stamp and the Aspects page went to the other one."""
+    import datetime
+    from wynntools import gameimport
+    frozen = datetime.datetime(2026, 9, 30, 12, 0, 0)
+    real_stamp = gameimport._seen_stamp
+    monkeypatch.setattr(gameimport, "_seen_stamp", lambda inv: real_stamp(inv, now=frozen))
+    inv = Inventory()
+    import_export(inv, gd, export("inventory", me="zzzz0000"))
+    import_export(inv, gd, export("inventory"))                      # ME plays now, same tick
+    import_export(inv, gd, {**real("aspects-p1.json"), "character": {"lore": []}})
+    assert f"aspects:{ME}" in inv.places and "aspects:zzzz0000" not in inv.places

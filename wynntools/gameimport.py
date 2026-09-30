@@ -273,6 +273,20 @@ def _last_character(inv):
     return max(known, key=lambda k: known[k].get("seen") or "") if known else "unknown"
 
 
+def _seen_stamp(inv, now=None):
+    """Now, as a "seen" stamp later than every one already given. Windows' clock (before
+    Python 3.13) ticks every ~15 ms, so two exports in a row could get the same stamp and
+    _last_character would pick the wrong one."""
+    now = now or datetime.datetime.now()
+    latest = max((c.get("seen") or "" for c in inv.characters.values()), default="")
+    try:
+        if latest and now <= datetime.datetime.fromisoformat(latest):
+            now = datetime.datetime.fromisoformat(latest) + datetime.timedelta(microseconds=1)
+    except ValueError:                                # not a stamp this code wrote
+        pass
+    return now.isoformat(timespec="microseconds")
+
+
 def import_export(inv, gd, body):
     """Import one export from the mod.
 
@@ -363,7 +377,7 @@ def import_export(inv, gd, body):
         warnings.append("this container isn't one of your ender chests; only your inventory was read")
 
     character = inv.characters.setdefault(cid, {"name": ""})
-    character["seen"] = datetime.datetime.now().isoformat(timespec="microseconds")   # orders who played last
+    character["seen"] = _seen_stamp(inv)                                              # orders who played last
     guess = _guess_class(gd, inventory)
     if guess:
         character["class"] = guess

@@ -62,7 +62,8 @@ def controls(tmp_path_factory):
     def run(slots):
         """[(name, lore)] -> [{"next", "previous", "switch", "unreadable", "clean"}] from the Java."""
         src, dst = out / "in.txt", out / "out.txt"
-        src.write_text("".join("\n".join([name, *lore]) + f"{SEP}\n" for name, lore in slots), encoding="utf-8")
+        # Bytes, not write_text: on Windows that writes \r\n and the harness splits on \n.
+        src.write_bytes("".join("\n".join([name, *lore]) + f"{SEP}\n" for name, lore in slots).encode("utf-8"))
         subprocess.run([java, "-cp", str(out), "Harness", str(src), str(dst)], check=True, capture_output=True)
         rows = []
         for line in dst.read_text(encoding="utf-8").splitlines():

@@ -1,5 +1,6 @@
 """Installing the chest-export mod into a Minecraft folder from the app."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -55,7 +56,7 @@ def test_candidates_finds_launcher_instances(tmp_path):
     game(tmp_path, ".minecraft", fabric=False)
     found = candidates(tmp_path)
     assert [(c["launcher"], c["fabric_api"]) for c in found] == [("Prism Launcher", True), ("Minecraft launcher", False)]
-    assert found[0]["path"].endswith("instances/Wynncraft/.minecraft")
+    assert Path(found[0]["path"]).parts[-3:] == ("instances", "Wynncraft", ".minecraft")
 
 
 def test_the_app_installs_it_and_remembers_the_folder(tmp_path):
