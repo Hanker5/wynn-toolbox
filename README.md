@@ -29,8 +29,9 @@ rules, and hand you a working WynnBuilder link.
 The installer sets up Python (through [uv](https://docs.astral.sh/uv/)),
 downloads WynnBuilder's data and adds a **WynnGPT** shortcut (Start menu
 and Desktop on Windows, apps menu or Desktop elsewhere) plus a `wynn-toolbox`
-command. WynnGPT checks GitHub for updates when it opens and asks whether
-to **Update now** or **Ignore** (it asks again when something newer appears;
+command. On Windows it also installs or updates PowerShell 7 (through winget)
+for the app's terminal. WynnGPT checks GitHub for updates when it opens and
+asks whether to **Update now** or **Ignore** (it asks again when something newer appears;
 "Check for updates" in the sidebar looks any time). You can also run the
 installer again. Either way your builds and settings are kept.
 
@@ -143,7 +144,8 @@ uv run wt serve --browser    # ...or in your browser, at http://127.0.0.1:8765
   candidates under it to compare, pick one and trash the rest.
 - **Compare builds** and **Inventory** pages: two builds side by side, and the
   items and tomes you own.
-- **Terminal panel**: a shell in the toolbox folder (PowerShell on Windows).
+- **Terminal panel**: a shell in the toolbox folder (on Windows, PowerShell 7,
+  or Windows PowerShell if 7 isn't installed).
   Your chosen AI assistant starts in it when the app opens; the setup wizard
   (the sidebar's AI button) installs or switches it. The shell keeps running if
   you reload. Starting the app a second time just reopens the running one.

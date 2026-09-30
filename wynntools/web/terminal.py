@@ -5,7 +5,8 @@ the panel) does not kill an AI CLI the player has logged into. Output is kept in
 a scrollback buffer and replayed when the page reattaches.
 
 POSIX uses the standard pty module; Windows uses ConPTY through pywinpty, with
-PowerShell as the shell.
+PowerShell 7 (pwsh) as the shell, or Windows PowerShell 5.1 where pwsh is
+missing. The installer installs or updates PowerShell 7 (install/install.ps1).
 """
 import asyncio
 import os
@@ -36,13 +37,11 @@ AI_CLIS = [
      "login": "The first time it starts, choose \u201cSign in with ChatGPT\u201d.",
      "first_run": "Once signed in, type /hooks and trust the WynnGPT hook. It tells Codex "
                   "which build you have open each time you send a message.",
-     # Windows installs via npm, not OpenAI's own install.ps1: that script can crash on
-     # Windows PowerShell 5.1 with "The property 'OSArchitecture' cannot be found on this
-     # object" (github.com/openai/codex#20782, open and unfixed as of 2026-09). npm is
-     # OpenAI's own documented alternative and sidesteps that script entirely; see
-     # _needs_node() below, which makes this platform's Codex need Node as a result.
+     # OpenAI's install.ps1 can crash on Windows PowerShell 5.1 with "The property
+     # 'OSArchitecture' cannot be found on this object" (github.com/openai/codex#20782).
+     # PowerShell 7 runs it fine; without it, install_command() uses npm instead.
      "install": {"posix": "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
-                 "windows": "npm install -g @openai/codex"},
+                 "windows": "irm https://chatgpt.com/codex/install.ps1 | iex"},
      "needs_node": False, "docs": "https://developers.openai.com/codex/cli"},
     {"key": "gemini", "cmd": "gemini", "label": "Gemini CLI", "vendor": "Google",
      "account": "Sign in with a Google account, or use a Gemini API key.",
@@ -54,6 +53,7 @@ AI_CLIS = [
                  "windows": "npm install -g @google/gemini-cli"},
      "needs_node": True, "docs": "https://github.com/google-gemini/gemini-cli"},
 ]
+CODEX_NPM_INSTALL = "npm install -g @openai/codex"
 NODE_DOCS = "https://nodejs.org/en/download"
 
 
@@ -64,8 +64,9 @@ def _extra_dirs():
     if WINDOWS:
         local = Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local")
         roaming = Path(os.environ.get("APPDATA") or home / "AppData" / "Roaming")
+        programs = Path(os.environ.get("ProgramFiles") or r"C:\Program Files")
         return [home / ".local" / "bin", local / "Programs" / "OpenAI" / "Codex" / "bin",
-                roaming / "npm", Path(os.environ.get("ProgramFiles") or r"C:\Program Files") / "nodejs"]
+                roaming / "npm", programs / "nodejs", programs / "PowerShell" / "7"]
     return [home / ".local" / "bin", home / ".claude" / "local", Path("/opt/homebrew/bin"),
             Path("/home/linuxbrew/.linuxbrew/bin"), Path("/usr/local/bin")]
 
@@ -92,6 +93,16 @@ def find_cli(cmd):
     return shutil.which(cmd, path=shell_path())
 
 
+def windows_shell():
+    """PowerShell 7 if it's installed, else the Windows PowerShell 5.1 that
+    every Windows has. Codex and the other AI CLIs work better in 7."""
+    return find_cli("pwsh") or shutil.which("powershell.exe") or "powershell.exe"
+
+
+def modern_powershell():
+    return WINDOWS and find_cli("pwsh") is not None
+
+
 def cli(key):
     return next((c for c in AI_CLIS if c["key"] == key), None)
 
@@ -111,6 +122,8 @@ def launch_command(key):
 
 def install_command(key):
     c = cli(key)
+    if c and key == "codex" and WINDOWS and not modern_powershell():
+        return CODEX_NPM_INSTALL          # see AI_CLIS: install.ps1 fails on 5.1
     return c and c["install"]["windows" if WINDOWS else "posix"]
 
 
@@ -123,12 +136,10 @@ def node_install_command():
 
 
 def _needs_node(c):
-    """Whether `c`'s install command on this platform needs Node.js. Usually just
-    c["needs_node"], but Codex's Windows install is npm-only (see AI_CLIS above)
-    while its POSIX one is a self-contained script, so that one depends on WINDOWS."""
-    if c["key"] == "codex":
-        return WINDOWS
-    return c["needs_node"]
+    """Whether `c`'s install command here needs Node.js. Usually just
+    c["needs_node"], but Codex falls back to npm on Windows without PowerShell 7
+    (see install_command)."""
+    return c["needs_node"] or install_command(c["key"]) == CODEX_NPM_INSTALL
 
 
 def available_clis():
@@ -240,7 +251,7 @@ class _WinPty:
 
     def start(self, cwd, env):
         from winpty import PtyProcess
-        shell = shutil.which("powershell.exe") or "powershell.exe"
+        shell = windows_shell()
         self.proc = PtyProcess.spawn([shell, "-NoLogo"], cwd=cwd, env=env, dimensions=(30, 100))
         loop = asyncio.get_running_loop()
         proc = self.proc

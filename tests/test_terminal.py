@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -198,21 +199,39 @@ def test_codex_keeps_its_conversation_in_terminal_scrollback(monkeypatch):
     assert terminal.launch_command("gemini") == "gemini"
 
 
-def test_codex_installs_via_npm_on_windows_only(monkeypatch):
-    """Regression: OpenAI's own install.ps1 can crash on Windows PowerShell 5.1 with
+def _codex(terminal):
+    return next(c for c in terminal.available_clis()["clis"] if c["key"] == "codex")
+
+
+def test_codex_install_follows_the_windows_shell(monkeypatch):
+    """Regression: OpenAI's install.ps1 can crash on Windows PowerShell 5.1 with
     "The property 'OSArchitecture' cannot be found on this object" (openai/codex#20782).
-    Windows installs Codex through npm instead, which needs Node; POSIX's installer is
-    self-contained and unaffected, so it shouldn't need Node."""
+    With PowerShell 7 the terminal runs it; without, Codex installs through npm (needs
+    Node). POSIX's installer is self-contained and never needs Node."""
     from wynntools.web import terminal
     monkeypatch.setattr(terminal, "WINDOWS", True)
-    info = terminal.available_clis()
-    codex = next(c for c in info["clis"] if c["key"] == "codex")
+    have = {"pwsh": r"C:\Program Files\PowerShell\7\pwsh.exe"}
+    monkeypatch.setattr(terminal, "find_cli", have.get)
+    assert terminal.windows_shell() == have["pwsh"]
+    codex = _codex(terminal)
+    assert codex["install"].endswith("codex/install.ps1 | iex") and codex["needs_node"] is False
+
+    have.clear()                                   # Windows PowerShell 5.1 only
+    assert terminal.windows_shell().lower().endswith("powershell.exe")
+    codex = _codex(terminal)
     assert codex["install"] == "npm install -g @openai/codex" and codex["needs_node"] is True
 
     monkeypatch.setattr(terminal, "WINDOWS", False)
-    info = terminal.available_clis()
-    codex = next(c for c in info["clis"] if c["key"] == "codex")
+    codex = _codex(terminal)
     assert "install.sh" in codex["install"] and codex["needs_node"] is False
+
+
+def test_windows_path_finds_powershell_7_installed_later(monkeypatch):
+    """The installer may put pwsh in Program Files after the app started."""
+    from wynntools.web import terminal
+    monkeypatch.setattr(terminal, "WINDOWS", True)
+    monkeypatch.setenv("ProgramFiles", r"C:\Program Files")
+    assert str(Path(r"C:\Program Files") / "PowerShell" / "7") in terminal.shell_path()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows ConPTY backend")

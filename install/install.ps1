@@ -39,6 +39,36 @@
     }
     if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { throw 'uv did not install; see https://docs.astral.sh/uv/' }
 
+    # ------------------------------------------------------------ PowerShell 7
+    # The app's terminal runs PowerShell 7 (pwsh) when it's there: AI CLIs, Codex
+    # above all, work better in it than in the Windows PowerShell 5.1 that comes
+    # with Windows. Install it, or update one older than $MinPwsh. Not fatal: the
+    # terminal falls back to Windows PowerShell.
+    $MinPwsh = [version]'7.4'
+    $env:Path = "$env:Path;$(Join-Path $env:ProgramFiles 'PowerShell\7')"
+    function PwshVersion {
+        if (-not (Get-Command pwsh -ErrorAction SilentlyContinue)) { return $null }
+        try {
+            $v = (& pwsh -NoLogo -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' | Out-String).Trim()
+            return [version]($v -replace '-.*$', '')
+        } catch { return [version]'0.0' }
+    }
+    $pwshVersion = PwshVersion
+    if (-not $pwshVersion -or $pwshVersion -lt $MinPwsh) {
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            if ($pwshVersion) { $verb = 'upgrade'; $what = "Updating PowerShell $pwshVersion" }
+            else { $verb = 'install'; $what = 'Installing PowerShell 7' }
+            Say "$what for the app's terminal (Windows may ask for permission)..."
+            winget $verb --id Microsoft.PowerShell --exact --source winget --silent `
+                --accept-package-agreements --accept-source-agreements
+            $pwshVersion = PwshVersion
+        }
+        if (-not $pwshVersion -or $pwshVersion -lt $MinPwsh) {
+            Write-Warning ("Couldn't install PowerShell $MinPwsh or newer; the terminal will use Windows PowerShell. " +
+                           'Get it from https://aka.ms/powershell and run this installer again.')
+        }
+    }
+
     # ------------------------------------------------------------ the app
     if ((Test-Path $Dir) -and (Get-ChildItem $Dir -Force | Select-Object -First 1) -and
         -not (Test-Path (Join-Path $Dir $Marker))) {
