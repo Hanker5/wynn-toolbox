@@ -54,3 +54,13 @@ def test_ingredient_sources_merge_mobs_and_spots(gd):
     assert "no mob listed" in source_line({"droppedBy": []})
     assert source_line(cd.ing_by_name["Stolen Pearls"]).startswith("Tribal Exile (1488, -1513), Rymek Citizen (1265, -1280) +8 spots")
     assert "powder" in source_line(cd.ing_by_name["Fire Powder VI"]).lower()
+
+
+def test_describe_craft_links_to_the_crafter(gd):
+    """Regression: CRAFTER_URL was deleted with an unrelated change, and every
+    `wt craft` suggestion crashed with NameError while being printed."""
+    from wynntools.cli import CRAFTER_URL, describe_craft
+    cd = gd.crafts
+    it = craft_item(Craft("Ring-103-105", ["Filched Purse"] + EMPTY[1:]), cd)
+    text = "\n".join(describe_craft(it, cd))
+    assert CRAFTER_URL + it["name"][3:] in text

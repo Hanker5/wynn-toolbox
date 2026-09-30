@@ -1540,6 +1540,9 @@ def cmd_mod(a):
     return 0
 
 
+CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
+
+
 def describe_craft(it, cd=None):
     """Human-readable lines for a crafted item."""
     from .verify import stat
