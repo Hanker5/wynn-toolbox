@@ -249,6 +249,15 @@ def ungrounded_numbers(reply, sources):
     return out
 
 
+ASKS = re.compile(r"\?|\b(tell me|let me know|which (one|do you|would you|you want)|pick one|choose one|"
+                  r"say which|your call)\b", re.I)
+
+
+def asks(reply):
+    """Whether a reply asks the player something (a question, or "tell me which")."""
+    return bool(ASKS.search(reply or ""))
+
+
 def route(case, request, before, after, reply, commands):
     """("pass" | "asked" | "wrong", why)."""
     open_file = case.get("open")
@@ -270,7 +279,7 @@ def route(case, request, before, after, reply, commands):
             "import": any(h in c["command"] for c in commands for h in given)}[expect]
     if done:
         return "pass", ""
-    if "?" in (reply or ""):               # nothing changed, and it asked the player something
+    if asks(reply):                        # nothing changed, and it asked the player something
         return "asked", "asked a question instead"
     return "wrong", f"didn't {expect} (no matching change)"
 

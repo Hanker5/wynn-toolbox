@@ -54,6 +54,8 @@ def test_numbers_must_come_from_wt_output():
     ("create", {"a.json": "1"}, {"a.json": "9", "b.json": "2"}, "Done", "wrong"),     # touched the open one
     ("create", {"a.json": "1"}, {"a.json": "1"}, "Which class?", "asked"),
     ("create", {"a.json": "1"}, {"a.json": "1"}, "1. Level? 2. Plague?\nSay \"use the defaults\".", "asked"),
+    ("edit", {"a.json": "1"}, {"a.json": "1"}, "Three helmets compared. Tell me which one you want.", "asked"),
+    ("edit", {"a.json": "1"}, {"a.json": "1"}, "Your build is already tanky.", "wrong"),
     ("edit", {"a.json": "1"}, {"a.json": "2"}, "Done", "pass"),
     ("edit", {"a.json": "1"}, {"a.json": "1", "b.json": "2"}, "Done", "wrong"),       # a new build instead
     ("edit", {"a.json": "1"}, {"a.json": "1", "a--tank.json": "2"}, "Pick one", "pass"),  # candidates to choose from
