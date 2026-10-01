@@ -263,7 +263,10 @@ def route(case, request, before, after, reply, commands):
     if expect == "edit" and new_top and not changed_open:
         return "wrong", f"made {', '.join(new_top)} instead of changing {open_file}"
     given = [x.split("#")[1] for x in LINK.findall(request)]
-    done = {"create": bool(new_top), "edit": changed_open, "variant": bool(new), "answer": True,
+    # Candidates of the open build (x--y.json) are how the app proposes changes to it
+    # (Improve/Fix, trade-offs): an edit the player then chooses from.
+    proposed = bool(open_file) and any(f.startswith(Path(open_file).stem + "--") for f in new)
+    done = {"create": bool(new_top), "edit": changed_open or proposed, "variant": bool(new), "answer": True,
             "import": any(h in c["command"] for c in commands for h in given)}[expect]
     if done:
         return "pass", ""
@@ -334,8 +337,10 @@ def regrade(out_dir):
         r["ungrounded"] = ungrounded_numbers(run["reply"], [c["output"] for c in run["commands"]]
                                              + [request] + instructions(REPO))
         r["checks"]["numbers_grounded"] = not r["ungrounded"]
-        if r["route"] == "wrong" and r["why"].startswith("didn't") and "?" in (run["reply"] or ""):
-            r["route"], r["why"] = "asked", "asked a question instead"
+        if r["route"] == "wrong" and r["why"].startswith("didn't"):   # nothing forbidden changed
+            before = {f: "" for f in case.get("builds") or {}}
+            after = {**before, **{f: "new" for f in r.get("new_files") or []}}
+            r["route"], r["why"] = route(case, request, before, after, run["reply"], run["commands"])
         r["checks"]["route"] = r["route"] == "pass" or (r["route"] == "asked" and not case.get("finish"))
         r["pass"] = all(r["checks"].values())
     summary["passed"] = sum(r["pass"] for r in summary["cases"])
