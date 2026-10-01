@@ -235,16 +235,33 @@ def _plain(text):
     return (text or "").replace(",", "")
 
 
+def _rounds_to(n, values):
+    """Whether `n` is some value rounded: 20,700 from 20,721, 12.5 from 12.53."""
+    if "." in n:
+        places = len(n.split(".")[1])
+        return any(round(v, places) == float(n) for v in values)
+    zeros = len(n) - len(n.rstrip("0"))
+    if not 1 <= zeros <= 3 or len(n) - zeros < 2:          # 20,700 yes; 100 or 20,000,000 no
+        return False
+    return any(round(v, -zeros) == int(n) and v >= 10 ** (len(n) - 1) for v in values)
+
+
 def ungrounded_numbers(reply, sources):
-    """Numbers in the reply (100 and up, or with decimals) found in no source text.
-    Links and `code` are left out: file names and commands aren't build numbers."""
+    """Numbers in the reply (100 and up, or with decimals) found in no source text,
+    as written or rounded. Links and `code` are left out: file names and commands
+    aren't build numbers."""
     text = LINK.sub(" ", reply or "")
     text = re.sub(r"`[^`]*`", " ", text)
     haystack = _plain("\n".join(sources))
+    values = None
     out = []
     for m in NUMBER.finditer(text):
         n = _plain(m.group(1))
-        if (float(n) >= 100 or "." in n) and n not in haystack and n not in out:
+        if not (float(n) >= 100 or "." in n) or n in haystack or n in out:
+            continue
+        if values is None:
+            values = [float(_plain(x)) for x in NUMBER.findall(haystack)]
+        if not _rounds_to(n, values):
             out.append(n)
     return out
 

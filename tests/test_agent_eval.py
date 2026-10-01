@@ -47,6 +47,9 @@ def test_numbers_must_come_from_wt_output():
              f"Level 105, saved as `builds/x2000.json`: {LINK} costs 999,999 emeralds.")
     assert ev.ungrounded_numbers(reply, sources) == ["13.7", "999999"]
     assert ev.ungrounded_numbers("At least 15,000 health.", ["the request: 15,000 health"]) == []
+    # rounded from an output number is fine; a number no output rounds to isn't
+    assert ev.ungrounded_numbers("about 20,700 EHP, spell 12.5%", ["EHP 20,721 · spell 12.53"]) == []
+    assert ev.ungrounded_numbers("about 20,900 EHP", ["EHP 20,721"]) == ["20900"]
 
 
 @pytest.mark.parametrize("expect,before,after,reply,want", [
