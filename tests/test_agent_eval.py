@@ -53,6 +53,7 @@ def test_numbers_must_come_from_wt_output():
     ("create", {"a.json": "1"}, {"a.json": "1", "b.json": "2"}, "Done", "pass"),
     ("create", {"a.json": "1"}, {"a.json": "9", "b.json": "2"}, "Done", "wrong"),     # touched the open one
     ("create", {"a.json": "1"}, {"a.json": "1"}, "Which class?", "asked"),
+    ("create", {"a.json": "1"}, {"a.json": "1"}, "1. Level? 2. Plague?\nSay \"use the defaults\".", "asked"),
     ("edit", {"a.json": "1"}, {"a.json": "2"}, "Done", "pass"),
     ("edit", {"a.json": "1"}, {"a.json": "1", "b.json": "2"}, "Done", "wrong"),       # a new build instead
     ("edit", {"a.json": "1"}, {"a.json": "1", "a--tank.json": "2"}, "Done", "wrong"),  # no change made
@@ -105,3 +106,17 @@ def test_scratch_copy_runs_this_wt_on_its_own_builds(tmp_path, links):
     assert "builds/storm.json" in note and "open in the build editor" in note
     assert "Stormdrain" in out.stdout
     assert list(ev.snapshot(ws)) == ["storm.json"]
+
+
+def test_regrade_applies_new_rules_to_a_finished_run(tmp_path):
+    reply = "Which level? Up to 121. Say \"use the defaults\"."
+    (tmp_path / "new-poison-mage.jsonl").write_text(
+        json.dumps({"type": "item.completed", "item": {"type": "agent_message", "text": reply}}))
+    checks = {"finished": True, "route": False, "links_verified": True, "links_saved": True,
+              "numbers_grounded": False}
+    (tmp_path / "summary.json").write_text(json.dumps({
+        "agent": "codex", "passed": 0, "total": 1, "checks": dict.fromkeys(checks, 0),
+        "cases": [{"id": "new-poison-mage", "pass": False, "checks": checks, "route": "wrong",
+                   "why": "didn't create (no matching change)", "ungrounded": ["121"]}]}))
+    s = ev.regrade(tmp_path)
+    assert s["passed"] == 1 and s["cases"][0]["route"] == "asked" and s["cases"][0]["ungrounded"] == []

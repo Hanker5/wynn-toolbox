@@ -142,8 +142,10 @@ def snapshot(ws):
 # ------------------------------------------------------------ agents
 def agent_command(agent, ws, prompt, context=None):
     if agent == "claude":
+        # What a player would approve in the app: wt, and spec files in a scratch folder.
         return ["claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
-                "--permission-mode", "acceptEdits"]
+                "--permission-mode", "acceptEdits", "--add-dir", tempfile.gettempdir(),
+                "--allowedTools", "Bash(wt *)", "Bash(uv run wt *)", "Bash(mkdir *)", "Read", "Write", "Edit"]
     if agent == "codex" or agent.startswith("codex-oss:"):
         cmd = ["codex", "exec", "--json", "-s", "workspace-write", "--skip-git-repo-check", "--ephemeral",
                "-C", str(ws), "-c", "shell_environment_policy.inherit=all"]
@@ -265,9 +267,21 @@ def route(case, request, before, after, reply, commands):
             "import": any(h in c["command"] for c in commands for h in given)}[expect]
     if done:
         return "pass", ""
-    if (reply or "").rstrip().endswith("?"):
+    if "?" in (reply or ""):               # nothing changed, and it asked the player something
         return "asked", "asked a question instead"
     return "wrong", f"didn't {expect} (no matching change)"
+
+
+def instructions(ws):
+    """The agent's instruction and knowledge files: facts from these (the level cap,
+    a preset's example minimums) aren't numbers the agent made up."""
+    out = []
+    for rel in ("AGENTS.md", ".agents/skills/build/SKILL.md", "knowledge/goals.md", "knowledge/mechanics.md"):
+        try:
+            out.append((Path(ws) / rel).read_text(encoding="utf-8"))
+        except OSError:
+            pass
+    return out
 
 
 def grade(case, prompt, before, after, ws, run):
@@ -282,7 +296,7 @@ def grade(case, prompt, before, after, ws, run):
     links = LINK.findall(run["reply"])
     unverified = [x for x in links if not any(x.split("#")[1] in o for o in verified)]
     unsaved = [x for x in links if x.split("#")[1] not in saved]
-    numbers = ungrounded_numbers(run["reply"], outputs + [prompt])
+    numbers = ungrounded_numbers(run["reply"], outputs + [prompt] + instructions(ws))
     how, why = route(case, prompt, before, after, run["reply"], run["commands"])
     checks = {
         "finished": run["finished"] and not run["errors"] and bool(run["reply"].strip()),
@@ -303,6 +317,34 @@ def expand(prompt, links):
                   prompt)
 
 
+def regrade(out_dir):
+    """Grade a finished run again from its transcripts, after the checks changed:
+    the question rule and the number check. (The link checks need the scratch
+    copy's build files, gone after the run: they stay as they were.)"""
+    out_dir = Path(out_dir)
+    summary = json.loads((out_dir / "summary.json").read_text())
+    links = {k: v for k, v in json.loads((REPO / "tests/fixtures/links.json").read_text()).items()
+             if not k.startswith("_")}
+    cases = {c["id"]: c for c in json.loads(CASES.read_text())["cases"]}
+    parse = parse_claude if summary["agent"] == "claude" else parse_codex
+    for r in summary["cases"]:
+        case = cases[r["id"]]
+        run = parse((out_dir / f"{r['id']}.jsonl").read_text().splitlines())
+        request = expand(case["prompt"], links)
+        r["ungrounded"] = ungrounded_numbers(run["reply"], [c["output"] for c in run["commands"]]
+                                             + [request] + instructions(REPO))
+        r["checks"]["numbers_grounded"] = not r["ungrounded"]
+        if r["route"] == "wrong" and r["why"].startswith("didn't") and "?" in (run["reply"] or ""):
+            r["route"], r["why"] = "asked", "asked a question instead"
+        r["checks"]["route"] = r["route"] == "pass" or (r["route"] == "asked" and not case.get("finish"))
+        r["pass"] = all(r["checks"].values())
+    summary["passed"] = sum(r["pass"] for r in summary["cases"])
+    summary["checks"] = {k: sum(r["checks"][k] for r in summary["cases"]) for k in summary["checks"]}
+    summary["regraded"] = time.strftime("%Y%m%d-%H%M%S")
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=1))
+    return summary
+
+
 def write_summary(out_dir, a, stamp, results):
     summary = {"agent": a.agent, "context": a.context, "when": stamp, "cases": results,
                "passed": sum(r["pass"] for r in results), "total": len(results),
@@ -313,13 +355,22 @@ def write_summary(out_dir, a, stamp, results):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    p.add_argument("--agent", required=True,
+    p.add_argument("--regrade", metavar="RESULTS_DIR", help="grade a finished run again, then exit")
+    p.add_argument("--agent",
                    help="claude, codex, codex-oss:<ollama model> or wt-agent:<ollama model>")
     p.add_argument("--cases", help="comma-separated case ids (default: all)")
     p.add_argument("--timeout", type=int, default=1200, help="seconds per case")
     p.add_argument("--context", type=int, help="local models: the context window, in tokens")
     p.add_argument("--keep", action="store_true", help="keep the scratch copies")
     a = p.parse_args(argv)
+    if a.regrade:
+        s = regrade(a.regrade)
+        print(f"{s['agent']}: {s['passed']}/{len(s['cases'])} cases passed (regraded)")
+        for k, v in s["checks"].items():
+            print(f"  {k:<17}{v}/{len(s['cases'])}")
+        return 0
+    if not a.agent:
+        p.error("--agent is required")
     links = {k: v for k, v in json.loads((REPO / "tests/fixtures/links.json").read_text()).items()
              if not k.startswith("_")}
     cases = json.loads(CASES.read_text())["cases"]
