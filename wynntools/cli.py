@@ -730,9 +730,10 @@ def _hook_context(v):
     path = BUILDS / v["file"]
     doc = v.get("doc") if v.get("dirty") and v.get("doc") else (buildfile.read(path) if path.exists() else {})
     name = doc.get("name") or path.stem
-    first = (f"[WynnGPT] The player has {path} (\"{name}\", level {doc.get('level')}) open in the build editor"
+    shown = path.as_posix()                       # builds/x.json on Windows too, as the docs write it
+    first = (f"[WynnGPT] The player has {shown} (\"{name}\", level {doc.get('level')}) open in the build editor"
              if v.get("view") == "editor" else
-             f"[WynnGPT] The player is on {where}; the last build they opened is {path} (\"{name}\")")
+             f"[WynnGPT] The player is on {where}; the last build they opened is {shown} (\"{name}\")")
     if v.get("dirty"):
         first += ", with UNSAVED edits (ask them to Save before you change the file)"
     others = _recent_builds(skip=v["file"])
@@ -767,7 +768,7 @@ def cmd_current(a):
         print("The web app is running, but no page has opened it yet.")
         return 1
     if a.json:
-        print(json.dumps({**v, "path": str(BUILDS / v["file"]) if v.get("file") else None}, indent=2))
+        print(json.dumps({**v, "path": (BUILDS / v["file"]).as_posix() if v.get("file") else None}, indent=2))
         return 0
     where = VIEW_NAMES.get(v["view"], v["view"])
     if not v.get("file"):
@@ -775,9 +776,9 @@ def cmd_current(a):
         return 0
     path = BUILDS / v["file"]
     if v["view"] == "editor":
-        print(f"The player is looking at {path}")
+        print(f"The player is looking at {path.as_posix()}")
     else:
-        print(f"The player is on {where}. The last build they opened is {path}")
+        print(f"The player is on {where}. The last build they opened is {path.as_posix()}")
     if not path.exists():
         print("(that file no longer exists)")
         return 1

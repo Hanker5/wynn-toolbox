@@ -122,7 +122,7 @@ class Tools:
         safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in str(name))[:60] or "spec"
         path = self.scratch / f"{safe}.json"
         path.write_text(json.dumps(data, indent=1), encoding="utf-8")
-        return str(path.relative_to(self.root))
+        return path.relative_to(self.root).as_posix()
 
     def call(self, name, args):
         if not isinstance(args, dict):
