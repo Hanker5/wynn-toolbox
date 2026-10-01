@@ -166,7 +166,9 @@ def parse_codex(lines):
             e = json.loads(line)
         except ValueError:
             continue
-        item = e.get("item") or {}
+        if not isinstance(e, dict):
+            continue
+        item = e.get("item") if isinstance(e.get("item"), dict) else {}
         if e.get("type") == "item.completed":
             if item.get("type") == "command_execution":
                 commands.append({"command": item.get("command", ""), "output": item.get("aggregated_output", ""),
@@ -187,15 +189,18 @@ def parse_claude(lines):
             e = json.loads(line)
         except ValueError:
             continue
-        content = (e.get("message") or {}).get("content")
+        if not isinstance(e, dict):
+            continue
+        msg = e.get("message")
+        content = msg.get("content") if isinstance(msg, dict) else None
         if e.get("type") == "assistant" and isinstance(content, list):
             for c in content:
-                if c.get("type") == "tool_use":
+                if isinstance(c, dict) and c.get("type") == "tool_use":
                     inp = c.get("input") or {}
                     uses[c["id"]] = inp.get("command") or f"{c.get('name')} {json.dumps(inp)[:200]}"
         elif e.get("type") == "user" and isinstance(content, list):
             for c in content:
-                if c.get("type") == "tool_result":
+                if isinstance(c, dict) and c.get("type") == "tool_result":
                     body = c.get("content")
                     if isinstance(body, list):
                         body = "\n".join(x.get("text", "") for x in body if isinstance(x, dict))

@@ -32,8 +32,10 @@ def test_claude_stream_becomes_commands_and_a_reply():
             {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "wt verify x"}}]}},
         {"type": "user", "message": {"content": [
             {"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "VERIFIED OK"}]}]}},
+        {"type": "system", "message": "a plain-text status line"},
+        {"type": "user", "message": {"content": "a plain-text prompt"}},
         {"type": "result", "result": "Done.", "is_error": False},
-    ]]
+    ]] + ['"just a string"']
     r = ev.parse_claude(lines)
     assert r["commands"] == [{"command": "wt verify x", "output": "VERIFIED OK", "exit": None}]
     assert r["reply"] == "Done." and not r["errors"]
