@@ -397,3 +397,15 @@ def test_search_progress_feeds_the_bar(builds):
     with client.ToolProgress(builds, "Searching for gear") as tp:
         ProgressBar(stream=io.StringIO())({"fraction": 0.37, "nodes": 38000, "best": 44.77, "elapsed": 3})
         assert (tp.state["fraction"], tp.state["detail"]) == (0.37, "38,000 checked · best 44.77")
+
+
+def test_missing_or_broken_spec_is_explained(tmp_path, capsys):
+    """Regression: `wt gear` with a spec path that didn't exist (a local model's
+    typo, found by evals/agent_eval.py) crashed with a FileNotFoundError traceback."""
+    from wynntools import cli
+    with pytest.raises(SystemExit, match="no spec file .*missing.json: write the spec's JSON"):
+        cli.main(["gear", str(tmp_path / "missing.json"), "--quiet"])
+    bad = tmp_path / "bad.json"
+    bad.write_text("{nope")
+    with pytest.raises(SystemExit, match="can't read the spec"):
+        cli.main(["spec-check", str(bad)])

@@ -315,7 +315,7 @@ def _edit_spec(a, doc, gd):
     one the build was made with. Class, level and tomes default to the build's, and
     the slots the player keeps are forced to the build's items."""
     if a.spec:
-        raw = json.load(open(a.spec, encoding="utf-8"))
+        raw = _read_spec(a.spec)
     elif doc.get("spec"):
         raw = dict(doc["spec"])
     else:
@@ -478,7 +478,7 @@ def cmd_gear(a):
     elif not a.spec:
         raise SystemExit("give a spec file, or --edit builds/<name>.json to re-search a build")
     else:
-        raw = json.load(open(a.spec, encoding="utf-8"))
+        raw = _read_spec(a.spec)
     if a.parent and not Path(a.parent).exists():
         raise SystemExit(f"no build {a.parent} to add a candidate to")
     if a.save and Path(a.save).exists() and not a.force:
@@ -833,7 +833,7 @@ def cmd_spec_check(a):
     """Catch spec mistakes before a long search."""
     from .agent_aids import check_spec
     gd = GameData()
-    raw = json.load(open(a.spec, encoding="utf-8"))
+    raw = _read_spec(a.spec)
     errors, warnings = check_spec(raw, gd, a.tree, inv_mod.load(a.inventory))
     for e in errors:
         print(f"ERROR: {e}")
@@ -1077,7 +1077,7 @@ def cmd_tradeoffs(a):
     from .tradeoffs import tradeoffs
     gd = GameData()
     inventory = inv_mod.load(a.inventory)
-    raw = json.load(open(a.spec, encoding="utf-8"))
+    raw = _read_spec(a.spec)
     raw = {**raw, "objective": raw.get("objective") or {a.damage: 1}}
     spec = _spec_from(raw, gd, inventory)
     spec.objective = {a.damage: 1}
@@ -1371,7 +1371,7 @@ def cmd_aspects(a):
 def cmd_upgrades(a):
     gd = GameData()
     inv = inv_mod.load(a.inventory)
-    spec = _spec_from(json.load(open(a.spec, encoding="utf-8")), gd, inv)
+    spec = _spec_from(_read_spec(a.spec), gd, inv)
     _search_tree(spec, a.tree, gd)
     if spec.derived_objective():
         raise SystemExit("`wt upgrades` ranks by item-stat goals; for a derived goal compare "
@@ -1754,6 +1754,17 @@ def app_main():
         sys.stdout = sys.stdout or log
         sys.stderr = sys.stderr or log
     main(sys.argv[1:] or ["serve"])
+
+
+def _read_spec(path):
+    """A spec file's JSON, or a message saying what's wrong with it."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        raise SystemExit(f"no spec file {path}: write the spec's JSON to a file first, then pass its path")
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"can't read the spec {path}: {e}")
 
 
 def _check_for_new_data():
