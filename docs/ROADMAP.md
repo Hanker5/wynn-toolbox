@@ -38,4 +38,7 @@ Rough priority order. Want to take one? Say so in an issue first; see
    account. Needs an agent that can run `wt` commands with a local model, the
    build skill and prompt hook wired up for it, and testing that a local model
    follows the rules in `AGENTS.md` (verified links, no numbers from its head)
-   well enough to recommend.
+   well enough to recommend. Measured 2026-10-01 and shelved: an 8B model on
+   an 8 GB GPU passed 1 of 6 requests (Claude and Codex pass 8/8); see
+   `docs/PLAN.md` item 4. `evals/agent_eval.py` and `wt agent` are there to
+   try a stronger model.

@@ -42,7 +42,7 @@ tier, or any), alongside gear, for damage-model goals; save them in the build.
 **Done when.** A damage search with owned aspects beats "search gear, then
 recommend aspects" on the session specs, or ties them.
 
-## 4. Local AI models, measured first  (audience)
+## 4. Local AI models, measured first  (audience) — SHELVED
 **Why.** A paid AI account is the main barrier for players. Weaker models are
 most likely to break rules 1 and 2 (numbers from `wt` only, verified links only).
 
@@ -52,6 +52,23 @@ the current assistants (it doubles as a regression test for the build skill),
 then on local models. Only then the setup-wizard and `wt config ai` choice.
 
 **Done when.** The evaluation runs; a local model is offered only if it passes.
+
+**Status (2026-10-01): evaluation done; local models shelved.** The evaluation
+(`evals/agent_eval.py`, 8 requests in `evals/cases.json`) passes Claude 8/8 and
+Codex 8/8. On an RTX 4060 laptop (8 GB VRAM, 15 GB RAM):
+- Codex on a local model doesn't fit: its own instructions are ~31k tokens, so
+  qwen3:8b (41k window at most) overflowed, compacted and re-ran the same
+  command for 15 minutes without answering; llama3.1:8b put Codex's tool calls
+  in its reply as text.
+- `wt agent` (AGENTS.md + build skill, ~10k tokens) with qwen3:8b passed 1 of
+  6 requests, at 1-15 minutes each: it made up goals, flags and tree presets,
+  read a Shaman build as a Warrior, told the player to run commands that don't
+  exist, and quoted numbers no `wt` command printed (14,200 and later 20,723
+  for an effective HP of 20,721).
+Revisit with a stronger model (a 30B-class model needs a bigger GPU) by running
+`uv run python evals/agent_eval.py --agent wt-agent:<model>`; offer it only at
+8/8. The evaluation stays as the build skill's regression test (`--agent claude`
+/ `codex`).
 
 ---
 
