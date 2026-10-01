@@ -1,0 +1,21 @@
+{
+  "_about": "Player requests for evals/agent_eval.py. Each runs in a fresh scratch copy of the toolbox with the builds in `builds` (session links from tests/fixtures/links.json) and `open` shown in the app. `expect`: create (a NEW build file; the open one untouched), edit (the open build's file changes), variant (a new file or candidate; the open one untouched), import (the link is checked or imported; the open one untouched), answer (nothing changes). `finish`: the request has everything a build needs, so asking a question instead counts as not finished. {link:NAME} expands to that session link.",
+  "cases": [
+    {"id": "new-poison-mage", "prompt": "Make me a new poison Mage build", "builds": {"stormdrain.json": "shaman_105_stormdrain"},
+     "open": "stormdrain.json", "expect": "create"},
+    {"id": "tankier", "prompt": "Make my build tankier", "builds": {"stormdrain.json": "shaman_105_stormdrain"},
+     "open": "stormdrain.json", "expect": "edit"},
+    {"id": "better-helmet", "prompt": "Can you find a better helmet for this build? Keep everything else.",
+     "builds": {"stormdrain.json": "shaman_105_stormdrain"}, "open": "stormdrain.json", "expect": "edit"},
+    {"id": "keep-but-mana", "prompt": "Keep this one but try it with more mana regen",
+     "builds": {"stormdrain.json": "shaman_105_stormdrain"}, "open": "stormdrain.json", "expect": "variant"},
+    {"id": "look-at-link", "prompt": "Here is a WynnBuilder link, can you look at it? {link:mage_105_sequoia}",
+     "builds": {"stormdrain.json": "shaman_105_stormdrain"}, "open": "stormdrain.json", "expect": "import"},
+    {"id": "ehp-question", "prompt": "What's the effective HP of my build?",
+     "builds": {"stormdrain.json": "shaman_105_stormdrain"}, "open": "stormdrain.json", "expect": "answer", "finish": true},
+    {"id": "stealing-shaman", "prompt": "Make me a new level 105 Shaman build that gets as much Stealing as possible, with at least 15,000 health.",
+     "builds": {}, "open": null, "expect": "create", "finish": true},
+    {"id": "warrior-health", "prompt": "I want a new level 80 Warrior build with as much health as possible.",
+     "builds": {}, "open": null, "expect": "create", "finish": true}
+  ]
+}

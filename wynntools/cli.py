@@ -683,7 +683,7 @@ ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build
             "craft": "Finding crafted items", "compare": "Comparing builds",
             "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival",
             "variants": "Comparing candidates", "powders": "Planning powders"}
-NO_PROGRESS = {"serve", "update"}      # the app itself, and replacing it
+NO_PROGRESS = {"serve", "update", "agent"}      # the app itself, and replacing it
 
 
 def _in_builds(path):
@@ -1756,6 +1756,12 @@ def app_main():
     main(sys.argv[1:] or ["serve"])
 
 
+def cmd_agent(a):
+    from . import local_agent
+    a.host = a.host or local_agent.DEFAULT_HOST
+    return local_agent.main(a)
+
+
 def _read_spec(path):
     """A spec file's JSON, or a message saying what's wrong with it."""
     try:
@@ -2035,6 +2041,14 @@ def main(argv=None):
     s.add_argument("--check", action="store_true", help="only say whether there is one")
     s.add_argument("--builds", default="builds", help="folder of build files")
     s.set_defaults(fn=cmd_update)
+    s = sub.add_parser("agent", help="a small agent on a model on this computer (Ollama); being evaluated")
+    s.add_argument("--model", default="qwen3:8b", help="an Ollama model (default qwen3:8b)")
+    s.add_argument("--host", default=None, help="the Ollama server (default $OLLAMA_HOST or 127.0.0.1:11434)")
+    s.add_argument("--ctx", type=int, help="context window in tokens (default: the model's setting)")
+    s.add_argument("--no-think", action="store_true", help="ask models that can think aloud not to")
+    s.add_argument("-p", "--prompt", help="one request, then exit")
+    s.add_argument("--json", action="store_true", help="with -p: print events as JSON lines")
+    s.set_defaults(fn=cmd_agent)
     a = p.parse_args(argv)
     if a.cmd not in ("fetch", "update", "config", "mod"):
         _check_for_new_data()

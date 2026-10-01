@@ -5,3 +5,8 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 builds/
+
+# Agent evaluation runs (evals/agent_eval.py)
+evals/results/
+# Scratch spec files written by `wt agent`
+.agent/
