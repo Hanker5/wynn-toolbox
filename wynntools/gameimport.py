@@ -169,6 +169,8 @@ def classify(gd, slot):
     if not name:
         return None
     out = {"slot": int(slot.get("slot") or 0), "name": name}
+    if slot.get("sig"):
+        out["sig"] = str(slot["sig"])    # the mod's id for the stack: what sorting checks before each click
     count = int(slot.get("count") or 1)
     if name in gd.item_by_name:
         out["kind"] = "item"

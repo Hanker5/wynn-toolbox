@@ -217,6 +217,22 @@ entries may be stated as fact.
 - Tome "levels" (100, 120) are not player-level requirements (they exceed the
   level cap); the search doesn't filter tomes by level. Only guild tomes carry
   skill points (data), and only they count in item skill requirements.
+- **How the ender chest answers the Sort button's clicks** (`wt chest`, the mod's
+  `SortSteps`). The plan assumes vanilla rules: a left click on a filled slot
+  with an item on the cursor swaps them, on an empty slot it puts the item down,
+  and the player-inventory rows (13-35) can be clicked from the bank screen. The
+  mod checks each click's result and stops on anything else, so a wrong guess
+  stops the sort rather than losing an item. Also unknown: what happens to an
+  item on the cursor when a page turns (the plan never does it) or when the chest
+  is closed (vanilla puts it in the inventory, which is why the plan keeps one
+  inventory slot empty), and how fast the server accepts clicks
+  (`sort_click_delay_ticks`, default 5). *Test: on a page of junk items, swap two
+  items by hand with a click each, then press Sort on a chest with a few items
+  out of place, at the default delay and at 2.*
+- **Whether Wynncraft allows the Sort button.** Its rules forbid mods that click
+  for the player (spell macros and chat commands aside); the Sort button clicks
+  for the player. The mod says so before every sort. Nobody has asked Wynncraft
+  staff.
 
 ## Mistakes the verifiers catch
 

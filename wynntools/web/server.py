@@ -1024,7 +1024,11 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         """An export from the Fabric chest-export mod. Format 2: {"version": 2, "kind",
         "character", "storage": [slots], "inventory": [slots]}; format 1 (older mods):
         {"source", "slots"}. Returns the inventory plus a summary and a chat `message`."""
-        body = await request.json()
+        i, result = import_body(await request.json())
+        return {**i.view(), **result}
+
+    def import_body(body):
+        """Check an export from the mod, import it and save the inventory."""
         if not isinstance(body, dict):
             raise HTTPException(422, "the export must be a JSON object")
         lists = ("storage", "inventory") if body.get("version") == 2 else ("slots",)
@@ -1037,7 +1041,47 @@ def create_app(builds_dir, port, token=None, terminal_cwd=None, root=None, updat
         i = inv()
         result = gameimport.import_export(i, gd, body)
         inv_mod.save(i, inv_path)
-        return {**i.view(), **result}
+        return i, result
+
+    def sort_plan(i, place, start_page=None):
+        from .. import storagesort
+        try:
+            return storagesort.plan(gd, i, place, start_page=start_page)
+        except storagesort.SortError as e:
+            raise HTTPException(409, str(e))
+
+    @app.get("/api/inventory/sort-plan")
+    def get_sort_plan(place: str):
+        """How a chest ("account" or "character:<id>") would look sorted under the player's
+        rules, and what it takes to get there (without the clicks)."""
+        plan = sort_plan(inv(), place)
+        plan.pop("steps")
+        return plan
+
+    @app.post("/api/inventory/sort")
+    async def sort_chest(request: Request):
+        """The mod's Sort button: an export of every page of one ender chest (a walk, kind
+        "ender_all", the chest in "complete"). Imports it, then plans the sort from exactly
+        what it showed: {"plan": {... "steps"}, "message"}. The walk ends on the chest's
+        last page, so the plan starts there."""
+        body = await request.json()
+        complete = body.get("complete") if isinstance(body, dict) else None
+        if not isinstance(complete, list) or len(complete) != 1 or complete[0] not in ("account", "character"):
+            raise HTTPException(422, "sorting needs a walk through every page of one ender chest")
+        i, result = import_body(body)
+        kind = complete[0]
+        cid = (body.get("character") or {}).get("id")
+        place = "account" if kind == "account" else f"character:{cid or gameimport._last_character(i)}"
+        pages = [p.get("page") for p in body.get("pages") or [] if p.get("kind") == kind]
+        plan = sort_plan(i, place, start_page=max((p for p in pages if isinstance(p, int)), default=None))
+        if not plan["moves"]:
+            message = f"{plan['label']} is already sorted."
+        elif plan["problems"]:
+            message = "Can't sort yet: " + "; ".join(plan["problems"])
+        else:
+            message = (f"{plan['moves']} items to move in {plan['clicks']} clicks and "
+                       f"{plan['page_turns']} page turns.")
+        return {"plan": plan, "message": message, "imported": result.get("message")}
 
     @app.get("/api/mod")
     def mod_status():

@@ -166,6 +166,7 @@ the sandbox, including the ones that talk to the web app.
 | `wt gear spec.json --aspects owned\|any` (spec `"aspect_pool"`) | The local search also fills the empty aspect slots: from the player's aspects (at the tier owned) or any aspect at its top tier, choosing again as the gear improves and counting them in every check. Only damage-model goals and minimums change with aspects; an item-stat search chooses none (and says so). `--owned` uses owned aspects when the local search runs. Chosen aspects are saved in the build. |
 | `wt gear spec.json --tomes owned\|any` (spec `"tome_pool"`) | The search also chooses the tomes the spec leaves empty: from the inventory, or any tome. The exact and local searches both do (damage-model minimums then run the local search); only `--shortlists` can't. Chosen tomes are saved in the build. |
 | `wt upgrades spec.json` | Rank unowned items by how much each one alone would improve the best owned build. |
+| `wt chest show\|plan [--place account\|character\|character:ID] [--json]` / `wt chest rules [--place P] [--set rules.json \| --clear]` | Sorting the ender chests: `show` what each page holds by group; `rules` the player's sorting rules (`--set` checks a file and saves it into `inventory.json`); `plan` the sorted pages, the moves, and what stops a sort in game. The mod's Sort button carries it out. |
 | `wt mod install [MINECRAFT_DIR] \| status [DIR] \| find` | The chest-export mod: install copies it into a Minecraft folder's `mods` (replacing older copies) and sets its config's `builds_path` to this app (the folder is remembered); `status` says whether it's there and current; `find` lists Minecraft folders the usual launchers keep. The app's Inventory → Game mod… does the same. |
 | `wt serve [--browser\|--no-browser]` | Start the local web app (this computer only) with the build editor and a terminal panel, in its own borderless window (`--browser`: a browser tab; `--no-browser`: open nothing). |
 | `wt config [ai [claude\|codex\|gemini\|shell\|none]]` / `wt config check_updates on\|off` | Show or change the AI assistant the web app starts in its terminal, or turn the update check off (`builds/settings.json`). |
@@ -205,6 +206,21 @@ X?", run `wt own find`; "what should I get next?", `wt upgrades`; a build they
 can wear today, `wt gear --owned` (each copy counts separately: two copies of
 a ring can fill both ring slots). `builds/.imports/` keeps the newest raw
 exports from the mod (not builds).
+
+**Sorting the ender chests.** When the player wants a chest tidied, run `wt chest
+show` to see what's in it, turn what they say into rules, save them with `wt chest
+rules --set <file in your scratchpad>` (never a file in `builds/`), then `wt chest
+plan` and show its page summary. Rules are per chest kind (`account`, `character`),
+each a list of groups filled in order (`{"name": "Mythics", "match": {"tier":
+"Mythic"}, "new_page": true}`; match keys: `group`, `kind`, `category`, `type`,
+`class`, `tier`, `name` (a pattern), `level` (`[low, high]`), `untradable`) plus
+`keep_pages` left as they are; anything unmatched follows the default groups (`wt
+chest rules` lists them). Groups for things that aren't gear (keys, runes, materials,
+...) are read from item names: a sorting choice, not a game fact. The player sorts in
+game with the mod's Sort button (press it twice). Say that Wynncraft's rules forbid
+mods that click for you, so sorting is at their own risk, and that it hasn't been
+tested in game yet (`knowledge/mechanics.md`, Unknown). The app's Storage tab shows
+the result under "Sorted".
 
 `builds/settings.json` (app settings, including the window size, an ignored
 update and the Builds list's order and groups) and `builds/.server.json` (the running server's address) are not builds

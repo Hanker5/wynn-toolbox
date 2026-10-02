@@ -682,7 +682,8 @@ ACTIVITY = {"fetch": "Downloading WynnBuilder data", "decode": "Checking a build
             "link": "Checking a build", "edit": "Editing a build",
             "craft": "Finding crafted items", "compare": "Comparing builds",
             "ingredient": "Looking up an ingredient", "tradeoffs": "Weighing damage against survival",
-            "variants": "Comparing candidates", "powders": "Planning powders"}
+            "variants": "Comparing candidates", "powders": "Planning powders",
+            "chest": "Planning the ender chest"}
 NO_PROGRESS = {"serve", "update", "agent"}      # the app itself, and replacing it
 
 
@@ -1567,6 +1568,103 @@ def cmd_mod(a):
     return 0
 
 
+def _chest_places(inv, place):
+    """The chests `--place` names: "account", "character" (every character's) or
+    "character:<id>"; all of them when it's None."""
+    from .storagesort import CHESTS
+    keys = [k for k in sorted(inv.places, key=lambda k: (k != "account", k))
+            if k.split(":")[0] in CHESTS and (inv.places[k].get("pages") or {})]
+    if place is None:
+        return keys
+    found = [k for k in keys if k == place or k.split(":")[0] == place]
+    if not found:
+        raise SystemExit(f"no exported pages for {place!r}: chests with pages are {', '.join(keys) or 'none'} "
+                         "(export them with the chest-export mod)")
+    return found
+
+
+def cmd_chest(a):
+    """Sort the ender chests: what's in them, the player's rules, and the sorted layout."""
+    from . import storagesort as ss
+    gd = GameData()
+    inv = inv_mod.load(a.inventory)
+    if a.action == "rules":
+        if a.set:
+            raw = json.loads(Path(a.set).read_text(encoding="utf-8"))
+            if a.place is not None:
+                kind = a.place.split(":")[0]
+                if kind not in ss.CHESTS:
+                    raise SystemExit("--place: account or character")
+                raw = {kind: raw}
+            errors = ss.validate_rules(raw)
+            if errors:
+                for e in errors:
+                    print(f"error: {e}")
+                return 1
+            inv.sorting.update(raw)
+            inv_mod.save(inv, a.inventory)
+            print(f"{a.inventory}: sorting rules saved for {', '.join(raw)}")
+        elif a.clear:
+            for kind in ([a.place.split(":")[0]] if a.place else list(inv.sorting)):
+                inv.sorting.pop(kind, None)
+            inv_mod.save(inv, a.inventory)
+            print(f"{a.inventory}: sorting rules cleared; the default groups apply")
+        for kind in ss.CHESTS:
+            if a.place and a.place.split(":")[0] != kind:
+                continue
+            r = inv.sorting.get(kind) or {}
+            print(f"{'Account' if kind == 'account' else 'Character'} chest rules:")
+            for g in r.get("groups") or []:
+                print(f"  {g['name']}: {json.dumps(g['match'])}" + ("  (new page)" if g.get("new_page") else ""))
+            if r.get("keep_pages"):
+                print(f"  pages left as they are: {', '.join(map(str, r['keep_pages']))}")
+            if not r:
+                print("  none: the default groups")
+        print("Then the default groups: " + ", ".join(label for _, label in ss.DEFAULT_GROUPS))
+        return 0
+
+    for place in _chest_places(inv, a.place):
+        if a.action == "show":
+            print(f"{inv.place_label(place)}:")
+            totals = {}
+            for page, slots in sorted(ss.chest_pages(inv, place).items()):
+                counts = {}
+                for e in slots.values():
+                    label = ss.GROUP_LABEL[ss.describe(gd, e)["group"]]
+                    counts[label] = counts.get(label, 0) + 1
+                    totals[label] = totals.get(label, 0) + 1
+                parts = ", ".join(f"{k} {n}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1]))
+                print(f"  page {page:>2} ({len(slots)}/45): {parts or 'empty'}")
+            print("  in all: " + ", ".join(f"{k} {n}" for k, n in sorted(totals.items(), key=lambda kv: -kv[1])))
+            continue
+        try:
+            pl = ss.plan(gd, inv, place)
+        except ss.SortError as e:
+            raise SystemExit(str(e))
+        if a.json:
+            print(json.dumps(pl, indent=1))
+            continue
+        print(f"{pl['label']}, sorted:")
+        for page in pl["pages"]:
+            names = pl["layout"].get(str(page))
+            n = len(pl["sorted"].get(str(page)) or [])
+            print(f"  page {page:>2} ({n}/45): {', '.join(names) if names else 'empty'}")
+        for page in pl["kept"]:
+            print(f"  page {page:>2}: left as it is")
+        if pl["moves"]:
+            print(f"  {pl['moves']} items move: {pl['clicks']} clicks, {pl['page_turns']} page turns, "
+                  f"carrying items in {len(pl['buffer'])} free inventory slots")
+        else:
+            print("  already sorted: nothing moves")
+        for note in pl["notes"]:
+            print(f"  note: {note}")
+        for problem in pl["problems"]:
+            print(f"  before sorting in game: {problem}")
+        if pl["moves"] and not pl["problems"]:
+            print("  To sort it in game: open the chest and press the mod's Sort button.")
+    return 0
+
+
 CRAFTER_URL = "https://wynnbuilder.github.io/crafter/#"
 
 
@@ -1923,6 +2021,17 @@ def main(argv=None):
                         "current; find: likely Minecraft folders")
     s.add_argument("folder", nargs="?", help="the Minecraft folder (default: the last one installed into)")
     s.set_defaults(fn=cmd_mod)
+    s = sub.add_parser("chest", help="sort the ender chests: what's in them, the rules, the sorted layout")
+    s.add_argument("action", choices=["show", "rules", "plan"],
+                   help="show: what each page holds, by group; rules: show the sorting rules, or "
+                        "--set FILE to save them; plan: the sorted pages and the moves to get there")
+    s.add_argument("--place", help="account, character (every character's chest) or character:ID "
+                                   "(default: every chest; with rules --set, the chest the file is for)")
+    s.add_argument("--set", metavar="FILE", help="rules: save the rules in FILE (checked first)")
+    s.add_argument("--clear", action="store_true", help="rules: drop the rules (the default groups apply)")
+    s.add_argument("--json", action="store_true", help="plan: print the whole plan as JSON")
+    s.add_argument("--inventory", default=str(inv_mod.DEFAULT))
+    s.set_defaults(fn=cmd_chest)
     s = sub.add_parser("import", help="save a WynnBuilder link as a build file")
     s.add_argument("link")
     s.add_argument("path")

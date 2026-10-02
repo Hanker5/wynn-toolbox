@@ -16,7 +16,8 @@ Stored as builds/inventory.json, shared by the CLI, the web app and the AI:
       "tomes": ["Tome of Scavenging Expertise III", ...],
       "crafts": ["CR-..."],
       "aspects": {"Mage": {"Aspect of the Vortex": 3}},
-      "unavailable": {"Stardew": "too expensive", "Warp": ""}
+      "unavailable": {"Stardew": "too expensive", "Warp": ""},
+      "sorting": {"account": {"groups": [{"name": "Mythics", "match": {"tier": "Mythic"}}]}}
     }
 
 "items" are copies added by hand (no location). "places" mirror the player's storages
@@ -34,6 +35,9 @@ and a build names the copy it uses by fingerprint.
 "tomes" are tomes added by hand (repeat a name to own two); tomes in pages count too.
 "aspects" maps each class to the aspects the player has, with the highest tier reached
 (1 is the first tier); the editor offers no higher tier than that.
+
+"sorting" holds the player's rules for sorting the Account chest and every Character
+chest (wynntools/storagesort.py); it is left out while there are none.
 
 "unavailable" lists items the player can't or won't get (too expensive, not on the
 market, ...), with an optional reason. Every search leaves them out unless the player
@@ -163,6 +167,7 @@ class Inventory:
     aspects: dict = field(default_factory=dict)   # class -> {aspect name: highest tier owned}
     places: dict = field(default_factory=dict)    # place key -> {"pages": {"n": {"updated", "slots"}}}
     characters: dict = field(default_factory=dict)    # character id -> {"name", "class", "seen"}
+    sorting: dict = field(default_factory=dict)   # "account"/"character" -> rules (storagesort)
 
     def __post_init__(self):
         if isinstance(self.items, dict):          # version 1: {name: {"rolls": {...}}}
@@ -395,9 +400,12 @@ class Inventory:
         return out
 
     def to_json(self):
-        return {"version": VERSION, "items": self.items, "tomes": self.tomes, "crafts": self.crafts,
-                "unavailable": self.unavailable, "aspects": self.aspects, "places": self.places,
-                "characters": self.characters}
+        out = {"version": VERSION, "items": self.items, "tomes": self.tomes, "crafts": self.crafts,
+               "unavailable": self.unavailable, "aspects": self.aspects, "places": self.places,
+               "characters": self.characters}
+        if self.sorting:
+            out["sorting"] = self.sorting
+        return out
 
 
 def inventory_slot_label(slot):
@@ -445,7 +453,7 @@ def load(path=DEFAULT):
     return Inventory(items=raw.get("items") or [], tomes=raw.get("tomes") or [],
                      crafts=raw.get("crafts") or [], unavailable=raw.get("unavailable") or {},
                      aspects=raw.get("aspects") or {}, places=raw.get("places") or {},
-                     characters=raw.get("characters") or {})
+                     characters=raw.get("characters") or {}, sorting=raw.get("sorting") or {})
 
 
 def save(inv, path=DEFAULT):
