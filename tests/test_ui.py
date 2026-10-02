@@ -1211,6 +1211,37 @@ def test_powders_show_in_the_pieces_own_stats(page):
     assert not page.errors
 
 
+def test_storage_shows_the_chest_sorted(page, app):
+    """The Storage tab's Sorted view draws the chest as the sorting rules would leave it,
+    with the groups on each page and what sorting takes in game."""
+    import os
+    body = {"version": 2, "kind": "ender_all", "complete": ["account"], "character": {"id": "a1b2c3d4"},
+            "storage": [], "inventory": [],
+            "pages": [{"kind": "account", "page": 1, "storage": [
+                {"slot": 30, "name": "Copper Ingot", "count": 5, "sig": "c1"},
+                {"slot": 2, "name": "Galleon", "sig": "g1"},
+                {"slot": 8, "name": "Spring", "sig": "s1"}]}]}
+    page.evaluate("b => fetch('/api/inventory/import', {method: 'POST', headers: {'Content-Type': "
+                  "'application/json'}, body: JSON.stringify(b)})", body)
+    page.click("#open-inventory")
+    page.get_by_role("tab", name="Storage").click()
+    page.wait_for_selector(".chest-grid .cell.item")
+    playwright.expect(page.locator(".chest .cell[data-slot='2']")).to_have_class(re.compile("item"))
+    page.get_by_role("button", name="Sorted", exact=True).click()
+    playwright.expect(page.locator(".sort-info")).to_contain_text("3 items to move")
+    playwright.expect(page.locator(".sort-info")).to_contain_text("Page 1: Archer weapons, Boots, Crafting materials")
+    # Spring first, Galleon on the next row, the ingots on the row after
+    playwright.expect(page.get_by_role("button", name=re.compile(r"^Spring: .*row 1, column 1, once sorted"))).to_be_visible()
+    playwright.expect(page.get_by_role("button", name=re.compile(r"^Galleon: .*row 2, column 1, once sorted"))).to_be_visible()
+    playwright.expect(page.get_by_role("button", name=re.compile(r"^Copper Ingot ×5: .*row 3, column 1"))).to_be_visible()
+    if os.environ.get("WT_SCREENSHOTS"):
+        page.screenshot(path=str(Path(os.environ["WT_SCREENSHOTS"]) / "storage-sorted.png"))
+    page.get_by_role("button", name="Now", exact=True).click()
+    playwright.expect(page.locator(".sort-info")).to_have_count(0)
+    playwright.expect(page.get_by_role("button", name=re.compile(r"^Galleon: Account ender chest · page 1 · row 1, column 3$"))).to_be_visible()
+    assert not page.errors
+
+
 def test_storage_pages_search_and_show(page, app):
     """Exported ender chest pages are drawn slot by slot; the search finds every copy, marks
     it in the grid and the page strip, and Show opens its page with the slot selected; a

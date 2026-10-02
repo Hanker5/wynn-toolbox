@@ -585,6 +585,8 @@ button.mini.ghost.danger:hover { color: var(--bad); }
 .page-arrows { display: inline-flex; align-items: center; gap: 6px; flex: none; font-size: 12px; }
 .page-arrows .mini { min-width: 28px; font-weight: 700; }
 .chest-summary { font-size: 12px; }
+.sort-info { display: flex; flex-direction: column; gap: 2px; font-size: 13px; max-width: calc(9 * 50px + 8 * 3px); }
+.sort-info p { margin: 0; }
 .chest-grid { display: grid; grid-template-columns: repeat(9, 50px); grid-auto-rows: 50px; align-content: start; gap: 3px; }
 .chest-grid.equip-row { grid-template-columns: repeat(5, 50px); }
 .chest .page-strip { max-width: calc(9 * 50px + 8 * 3px); }

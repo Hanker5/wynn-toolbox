@@ -383,7 +383,7 @@ const TOME_TYPE_LABEL = { weaponTome: "Weapon", armorTome: "Armor", guildTome: "
 const tomeTypeLabel = (t) => TOME_TYPE_LABEL[t] || t;
 const invTab = () => { const t = store.get("wt-inv-tab"); return INV_TABS.includes(t) ? t : "Storage"; };
 const invPrefs = { ownedOnly: {}, aspectClass: null, q: {}, find: "", place: null, page: 1, flash: null, selected: null,
-  itemType: "all", dupes: false, sort: "name" };
+  itemType: "all", dupes: false, sort: "name", sorted: false };
 const range = (a, b) => Array.from({ length: b - a }, (_, i) => a + i);
 const WEAPON_TYPES = ["bow", "spear", "wand", "dagger", "relik"];
 const ITEM_FILTERS = [["all", "All"], ["helmet", "Helmets"], ["chestplate", "Chestplates"], ["leggings", "Leggings"],
@@ -616,7 +616,17 @@ async function invStorage(body, inv, again) {
     return;
   }
   if (!places.some((p) => p.key === invPrefs.place)) invPrefs.place = places[0].key;
-  const place = places.find((p) => p.key === invPrefs.place);
+  const real = places.find((p) => p.key === invPrefs.place);
+  // "Sorted": the chest as the player's sorting rules would leave it (the mod's Sort button does it in game).
+  const sortable = real.kind === "account" || real.kind === "character";
+  let plan = null;
+  if (sortable && invPrefs.sorted) {
+    try { plan = await api("GET", `/api/inventory/sort-plan?place=${encodeURIComponent(real.key)}`); }
+    catch (e) { plan = { error: e.message }; }
+  }
+  const sortedWhere = (n, k) => `${real.label} · page ${n} · row ${Math.floor(k / 9) + 1}, column ${k % 9 + 1}, once sorted`;
+  const place = plan?.sorted ? { ...real, pages: Object.fromEntries(Object.entries(real.pages).map(([n, p]) =>
+    [n, plan.sorted[n] ? { ...p, slots: plan.sorted[n].map((x) => ({ ...x, where: sortedWhere(n, x.slot) })) } : p])) } : real;
   const exported = Object.keys(place.pages).map(Number).sort((a, b) => a - b);
   if (!exported.includes(invPrefs.page)) { invPrefs.page = exported[0] || 1; invPrefs.selected = null; }
   const page = place.pages[String(invPrefs.page)];
@@ -683,7 +693,8 @@ async function invStorage(body, inv, again) {
         const has = exported.includes(n), on = n === invPrefs.page, hits = has ? hitsIn(place, String(n)) : 0;
         return h("button", { class: `mini page${on ? " on" : ""}${has ? "" : " missing"}${hits ? " hit" : ""}`, disabled: !has,
           "aria-pressed": on ? "true" : "false", "aria-label": `Page ${n}`,
-          title: !has ? `Page ${n}: not exported yet` : `Page ${n} · exported ${ago(place.pages[n].updated)}` +
+          title: !has ? `Page ${n}: not exported yet` : `Page ${n} · ` + (plan?.layout
+            ? (plan.kept.includes(n) ? "left as it is" : (plan.layout[n] || ["empty"]).join(", ")) : `exported ${ago(place.pages[n].updated)}`) +
             (hits ? ` · ${plural(hits, "match", "matches")}` : ""), onclick: () => go(n) }, String(n));
       }));
   }
@@ -739,6 +750,24 @@ async function invStorage(body, inv, again) {
     n("aspect") ? plural(n("aspect"), "aspect") : null, n("other") ? `${n("other")} other` : null].filter(Boolean).join(" · ")
     : "not exported yet";
 
+  // Now / Sorted, and what sorting takes.
+  const sortToggle = sortable ? h("span", { class: "segs", role: "group", "aria-label": "Show the chest" },
+    [[false, "Now"], [true, "Sorted"]].map(([v, l]) => h("button", { class: "seg" + (invPrefs.sorted === v ? " on" : ""),
+      "aria-pressed": invPrefs.sorted === v ? "true" : "false",
+      title: v ? "How your sorting rules would leave this chest" : "The chest as last exported",
+      onclick: () => { invPrefs.sorted = v; invPrefs.selected = null; redraw(); } }, l))) : null;
+  const sortInfo = !plan ? null : plan.error ? h("div", { class: "sort-info" }, h("p", { class: "muted" }, plan.error)) : h("div", { class: "sort-info" },
+    h("p", {}, plan.moves ? `${plural(plan.moves, "item")} to move: ${plan.clicks} clicks, ${plan.page_turns} page turns.`
+      : "Already sorted."),
+    h("p", { class: "muted" }, plan.kept.includes(invPrefs.page) ? `Page ${invPrefs.page} is left as it is.`
+      : `Page ${invPrefs.page}: ${(plan.layout[invPrefs.page] || ["empty"]).join(", ")}.`),
+    h("p", { class: "muted" }, plan.groups.some((g) => g.rule)
+      ? `Your groups first: ${plan.groups.filter((g) => g.rule).map((g) => g.name).join(", ")}; then the default groups.`
+      : "Default groups: weapons by class, armor, accessories, tomes, ingredients, materials, ... Ask the assistant to change them (“put my Mythics on page 1”)."),
+    [...plan.problems, ...plan.notes].map((t) => h("p", { class: "hint" }, t)),
+    plan.moves && !plan.problems.length
+      ? h("p", { class: "hint" }, "To sort in game, open this chest and press Sort, the button under WynnGPT’s; press it again to start.") : null);
+
   function drawDetail() {
     const s = slots.get(invPrefs.selected);
     if (!s) {
@@ -777,8 +806,8 @@ async function invStorage(body, inv, again) {
       h("div", { class: "chest-head" },
         h("div", { class: "chest-title" }, h("span", { class: "panel-h" },
           place.label + (place.max_pages > 1 ? ` · page ${invPrefs.page}` : "")), h("span", { class: "muted chest-summary" }, summary)),
-        arrows),
-      strip, grid),
+        sortToggle, arrows),
+      strip, sortInfo, grid),
     detail));
   return () => {                                    // once on the page: flash the slot Show asked for
     if (invPrefs.flash == null) return;
