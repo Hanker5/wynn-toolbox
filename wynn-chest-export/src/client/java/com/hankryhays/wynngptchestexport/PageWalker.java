@@ -17,6 +17,7 @@ import net.minecraft.world.item.component.ItemLore;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 
 /**
  * Walks through every page of both ender chests and exports them all at once: back to
@@ -27,6 +28,8 @@ import java.util.Map;
  * It never touches anything else (46, "Quick Actions", would dump the player's inventory
  * into the bank). Closing the chest stops it; what was read so far is still sent, and only
  * chests walked to the end count as complete (the app drops no pages of the others).
+ * For sorting it walks only the open chest and hands the export to the sort instead of
+ * sending it.
  */
 public final class PageWalker {
 	private static final int SWITCH_SLOT = Controls.SWITCH_SLOT;
@@ -49,10 +52,12 @@ public final class PageWalker {
 	private String signature;
 	private int stable;
 	private JsonObject source;
+	private final BiConsumer<JsonObject, String> then;     // only this chest, then this (export or null, why it stopped)
 
-	private PageWalker(StorageScreens.Kind kind, int delay) {
+	private PageWalker(StorageScreens.Kind kind, int delay, BiConsumer<JsonObject, String> then) {
 		this.kind = kind;
 		this.delay = delay;
+		this.then = then;
 	}
 
 	public static void register() {
@@ -68,22 +73,35 @@ public final class PageWalker {
 	}
 
 	public static void start(AbstractContainerScreen<?> screen, StorageScreens.Kind kind) {
+		start(screen, kind, null);
+	}
+
+	/**
+	 * Walk the open chest only, and give `then` the export (null if no page was read) and why it
+	 * stopped early (null if it read every page). Returns whether the walk started.
+	 */
+	public static boolean start(AbstractContainerScreen<?> screen, StorageScreens.Kind kind, BiConsumer<JsonObject, String> then) {
 		Minecraft mc = Minecraft.getInstance();
 		if (active != null) {
-			return;
+			return false;
 		}
 		if (!screen.getMenu().getCarried().isEmpty()) {
 			say(mc, "WynnGPT: put down the item you're holding first.", false);
-			return;
+			return false;
 		}
 		Integer page = page(screen.getMenu());
 		if (page == null) {
+			if (then != null) {
+				say(mc, "WynnGPT: can't tell which page this is.", false);
+				return false;
+			}
 			say(mc, "WynnGPT: can't tell which page this is; exporting just this page.", false);
 			InventoryExporter.export(screen, kind);
-			return;
+			return false;
 		}
-		active = new PageWalker(kind, Math.max(ExportConfig.pageDelayTicks(), 2));
+		active = new PageWalker(kind, Math.max(ExportConfig.pageDelayTicks(), 2), then);
 		active.capture(mc, screen, page);
+		return true;
 	}
 
 	private void tick(Minecraft mc) {
@@ -148,7 +166,7 @@ public final class PageWalker {
 		}
 		complete.add(kind.id);                      // this chest is read to its last page
 		StorageScreens.Kind other = kind == StorageScreens.Kind.ACCOUNT ? StorageScreens.Kind.CHARACTER : StorageScreens.Kind.ACCOUNT;
-		if (complete.size() < 2 && isSwitch(menu)) {
+		if (then == null && complete.size() < 2 && isSwitch(menu)) {
 			switchingTo = other;
 			click(mc, menu, SWITCH_SLOT, null);
 			return;
@@ -196,6 +214,9 @@ public final class PageWalker {
 	private void finish(Minecraft mc, String why) {
 		active = null;
 		if (pages.isEmpty()) {
+			if (then != null) {
+				then.accept(null, why);
+			}
 			return;
 		}
 		JsonObject body = new JsonObject();
@@ -211,6 +232,10 @@ public final class PageWalker {
 		JsonArray list = new JsonArray();
 		pages.values().forEach(list::add);
 		body.add("pages", list);
+		if (then != null) {
+			then.accept(body, why);
+			return;
+		}
 		if (why != null) {
 			say(mc, "WynnGPT: stopped after " + pages.size() + " pages (" + why + "); sending those.", false);
 		}
@@ -227,7 +252,7 @@ public final class PageWalker {
 	}
 
 	/** The page a real arrow in `containerSlot` leads to, or null. */
-	private static Integer arrow(AbstractContainerMenu menu, int containerSlot, String direction) {
+	static Integer arrow(AbstractContainerMenu menu, int containerSlot, String direction) {
 		Slot slot = slot(menu, containerSlot);
 		return slot == null || slot.getItem().isEmpty() ? null
 			: Controls.arrow(rawName(slot.getItem()), lore(slot.getItem()), direction);
@@ -246,7 +271,7 @@ public final class PageWalker {
 		return stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines().stream().map(Component::getString).toList();
 	}
 
-	private static Slot slot(AbstractContainerMenu menu, int containerSlot) {
+	static Slot slot(AbstractContainerMenu menu, int containerSlot) {
 		for (Slot slot : menu.slots) {
 			if (!(slot.container instanceof Inventory) && slot.getContainerSlot() == containerSlot) {
 				return slot;
@@ -260,7 +285,7 @@ public final class PageWalker {
 	}
 
 	/** What a page holds, to tell when its items have all arrived. */
-	private static String contents(AbstractContainerMenu menu) {
+	static String contents(AbstractContainerMenu menu) {
 		StringBuilder out = new StringBuilder();
 		for (Slot slot : menu.slots) {
 			if (!(slot.container instanceof Inventory) && slot.getContainerSlot() < STORAGE_SLOTS && !slot.getItem().isEmpty()) {

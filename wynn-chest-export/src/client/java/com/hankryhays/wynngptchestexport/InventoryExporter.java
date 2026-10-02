@@ -22,6 +22,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
+import java.util.function.Consumer;
 
 public final class InventoryExporter {
 	private static final Gson GSON = new Gson();
@@ -37,24 +39,48 @@ public final class InventoryExporter {
 
 	/** Posts an export to the running app and reports the result in chat. */
 	public static void send(Minecraft mc, JsonObject export) {
+		post(mc, "/api/inventory/import", export, json -> say(mc, Component.literal("Exported to WynnGPT: " + summary(json))), () -> {
+		});
+	}
+
+	/**
+	 * Posts a walk through one ender chest to the app's sorting endpoint; `then` gets its
+	 * answer ({"plan", "message"}), `failed` runs when there is none (said in chat).
+	 */
+	public static void sort(Minecraft mc, JsonObject export, Consumer<JsonObject> then, Runnable failed) {
+		post(mc, "/api/inventory/sort", export, json -> {
+			try {
+				then.accept(GSON.fromJson(json, JsonObject.class));
+			} catch (RuntimeException e) {
+				WynnGPTChestExportClient.LOGGER.warn("WynnGPT's sort plan couldn't be read", e);
+				say(mc, Component.literal("WynnGPT: couldn't read the sort plan."));
+				failed.run();
+			}
+		}, failed);
+	}
+
+	private static void post(Minecraft mc, String path, JsonObject export, Consumer<String> ok, Runnable failed) {
 		AppLocator.Result located = AppLocator.locate();
 		if (located instanceof AppLocator.NotConfigured) {
 			say(mc, Component.literal("WynnGPT export: set \"builds_path\" to your WynnGPT builds folder in " + ExportConfig.file()));
+			failed.run();
 			return;
 		}
 		if (located instanceof AppLocator.FolderMissing missing) {
 			say(mc, Component.literal("WynnGPT export: can't see the folder " + missing.folder()
 				+ ". Check builds_path in " + ExportConfig.file()
 				+ ". If Minecraft runs from a Flatpak launcher, give it access to that folder."));
+			failed.run();
 			return;
 		}
 		if (!(located instanceof AppLocator.Found found)) {
 			say(mc, Component.literal("WynnGPT isn't running. Open the WynnGPT app and try again."));
+			failed.run();
 			return;
 		}
 
 		String body = GSON.toJson(export);
-		HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + found.server().port() + "/api/inventory/import"))
+		HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + found.server().port() + path))
 			.timeout(Duration.ofSeconds(10))
 			.header("Content-Type", "application/json")
 			.header("x-wt-token", found.server().token())
@@ -64,11 +90,13 @@ public final class InventoryExporter {
 		HTTP.sendAsync(request, HttpResponse.BodyHandlers.ofString()).whenComplete((response, error) -> mc.execute(() -> {
 			if (error != null) {
 				say(mc, Component.literal("WynnGPT isn't running. Open the WynnGPT app and try again."));
+				failed.run();
 			} else if (response.statusCode() / 100 == 2) {
-				say(mc, Component.literal("Exported to WynnGPT: " + summary(response.body())));
+				ok.accept(response.body());
 			} else {
 				WynnGPTChestExportClient.LOGGER.warn("WynnGPT returned {}: {}", response.statusCode(), response.body());
 				say(mc, Component.literal("WynnGPT rejected the export (HTTP " + response.statusCode() + "): " + detail(response.body())));
+				failed.run();
 			}
 		}));
 	}
@@ -176,11 +204,21 @@ public final class InventoryExporter {
 			lore.add(line.getString());
 		}
 		entry.add("lore", lore);
+		entry.addProperty("sig", sig(stack));
 		JsonElement raw = ItemStack.CODEC.encodeStart(ops, stack).result().orElse(null);
 		if (raw != null) {
 			entry.add("raw", raw);
 		}
 		return entry;
+	}
+
+	/** The stack's id for sorting (SortSteps.sig): its item, name and tooltip. */
+	public static String sig(ItemStack stack) {
+		return SortSteps.sig(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString(), stack.getHoverName().getString(), lore(stack));
+	}
+
+	public static List<String> lore(ItemStack stack) {
+		return stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines().stream().map(Component::getString).toList();
 	}
 
 	private static String menuName(AbstractContainerMenu menu) {

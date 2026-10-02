@@ -1,10 +1,10 @@
 # WynnGPT Chest Export
 
-A client-side Fabric mod for Minecraft 1.21.11. It puts a small WynnGPT button to the right of the player's own inventory, their Account and Character ender chests, and their Mastery Tomes and Aspects menus (recognised by the glyphs Wynncraft titles them with, as Wynntils does). Clicking the button sends that storage's slots, the player's whole inventory and the active character's id to the running WynnGPT app, which records them in `builds/inventory.json`.
+A client-side Fabric mod for Minecraft 1.21.11. It puts a small WynnGPT button to the right of the player's own inventory, their Account and Character ender chests, and their Mastery Tomes and Aspects menus (recognised by the glyphs Wynncraft titles them with, as Wynntils does). Clicking the button sends that storage's slots, the player's whole inventory and the active character's id to the running WynnGPT app, which records them in `builds/inventory.json`. In the ender chests, a second button under it sorts the chest the way the app plans it (see below).
 
 ## Setup
 
-1. Put `build/libs/wynngpt-chest-export-1.1.0.jar` in your mods folder together with Fabric API. (It's committed ready to use. After changing the mod, rebuild it with `./gradlew build`, which overwrites that jar, and commit the new one.)
+1. Put `build/libs/wynngpt-chest-export-1.2.0.jar` in your mods folder together with Fabric API. (It's committed ready to use. After changing the mod, rebuild it with `./gradlew build`, which overwrites that jar, and commit the new one.)
 2. Start WynnGPT (`wt serve`).
 3. On first launch the mod creates `config/wynngpt-chest-export.json`. Set `builds_path` in that file to your WynnGPT `builds` folder, for example `/path/to/wynn-toolbox/builds`.
 
@@ -23,6 +23,23 @@ Set `"capture": true` in `config/wynngpt-chest-export.json` to show the button o
 In an ender chest, the button turns the pages for you: back to page 1 with the previous arrow, forward to the last page you own, then "Storage Type" switches to the other chest (Account or Character) and it reads that one too, and sends everything as one export. Shift-click exports only the open page; `"walk_pages": false` makes that the default.
 
 It clicks nothing but the arrows (slots 51 and 52) and the switch (47), each only when its name and tooltip say so ("Page 3 >>>>>" with "Click to go"; "Storage Type" with "Click to switch"). On the last page you own, the next slot is still called "Page N >>>>>" but offers to buy the page: it never clicks that, and never "Quick Actions" (46), which would dump your inventory into the bank. It waits for each page to arrive, leaves at least `page_delay_ticks` (default 6; 20 ticks is a second) between clicks, and ignores your clicks while it runs. Closing the chest stops it and sends the pages read so far; only a chest read to its last page has pages past that dropped in the app.
+
+## Sorting an ender chest
+
+**Wynncraft's rules forbid mods that click for you** (spell macros and chat commands aside), and Sort clicks for you: use it at your own risk. The mod says so before every sort.
+
+The Sort button sits under the WynnGPT button in either ender chest. It reads every page of that chest (as above), sends them to the app, and gets back a plan made from exactly what it read, under the sorting rules the player keeps in the app (`wt chest rules`; the Storage tab's "Sorted" view shows the result). Chat says how many moves that is; press Sort again within 20 seconds to start, and Esc to stop at any time.
+
+How it moves things:
+
+- Only plain left clicks: pick an item up, put it down, or swap it with the one in the slot.
+- Items going to another page travel in empty slots of your inventory's main rows (13-35, never the accessory slots 9-12 or the hotbar). One of them is always kept empty.
+- It never turns a page with an item on the cursor. Pages turn only with the checked arrows, as above.
+- It never clicks the controls (45-53) or anything the plan doesn't name.
+
+Before every click it checks that the slot and the cursor hold exactly what the plan expects: the same item (by name and tooltip) and the same count. After every click it waits until the game shows the result. Arriving on a page, it checks the whole page. Anything else stops the sort at once: it puts down whatever it holds (in the empty inventory slot it kept), says why, and reads the chest again for the app. Your clicks and keys (except Esc) are ignored while it works.
+
+Pressing Sort again plans afresh from wherever things are, so a stopped sort just carries on. It waits at least `sort_click_delay_ticks` (default 5; 20 ticks is a second) between clicks. It needs at least 2 empty slots in your inventory's main rows; more empty slots mean fewer page turns.
 
 ## The Mastery Tomes and Aspects menus
 

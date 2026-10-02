@@ -58,6 +58,16 @@ public final class ExportConfig {
 		}
 	}
 
+	/** "sort_click_delay_ticks": the least time between two clicks while sorting (20 ticks = 1 s). */
+	public static int sortClickDelayTicks() {
+		JsonObject json = read();
+		try {
+			return json != null && json.has("sort_click_delay_ticks") ? json.get("sort_click_delay_ticks").getAsInt() : 5;
+		} catch (RuntimeException e) {
+			return 5;
+		}
+	}
+
 	private static JsonObject read() {
 		Path file = file();
 		try {

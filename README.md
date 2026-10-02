@@ -189,7 +189,7 @@ Minecraft launcher) and click **Install**. The app copies the mod into that
 folder's `mods` and points the mod at the app. Restart Minecraft, open your
 ender chest and click the WynnGPT button. Installing again updates the mod.
 
-By hand instead: copy `wynn-chest-export/build/libs/wynngpt-chest-export-1.1.0.jar`
+By hand instead: copy `wynn-chest-export/build/libs/wynngpt-chest-export-1.2.0.jar`
 (inside the WynnGPT folder) into your `mods` folder, start Minecraft once, and
 set `builds_path` in `config/wynngpt-chest-export.json` to WynnGPT's `builds`
 folder (JSON needs doubled backslashes on Windows).
