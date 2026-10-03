@@ -275,6 +275,20 @@ def test_merge_drops_what_no_longer_fits(gd, links):
 
 
 # ------------------------------------------------------------ progress bars for long commands
+def written(builds, check, timeout=5):
+    """The one running tool once `check` holds for it. The progress file is
+    rewritten by a background thread every 0.25 s, which a slow CI runner
+    (macOS) can delay past any fixed sleep."""
+    from wynntools.web import client
+    end = time.time() + timeout
+    while True:
+        tools = client.running_tools(builds)
+        if (len(tools) == 1 and check(tools[0])) or time.time() > end:
+            [t] = tools
+            return t
+        time.sleep(0.05)
+
+
 def test_tool_progress_file_appears_late_updates_and_goes(builds):
     from wynntools.web import client
     (builds / ".server.json").write_text("{}")             # the app is running
@@ -283,11 +297,9 @@ def test_tool_progress_file_appears_late_updates_and_goes(builds):
     f = tp.path
     with tp:
         assert not f.exists()                              # quick commands never show
-        time.sleep(0.4)
-        assert json.loads(f.read_text())["label"] == "Searching for gear"
+        assert written(builds, lambda t: True)["label"] == "Searching for gear"
         client.report(0.5, "1,000 checked")
-        time.sleep(0.4)
-        [t] = client.running_tools(builds)
+        t = written(builds, lambda t: t["fraction"] == 0.5)
         assert (t["label"], t["command"], t["fraction"], t["detail"]) == \
             ("Searching for gear", "wt gear x.json", 0.5, "1,000 checked")
     assert not f.exists() and client.running_tools(builds) == []
@@ -368,8 +380,7 @@ def test_a_command_that_cannot_measure_itself_is_estimated_from_past_runs(builds
     (builds / ".server.json").write_text("{}")
     with client.ToolProgress(builds, "Searching for gear", key="gear", delay=0, beat=0.5):
         client.report(None, "round 3")
-        time.sleep(0.3)
-        [t] = client.running_tools(builds)
+        t = written(builds, lambda t: t["detail"] == "round 3")
     assert t["estimated"] and 0 < t["fraction"] < 0.05
     steps = [client.estimate(s, 40) for s in (0, 10, 20, 40, 80, 400)]
     assert steps == sorted(steps) and steps[3] == pytest.approx(0.9) and steps[-1] < 0.99
@@ -384,8 +395,7 @@ def test_a_command_that_measures_itself_is_not_estimated(builds):
     with client.ToolProgress(builds, "Downloading WynnBuilder data", key="fetch",
                              delay=0, beat=0.5) as tp:
         client.report(3 / 12, "3/12 files")
-        time.sleep(0.3)
-        [t] = client.running_tools(builds)
+        t = written(builds, lambda t: not t["estimated"])
     assert (t["fraction"], t["estimated"]) == (0.25, False)
     assert tp.measured and client.history(builds) == {}
 
